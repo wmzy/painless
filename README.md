@@ -1,58 +1,35 @@
 # painless
 
-> A toolset for react developers.
+> The front-end template (boilerplate) for building web applications with React.
 
-## Install
+## Tech Stack
 
-```bash
-npm i painless
+- React, [Native Router](https://github.com/wmzy/native-router-react), [Linaria](https://github.com/callstack/linaria)
+- Vite, Babel, TypeScript, ESLint, Prettier, Pnpm
+
+## Features
+
+- CSS-in-JS
+- Generate mock data in browser by type defined.
+
+## Getting Started
+
+```sh
+git clone https://github.com/wmzy/painless.git example
+cd example
+pnpm i
+pnpm start
 ```
 
-## Usage
+## Related Projects 
 
-```tsx
-import { useResult, useLoading, useRun, useInjectable, useError } from 'painless/async';
-import {fetchList} from '@/services/user';
+- [native-router-react](https://github.com/wmzy/native-router-react)
+- [react-toolroom](https://github.com/wmzy/react-toolroom)
 
-export default function Async() {
-  const fetchUserList = useInjectable(fetchList);
-  const users = useResult(fetchUserList);
-  const loading = useLoading(fetchUserList);
-  const error = useError(fetchUserList);
+## How to Contribute
 
-  useRun(fetchUserList, []);
+Anyone and everyone is welcome to contribute. 
 
-  if (loading) return 'loading...';
-  if (error) {
-    return (
-      <div>
-        <h1>{error.message}</h1>
-        <pre>{error.stack}</pre>
-        <button type='button' onClick={() => fetchUserList()}>
-          refresh
-        </button>
-      </div>
-    );
-  }
+## License
 
-  return (
-    <div>
-      <h1>User List</h1>
-      <div>
-        <button type='button' onClick={() => fetchUserList()}>
-          Refresh
-        </button>
-      </div>
-      <ul>
-        {users?.map((user) => (
-          <li key={user.id}>{user.username}</li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-```
-See [demos](/demos/) for a complete example.
-
-## API 
+Copyright © 2022-present wmzy. This source code is licensed under the MIT license.
