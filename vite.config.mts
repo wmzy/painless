@@ -1,10 +1,10 @@
 /* eslint-disable import/no-extraneous-dependencies */
 
 import * as path from 'path';
-import {defineConfig, PluginOption} from 'vite';
+import {defineConfig} from 'vite';
 import react from '@vitejs/plugin-react';
-import linaria from '@linaria/rollup';
-import typeAsJsonSchema from 'rollup-plugin-type-as-json-schema';
+import linaria from '@linaria/vite';
+import rollupPluginTypeAsJsonSchema from 'rollup-plugin-type-as-json-schema';
 
 export default defineConfig({
   resolve: {
@@ -20,14 +20,6 @@ export default defineConfig({
     open: true
   },
   plugins: [
-    {
-      enforce: 'pre',
-      ...linaria({
-        evaluate: false,
-        sourceMap: true,
-        exclude: ['node_modules/**']
-      })
-    } as PluginOption,
     react({
       exclude: ['node_modules/**'],
       babel: {
@@ -35,6 +27,14 @@ export default defineConfig({
         babelrc: true
       }
     }),
-    typeAsJsonSchema()
-  ]
+    rollupPluginTypeAsJsonSchema(),
+    linaria({
+      evaluate: false,
+      sourceMap: true,
+      exclude: ['node_modules/**']
+    })
+  ],
+  optimizeDeps: {
+    include: ['babel-runtime-jsx-plus']
+  }
 });
