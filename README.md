@@ -1,6 +1,8 @@
-# painless
+# Painless
 
 > The front-end template (boilerplate) for building web applications with React.
+
+English | [简体中文](./README-zh_CN.md)
 
 ## Tech Stack
 
@@ -9,8 +11,11 @@
 
 ## Features
 
-- CSS-in-JS
-- Generate mock data in browser by type defined.
+- Simple and easy to use, no complex concepts and external dependencies.
+- Zero-runtime CSS-in-JS solutions.
+- Integration with [Native Router](https://github.com/wmzy/native-router-react).
+- Simple data fetching solution. Supports page sync and async data fetching.
+- Client data Mock solution based on TypeScript and comments. And need not depend on backend.
 
 ## Getting Started
 
@@ -32,4 +37,4 @@ Anyone and everyone is welcome to contribute.
 
 ## License
 
-Copyright © 2022-present wmzy. This source code is licensed under the MIT license.
+[MIT](https://choosealicense.com/licenses/mit/)
