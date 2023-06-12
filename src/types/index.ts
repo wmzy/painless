@@ -1,9 +1,17 @@
-import { Uint } from "./base";
+import type {
+  Image,
+  Paragraphs,
+  PastDate,
+  Sentence,
+  Slug,
+  Uint,
+  Word
+} from './base';
 
 export type Author = {
   username: string;
-  bio: string;
-  image: string;
+  bio?: string;
+  image: Image;
   following: boolean;
 };
 
@@ -11,21 +19,21 @@ export type Comment = {
   createdAt: number;
   id: string;
   body: string;
-  slug: string;
+  slug: Slug;
   author: Author;
   updatedAt: number;
 };
 
 export type Article = {
-  tagList: string[];
-  createdAt: number;
+  tagList: Word[];
   author: Author;
   description: string;
-  title: string;
-  body: string;
-  slug: string;
-  updatedAt: number;
-  favoritesCount: number;
+  title: Sentence;
+  body: Paragraphs;
+  slug: Slug;
+  createdAt: PastDate;
+  updatedAt: PastDate;
+  favoritesCount: Uint;
   favorited: boolean;
 };
 
@@ -40,9 +48,19 @@ export type ArticleQuery = Partial<{
 }>;
 
 export type ArticlePage = {
+  /**
+   * @minItems 10
+   * @maxItems 10
+   * @unique true
+   */
   articles: Article[];
   articlesCount: Uint;
 };
 
-export type TagList = string[];
+/**
+ * @minItems 10
+ * @maxItems 30
+ */
+export type TagList = Word[];
+
 export type CommentList = Comment[];

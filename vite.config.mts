@@ -8,6 +8,7 @@ import rollupPluginTypeAsJsonSchema from 'rollup-plugin-type-as-json-schema';
 
 export default defineConfig({
   resolve: {
+    // conditions: [ 'browser', 'import', 'module', 'default' ],
     alias: [
       {
         find: /^@\/(.*)/,

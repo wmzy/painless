@@ -13,6 +13,7 @@ module.exports = {
   extends: ['airbnb', 'airbnb-typescript', 'plugin:compat/recommended', 'eslint-config-prettier'],
   rules: {
     '@typescript-eslint/naming-convention': ['error', {leadingUnderscore: 'allow', format: ['camelCase', 'PascalCase', 'UPPER_CASE'], selector: 'default'}],
+    '@typescript-eslint/no-use-before-define': ['error', {functions: false}],
     'prettier/prettier': 'error',
     'react/jsx-props-no-spreading': 'off',
     'react/no-unknown-property': ['error', { ignore: ['x-class', 'x-if', 'x-elseif', 'x-else'] }],
