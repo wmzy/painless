@@ -1,17 +1,11 @@
 import {View, HistoryRouter as Router, Route} from 'native-router-react';
+import {decode} from 'qss';
+import {useMemo} from 'react';
 import Loading from '@/components/Loading';
 import RouterError from '@/components/RouterError';
 import * as articleService from '@/services/article';
-import {decode} from 'qss';
 import {mockViewData} from '@/components/DevTool';
-import {useMemo} from 'react';
-import {
-  articleListSchema,
-  articlePageSchema,
-  articleSchema,
-  tagListSchema,
-  commentListSchema
-} from '@/types/index.schema';
+import {articlePageSchema} from '@/types/index.schema';
 
 export default function App() {
   return useMemo(() => {

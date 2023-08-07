@@ -1,6 +1,5 @@
-import type {Article} from '@/types';
-import {css} from '@linaria/core';
 import {useData} from 'native-router-react';
+import type {Article} from '@/types';
 import CommentList from './CommentList';
 
 export default function ArticleView() {

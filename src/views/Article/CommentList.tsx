@@ -1,5 +1,3 @@
-import {css} from '@linaria/core';
-import * as articleService from '@/services/article';
 import {
   createMemoryCacheProvider,
   useCache,
@@ -9,6 +7,7 @@ import {
   useResult,
   useRun
 } from 'react-toolroom/async';
+import * as articleService from '@/services/article';
 
 type Props = {title: string};
 
@@ -21,7 +20,7 @@ export default function CommentList({title}: Props) {
   const fetchCommentsByTitle = useInjectable(
     articleService.fetchCommentsByTitle
   );
-  const isStale = useCache(fetchCommentsByTitle, cache, 2000);
+  useCache(fetchCommentsByTitle, cache, 2000);
   const comments = useResult(fetchCommentsByTitle, []);
   const loading = useLoading(fetchCommentsByTitle);
   const error = useError(fetchCommentsByTitle);
@@ -29,6 +28,7 @@ export default function CommentList({title}: Props) {
   useRun(fetchCommentsByTitle, [title]);
 
   if (loading) return <div>Loading...</div>;
+  if (error) return <div>Error</div>;
 
   return (
     <ul>

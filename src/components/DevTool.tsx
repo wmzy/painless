@@ -1,9 +1,9 @@
 import * as ee from '@for-fun/event-emitter';
 import {css} from '@linaria/core';
 import {ReactNode, useEffect, useState} from 'react';
-import {fakerWhenNothing, schemaFaker} from '@/util/faker';
 import {refresh} from 'native-router-react';
 import {useInject, createMemoryCacheProvider} from 'react-toolroom/async';
+import {fakerWhenNothing, schemaFaker} from '@/util/faker';
 import Popover from './Popover';
 
 type CacheProvider = ReturnType<typeof createMemoryCacheProvider>;
@@ -103,6 +103,7 @@ function MockView({
     <div>
       <div onChange={onChange}>
         {['always', 'empty', 'disabled'].map((when) => (
+          // eslint-disable-next-line jsx-a11y/label-has-associated-control
           <label key={when}>
             <input
               name={name}

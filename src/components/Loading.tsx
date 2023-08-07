@@ -1,5 +1,11 @@
 import {css} from '@linaria/core';
-import {type CSSProperties, type ReactPortal, useMemo, useEffect, useState} from 'react';
+import {
+  type CSSProperties,
+  type ReactPortal,
+  useMemo,
+  useEffect,
+  useState
+} from 'react';
 import {createPortal} from 'react-dom';
 import {cancel, useLoading, useRouter} from 'native-router-react';
 
@@ -47,9 +53,9 @@ export default function Loading(): ReactPortal | null {
 
   return createPortal(
     <button
-      data-testid="loading"
-      type="button"
-      title="Click to cancel!"
+      data-testid='loading'
+      type='button'
+      title='Click to cancel!'
       onClick={() => cancel(router)}
       className={css`
         position: fixed;
