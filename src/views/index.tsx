@@ -27,7 +27,7 @@ export default function App() {
         {
           path: '/article/:title',
           component: () => import('./Article'),
-          data: ({title}) => articleService.findByTitle(title)
+          data: ({params: {title}}) => articleService.findByTitle(title)
         },
         {
           path: '/help',
