@@ -1,5 +1,5 @@
 import {css} from '@linaria/core';
-import {useData} from 'native-router-react';
+import {useData} from '@native-router/react';
 import {ArticlePage} from '@/types';
 import PreviewLink from '@/components/PreviewLink';
 import Tags from './Tags';

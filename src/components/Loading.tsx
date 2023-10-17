@@ -7,7 +7,7 @@ import {
   useState
 } from 'react';
 import {createPortal} from 'react-dom';
-import {cancel, useLoading, useRouter} from 'native-router-react';
+import {cancel, useLoading, useRouter} from '@native-router/react';
 
 export default function Loading(): ReactPortal | null {
   const router = useRouter();

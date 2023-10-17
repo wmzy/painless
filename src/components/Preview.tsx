@@ -1,5 +1,5 @@
 import {css} from '@linaria/core';
-import {usePrefetch} from 'native-router-react';
+import {usePrefetch} from '@native-router/react';
 import Popover from './Popover';
 
 type Props = {

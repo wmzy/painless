@@ -1,7 +1,7 @@
 import * as ee from '@for-fun/event-emitter';
 import {css} from '@linaria/core';
 import {ReactNode, useEffect, useState} from 'react';
-import {refresh} from 'native-router-react';
+import {refresh} from '@native-router/core';
 import {useInject, createMemoryCacheProvider} from 'react-toolroom/async';
 import {fakerWhenNothing, schemaFaker} from '@/util/faker';
 import Popover from './Popover';

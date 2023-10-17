@@ -1,4 +1,4 @@
-import {View, HistoryRouter as Router, Route} from 'native-router-react';
+import {View, HistoryRouter as Router, Route} from '@native-router/react';
 import {decode} from 'qss';
 import {useMemo} from 'react';
 import Loading from '@/components/Loading';

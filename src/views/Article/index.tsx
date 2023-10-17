@@ -1,4 +1,4 @@
-import {useData} from 'native-router-react';
+import {useData} from '@native-router/react';
 import type {Article} from '@/types';
 import CommentList from './CommentList';
 

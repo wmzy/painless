@@ -14,15 +14,18 @@ dependencies:
   '@linaria/core':
     specifier: ^4.5.4
     version: 4.5.4
+  '@native-router/core':
+    specifier: ^1.0.3
+    version: 1.0.3
+  '@native-router/react':
+    specifier: ^1.0.1
+    version: 1.0.1(react-dom@18.2.0)(react@18.2.0)
   date-fns:
     specifier: ^2.30.0
     version: 2.30.0
   json-schema-faker:
     specifier: ^0.5.3
     version: 0.5.3
-  native-router-react:
-    specifier: ^0.10.1
-    version: 0.10.1(react-dom@18.2.0)(react@18.2.0)
   qss:
     specifier: ^3.0.0
     version: 3.0.0
@@ -1963,6 +1966,27 @@ packages:
   /@mdn/browser-compat-data@5.3.8:
     resolution: {integrity: sha512-WE2eeLb0gZJcQEnPhCIQWs+5KpNK2VI0EOWFUvR39/iks2vDSzJO//78hVz/gYdOGXz6mo4jg0T7RygsUbyZ8w==}
     dev: true
+
+  /@native-router/core@1.0.3:
+    resolution: {integrity: sha512-Ttj6zIInw0ylDzNUTiGjowI3pjR87sAhTLQuFB7i9HrjhnEQP7HRrZGeErOJDLbWkG3m3eQ1A2FNZ9d2X+wvnA==}
+    engines: {node: '>=14'}
+    dependencies:
+      history: 5.3.0
+      path-to-regexp: 6.2.1
+    dev: false
+
+  /@native-router/react@1.0.1(react-dom@18.2.0)(react@18.2.0):
+    resolution: {integrity: sha512-h7mo6B+G2Tbl7/LFg+17r2m3q2TRurrwbyhdxgrNowq7maA8oWwAvcKH2Ybhyr9KUbGh0IcKNOpcW0j9675TNA==}
+    engines: {node: '>=14'}
+    peerDependencies:
+      react: ^17.0.0 || ^18.0.0
+      react-dom: ^17.0.0 || ^18.0.0
+    dependencies:
+      '@native-router/core': 1.0.3
+      history: 5.3.0
+      react: 18.2.0
+      react-dom: 18.2.0(react@18.2.0)
+    dev: false
 
   /@nodelib/fs.scandir@2.1.5:
     resolution: {integrity: sha512-vq24Bq3ym5HEQm2NKCr3yXDwjc7vTsEThRDnkp2DK9p1uqLR+DHurm/NOTo0KG7HYHU7eppKZj3MyqYuMBf62g==}
@@ -5439,19 +5463,6 @@ packages:
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
     hasBin: true
     dev: true
-
-  /native-router-react@0.10.1(react-dom@18.2.0)(react@18.2.0):
-    resolution: {integrity: sha512-Kj84WLcmSdmVN1mhEIty+ULViKHZ8VITHIfhhWAsSNkU5agb4QUrBsV05xBjuDJIswP+L0nKXPf/luItrZajWw==}
-    engines: {node: '>=14'}
-    peerDependencies:
-      react: ^17.0.0 || ^18.0.0
-      react-dom: ^17.0.0 || ^18.0.0
-    dependencies:
-      history: 5.3.0
-      path-to-regexp: 6.2.1
-      react: 18.2.0
-      react-dom: 18.2.0(react@18.2.0)
-    dev: false
 
   /natural-compare-lite@1.4.0:
     resolution: {integrity: sha512-Tj+HTDSJJKaZnfiuw+iaF9skdPpTo2GtEly5JHnWV/hfv2Qj/9RKsGISQtLh2ox3l5EAGw487hnBee0sIJ6v2g==}
