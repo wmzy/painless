@@ -15,7 +15,7 @@ export default function App() {
         {
           path: '/',
           data: mockViewData(
-            (_0, {location}) => {
+            ({location}) => {
               const query = decode(location.search.slice(1));
               return articleService.query(query);
             },

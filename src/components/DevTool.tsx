@@ -135,14 +135,14 @@ export default function DevTool({children}: Props) {
   );
 }
 
-export function mockViewData<F extends (params: any, ctx: any) => Promise<any>>(
+export function mockViewData<F extends (ctx: any) => Promise<any>>(
   fn: F,
   schema: unknown,
   key: string
 ): F {
   if (import.meta.env.PROD) return fn;
 
-  return ((_0, ctx) => {
+  return ((ctx) => {
     const config = getMockConfig(key);
     const {router, location} = ctx;
 
@@ -161,14 +161,14 @@ export function mockViewData<F extends (params: any, ctx: any) => Promise<any>>(
     setMockConfig(key, localConfig);
 
     if (localConfig.when === 'empty') {
-      return fakerWhenNothing(fn, schema)(_0, ctx);
+      return fakerWhenNothing(fn, schema)(ctx);
     }
 
     if (localConfig.when === 'always') {
       return schemaFaker(schema);
     }
 
-    return fn(_0, ctx);
+    return fn(ctx);
   }) as F;
 }
 
