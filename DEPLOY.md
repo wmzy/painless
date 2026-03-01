@@ -128,3 +128,27 @@ Ensure your static server is configured to serve `index.html` for all routes.
 ### 404 on Subpages
 
 Configure your hosting platform to redirect all routes to `index.html`.
+
+## Cloudflare Pages
+
+```bash
+# Install Wrangler CLI
+npm i -g wrangler
+
+# Deploy
+wrangler pages deploy dist
+```
+
+Or connect your GitHub repository to Cloudflare Pages.
+
+### Configuration
+
+The `_headers` and `_redirects` files in `public/` are automatically picked up by Cloudflare Pages.
+
+### Environment Variables
+
+Add in Cloudflare Pages settings:
+
+```
+VITE_API_URL=https://api.example.com
+```
