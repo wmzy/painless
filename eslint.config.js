@@ -12,6 +12,9 @@ const compat = require('eslint-plugin-compat');
 module.exports = [
   js.configs.recommended,
   {
+    ignores: ['dist', 'node_modules', 'coverage', '*.min.js', 'babel.config.js', 'eslint.config.js', 'vitest.config.ts'],
+  },
+  {
     files: ['**/*.{ts,tsx}'],
     languageOptions: {
       parser: tsparser,
@@ -95,8 +98,5 @@ module.exports = [
       ...prettierConfig.rules,
       'prettier/prettier': 'error',
     },
-  },
-  {
-    ignores: ['dist', 'node_modules', 'coverage', '*.min.js'],
   },
 ];
