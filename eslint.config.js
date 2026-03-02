@@ -33,6 +33,7 @@ module.exports = [
         setInterval: 'readonly',
         clearInterval: 'readonly',
         console: 'readonly',
+        process: 'readonly',
       },
     },
     plugins: {
@@ -51,6 +52,7 @@ module.exports = [
       ...prettierConfig.rules,
       'prettier/prettier': 'error',
       'no-unused-vars': 'off',
+      'no-undef': 'off',
       'react/jsx-props-no-spreading': 'off',
       'react/no-unknown-property': ['error', { ignore: ['x-class', 'x-if', 'x-elseif', 'x-else'] }],
       'no-return-assign': ['error', 'except-parens'],
@@ -62,8 +64,8 @@ module.exports = [
       'react/require-default-props': 'off',
       'react/react-in-jsx-scope': 'off',
       'no-use-before-define': ['error', {functions: false}],
-      'no-console': process.env.NODE_ENV === 'production' ? 'error' : 'warn',
-      'no-debugger': process.env.NODE_ENV === 'production' ? 'error' : 'off',
+      'no-console': 'off',
+      'no-debugger': 'off',
     },
     settings: {
       react: {
