@@ -5,7 +5,8 @@ const react = require('eslint-plugin-react');
 const reactHooks = require('eslint-plugin-react-hooks');
 const jsxA11y = require('eslint-plugin-jsx-a11y');
 const importPlugin = require('eslint-plugin-import');
-const prettier = require('eslint-config-prettier');
+const prettierPlugin = require('eslint-plugin-prettier');
+const prettierConfig = require('eslint-config-prettier');
 const compat = require('eslint-plugin-compat');
 
 module.exports = [
@@ -26,6 +27,7 @@ module.exports = [
       'react-hooks': reactHooks,
       'jsx-a11y': jsxA11y,
       import: importPlugin,
+      prettier: prettierPlugin,
       compat,
     },
     rules: {
@@ -34,10 +36,10 @@ module.exports = [
       ...reactHooks.configs.recommended.rules,
       ...jsxA11y.configs.recommended.rules,
       ...importPlugin.configs.recommended.rules,
-      ...prettier.rules,
+      ...prettierConfig.rules,
+      'prettier/prettier': 'error',
       '@typescript-eslint/naming-convention': ['error', {leadingUnderscore: 'allow', format: ['camelCase', 'PascalCase', 'UPPER_CASE'], selector: 'default'}],
       '@typescript-eslint/no-use-before-define': ['error', {functions: false}],
-      'prettier/prettier': 'error',
       'react/jsx-props-no-spreading': 'off',
       'react/no-unknown-property': ['error', { ignore: ['x-class', 'x-if', 'x-elseif', 'x-else'] }],
       'no-return-assign': ['error', 'except-parens'],
@@ -75,10 +77,11 @@ module.exports = [
       },
     },
     plugins: {
-      prettier,
+      prettier: prettierPlugin,
     },
     rules: {
-      ...prettier.rules,
+      ...prettierConfig.rules,
+      'prettier/prettier': 'error',
     },
   },
   {
