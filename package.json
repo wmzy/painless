@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "start": "vite",
-    "build": "vite build && tsc -p tsconfig.production.json && tsc-alias -p tsconfig.production.json",
+    "build": "vite build",
     "commit": "lint-staged && git-cz -n",
     "coverage": "vitest coverage",
     "lint": "eslint --fix .",
