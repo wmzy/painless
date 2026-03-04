@@ -21,7 +21,7 @@
   "author": "wmzy",
   "license": "ISC",
   "peerDependencies": {
-    "react": "^18.2.0"
+    "react": "^19.0.0"
   },
   "devDependencies": {
     "@babel/core": "^7.22.9",
@@ -78,7 +78,7 @@
     "json-schema-faker": "^0.5.3",
     "qss": "^3.0.0",
     "ramda": "^0.29.0",
-    "react": "^18.2.0",
+    "react": "^19.0.0",
     "react-dom": "^18.2.0",
     "react-toolroom": "^0.4.0"
   }
