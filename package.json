@@ -29,7 +29,7 @@
     "@babel/preset-typescript": "^7.22.5",
     "@babel/register": "^7.22.5",
     "@linaria/babel-preset": "^4.5.4",
-    "@linaria/vite": "^4.5.4",
+    "@linaria/vite": "^5.0.4",
     "@testing-library/react": "^14.0.0",
     "@testing-library/jest-dom": "^6.1.0",
     "@vitest/coverage-v8": "^2.0.0",
