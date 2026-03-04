@@ -28,7 +28,7 @@
     "@babel/preset-env": "^7.22.9",
     "@babel/preset-typescript": "^7.22.5",
     "@babel/register": "^7.22.5",
-    "@linaria/babel-preset": "^4.5.4",
+    "@linaria/babel-preset": "^5.0.4",
     "@linaria/vite": "^5.0.4",
     "@testing-library/react": "^14.0.0",
     "@testing-library/jest-dom": "^6.1.0",
@@ -71,7 +71,7 @@
   "dependencies": {
     "@faker-js/faker": "^8.0.2",
     "@for-fun/event-emitter": "^1.0.0",
-    "@linaria/core": "^4.5.4",
+    "@linaria/core": "^7.0.0",
     "@native-router/core": "^1.0.3",
     "@native-router/react": "^1.0.2",
     "date-fns": "^4.1.0",
