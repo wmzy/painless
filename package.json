@@ -41,7 +41,7 @@
     "@types/react-dom": "^18.2.7",
     "@typescript-eslint/eslint-plugin": "^6.2.1",
     "@typescript-eslint/parser": "^6.2.1",
-    "@vitejs/plugin-react": "^4.0.4",
+    "@vitejs/plugin-react": "^5.1.4",
     "babel-plugin-transform-jsx-class": "^0.1.3",
     "babel-plugin-transform-jsx-condition": "^0.1.3",
     "babel-runtime-jsx-plus": "^0.1.5",
