@@ -69,7 +69,7 @@
     "vitest": "^4.0.18"
   },
   "dependencies": {
-    "@faker-js/faker": "^8.0.2",
+    "@faker-js/faker": "^10.3.0",
     "@for-fun/event-emitter": "^1.0.0",
     "@linaria/core": "^7.0.0",
     "@native-router/core": "^1.0.3",
