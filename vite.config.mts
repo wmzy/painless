@@ -7,6 +7,7 @@ import wyw from '@wyw-in-js/vite';
 import rollupPluginTypeAsJsonSchema from 'rollup-plugin-type-as-json-schema';
 
 export default defineConfig({
+  base: '/painless/',
   resolve: {
     alias: [
       {
