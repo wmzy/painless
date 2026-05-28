@@ -19,7 +19,9 @@ export default function Loading(): ReactPortal | null {
   const {key, status} = loading || {};
 
   useEffect(() => {
-    setPercent(0);
+    requestAnimationFrame(() => {
+      setPercent(0);
+    });
   }, [key]);
 
   // eslint-disable-next-line consistent-return
@@ -43,14 +45,16 @@ export default function Loading(): ReactPortal | null {
 
       return () => clearInterval(timer);
     } else if (status === 'resolved') {
-      setPercent(100);
+      requestAnimationFrame(() => {
+        setPercent(100);
+      });
       const timer = setTimeout(remove, 500);
       return () => {
         clearTimeout(timer);
         remove();
       };
     }
-  }, [status]);
+  }, [status, el]);
 
   return createPortal(
     <button
