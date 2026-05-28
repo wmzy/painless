@@ -13,6 +13,34 @@ Modern frontend development is overly complex. Painless strips away the complexi
 - **Type-safe** - Full TypeScript support with zero configuration
 - **Instant feedback** - Hot Module Replacement for instant updates
 
+## Design Philosophy
+
+Painless makes deliberate trade-offs. Here's what we chose NOT to include, and why.
+
+### No SSR / SSG — Pure Client-Side
+
+We believe introducing SSR/SSG adds architectural complexity that isn't justified for most applications. If you need SEO for search engines, serve pre-rendered HTML to bot traffic via a headless browser — a simple, effective solution that doesn't contaminate your application architecture with server-side concerns.
+
+### No Server-Side Capabilities
+
+A frontend framework should not try to be a backend. API Routes, Server Actions, and server-side middleware belong in dedicated backend frameworks. A web frontend is not an application's only client — mobile apps, desktop apps, and other clients all need the same backend. Coupling the web frontend with the backend is a half-measure that serves only one client while leaving others to integrate separately. A clean API layer that all clients can consume is the right boundary.
+
+### Flat Routing — No Nested / Parallel Routes
+
+The route is the page, and the page is the state. Nested and parallel routes attempt to decompose page state into independent URL-driven fragments, which introduces unnecessary complexity in data loading, error boundaries, and layout composition. We believe this is over-engineering — if a section of your UI needs independent state, it's a component, not a route.
+
+### No State Management Libraries
+
+If your application is properly decomposed into pages and components, each with clear responsibilities, state lives where it's used. State management libraries encourage centralizing state that should be local, creating coupling between unrelated parts of the application. Use React's built-in primitives (`useState`, `useContext`, `useRef`) and lift state only when genuinely shared.
+
+### No Built-In Image Optimization
+
+Image optimization is a service concern, not a framework concern. A dedicated image service (CDN-based or self-hosted) can serve optimized images to all clients — web, mobile, desktop — not just the frontend framework. Coupling this into the framework creates vendor lock-in and serves only one client.
+
+### Platform-Agnostic Deployment
+
+Painless produces standard static assets. It does not couple to any specific deployment platform — no proprietary middleware, no platform-specific APIs, no vendor lock-in. Deploy to GitHub Pages, Netlify, Vercel, Cloudflare Pages, your own CDN, or a USB drive. The output is yours.
+
 ## Tech Stack
 
 - [React](https://react.dev) - UI Library
