@@ -1,5 +1,6 @@
 import {refresh} from '@native-router/core';
 import {Link, useRouter} from '@native-router/react';
+import {Card, Title, Text, Button} from 'haze-ui';
 
 type Props = {
   error: Error;
@@ -8,13 +9,12 @@ type Props = {
 export default function RouterError({error}: Props) {
   const router = useRouter();
   return (
-    <section>
-      <h1>Error</h1>
+    <Card>
+      <Title>Error</Title>
+      <Text>{error.message}</Text>
       <pre>{error.stack}</pre>
-      <button type='button' onClick={() => refresh(router)}>
-        Refresh
-      </button>
-      <Link to='/'>home</Link>
-    </section>
+      <Button onClick={() => refresh(router)}>Refresh</Button>
+      <Link to='/'>Home</Link>
+    </Card>
   );
 }
