@@ -1,5 +1,6 @@
 import {css} from '@linaria/core';
 import {useData} from '@native-router/react';
+import {Card, Title, Text, Badge, Avatar, Flex} from 'haze-ui';
 import {ArticlePage} from '@/types';
 import PreviewLink from '@/components/PreviewLink';
 import Tags from './Tags';
@@ -13,23 +14,29 @@ export default function Home() {
         text-align: center;
       `}
     >
-      <h1>Welcome to Painless.</h1>
-      <div
-        x-class={css`
-          display: flex;
-        `}
-      >
+      <Title>Welcome to Painless.</Title>
+      <Flex>
         <div>
           {articles.map((a) => (
-            <div key={a.slug}>
-              <h2>
+            <Card key={a.slug}>
+              <Flex align='center' gap='sm'>
+                <Avatar src={a.author.image} alt={a.author.username} />
+                <Text>{a.author.username}</Text>
+              </Flex>
+              <Title level={2}>
                 <PreviewLink to={`/article/${a.slug}`}>{a.title}</PreviewLink>
-              </h2>
-            </div>
+              </Title>
+              <Text>{a.description}</Text>
+              <Flex gap='xs' wrap='wrap'>
+                {a.tagList.map((tag) => (
+                  <Badge key={tag}>{tag}</Badge>
+                ))}
+              </Flex>
+            </Card>
           ))}
         </div>
         <Tags />
-      </div>
+      </Flex>
     </div>
   );
 }
