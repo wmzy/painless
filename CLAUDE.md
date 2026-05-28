@@ -13,7 +13,7 @@ These are intentional design decisions, not missing features. Do not suggest add
 - **Pure client-side SPA** — No SSR/SSG. SEO can be handled by serving pre-rendered HTML to bot traffic via headless browser, not by contaminating the app architecture.
 - **Frontend is not the backend** — API Routes/Server Actions belong in dedicated backend frameworks. The web frontend is one of many clients; coupling it with the backend serves only one client.
 - **Flat routing** — The route is the page. Nested/parallel routes decompose page state into URL fragments, adding unnecessary complexity. Independent UI sections are components, not routes.
-- **No state management libraries** — Proper page/component decomposition keeps state local. Use React primitives (`useState`, `useContext`, `useRef`).
+- **No state management libraries** — Proper page/component decomposition keeps state local. Use React primitives (`useState`, `useContext`, `useRef`) and `useControl` from haze-ui for controlled/uncontrolled component state.
 - **No built-in image optimization** — Image optimization is a service concern, not a framework concern. A dedicated service serves all clients, not just the frontend.
 - **Platform-agnostic deployment** — Produces standard static assets. No vendor lock-in to any deployment platform.
 
@@ -60,10 +60,34 @@ These are allowed by ESLint (no `react/no-unknown-property` rule).
 | Library | Purpose |
 |---------|---------|
 | `@native-router/react` | Client-side routing with data loading and prefetching |
+| `haze-ui` | Component library with zero-runtime CSS, re-exports `useControl` |
+| `react-use-control` | Controlled/uncontrolled state — `useControl(prop, default)` |
+| `react-f0rm` | Event-driven form library with `Form`, `Field`, `useField`, `useError` |
 | `react-toolroom/async` | Async data hooks with caching |
 | `@linaria/core` | Zero-runtime CSS-in-JS |
 | `ramda` | FP utilities (used in faker.ts) |
 | `qss` | Query string encode/decode |
+
+## Component State Pattern: `useControl`
+
+Use `useControl` for component-internal state that may need external control. Do NOT use it to wrap state already managed by another library (e.g., react-f0rm).
+
+```tsx
+// Good — component state that could be externally controlled
+function DevTool() {
+  const [open, setOpen] = useControl(false);
+  // ...
+}
+
+// Bad — form state is already managed by react-f0rm
+function FormField() {
+  const {value, onChange} = useField({name: 'email'});
+  const [controlled] = useControl(value, ''); // redundant!
+  // ...
+}
+```
+
+**Rule of thumb:** If a library already owns the state (react-f0rm for forms, react-toolroom for async data), pass it through directly. `useControl` is for component-internal state that benefits from the controlled/uncontrolled pattern.
 
 ## Code Style
 

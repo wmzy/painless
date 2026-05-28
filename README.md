@@ -45,6 +45,9 @@ Painless produces standard static assets. It does not couple to any specific dep
 
 - [React](https://react.dev) - UI Library
 - [Native Router](https://github.com/native-router/react) - Lightweight routing
+- [haze-ui](https://github.com/wmzy/haze-ui) - Component library with zero-runtime CSS
+- [react-use-control](https://github.com/wmzy/react-use-control) - Controlled/uncontrolled state in one line
+- [react-f0rm](https://github.com/wmzy/react-f0rm) - Event-driven form library
 - [Linaria](https://github.com/callstack/linaria) - Zero-runtime CSS-in-JS
 - [Vite](https://vitejs.dev) - Next generation frontend tooling
 - TypeScript - Type safety
@@ -136,6 +139,38 @@ export function Button({ children }) {
   return <button class={styles}>{children}</button>;
 }
 ```
+
+### Clean Component State with `useControl`
+
+Every stateful component in React faces the same problem: should it be controlled (parent owns state) or uncontrolled (component owns state)? The traditional solution requires separate `value`/`defaultValue`/`onChange` props, internal `useState`, `useEffect` sync, and conditional logic.
+
+`react-use-control` collapses all of that into one line:
+
+```tsx
+import { useControl } from 'haze-ui';
+
+function Toggle({ open }: { open?: Control<boolean> | boolean }) {
+  const [isOpen, setOpen] = useControl(open, false);
+  return <button onClick={() => setOpen(!open)}>{isOpen ? 'Close' : 'Open'}</button>;
+}
+```
+
+That's it. The component works in both modes:
+
+```tsx
+// Uncontrolled — component owns state
+<Toggle />
+
+// Controlled — parent owns state
+const [open, setOpen] = useControl(false);
+<Toggle open={open} />
+```
+
+**How it works:** `useControl(prop, default)` returns `[value, setValue, control]` — same shape as `useState`, plus a `Control` object to pass down. If the prop is a `Control`, state is shared with the parent. If it's a plain value, it becomes the initial value. If omitted, the default is used.
+
+**In this project**, `useControl` is used for component-internal state (DevTool panel open/close, PreviewLink hover visibility). Form inputs use `react-f0rm` directly — form state is the form library's responsibility, not the component's.
+
+**Key principle:** `useControl` is for exposing internal state to external components. If a library already manages the state (like react-f0rm for forms), don't wrap it — let the library do its job.
 
 ## Getting Started
 
