@@ -1,6 +1,6 @@
 import {useData} from '@native-router/react';
 import {Form, useForm, Field, reset} from 'react-f0rm';
-import {Card, Title, Text, Avatar, Divider, Textarea, Button} from 'haze-ui';
+import {Card, Title, Text, Avatar, Divider, Textarea} from 'haze-ui';
 import type {Article} from '@/types';
 import * as http from '@/util/http';
 import CommentList from './CommentList';
@@ -37,7 +37,7 @@ export default function ArticleView() {
           placeholder='Write a comment...'
           validate={(v: any) => (!v ? 'Comment is required' : undefined)}
         />
-        <Button type='submit'>Post Comment</Button>
+        <button type='submit'>Post Comment</button>
       </Form>
       <CommentList title={article.slug} />
     </Card>
