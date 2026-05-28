@@ -2,6 +2,7 @@
   "compilerOptions": {
     /* Visit https://aka.ms/tsconfig.json to read more about this file */
 
+    "ignoreDeprecations": "6.0",
     "resolveJsonModule": true,
     "stripInternal": true,
     /* Basic Options */
