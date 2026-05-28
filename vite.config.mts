@@ -16,7 +16,6 @@ export default defineConfig({
       }
     ]
   },
-  esbuild: false,
   server: {
     open: true
   },

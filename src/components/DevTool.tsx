@@ -1,4 +1,3 @@
-/* eslint-disable no-underscore-dangle */
 import * as ee from '@for-fun/event-emitter';
 import {css} from '@linaria/core';
 import {ReactNode, useEffect, useState} from 'react';

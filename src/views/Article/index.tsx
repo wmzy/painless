@@ -1,6 +1,7 @@
+import {useState} from 'react';
 import {useData} from '@native-router/react';
 import {Form, useForm, Field, reset} from 'react-f0rm';
-import {Card, Title, Text, Avatar, Divider, Textarea} from 'haze-ui';
+import {Card, Title, Text, Avatar, Divider, Textarea, Alert} from 'haze-ui';
 import type {Article} from '@/types';
 import * as http from '@/util/http';
 import CommentList from './CommentList';
@@ -8,12 +9,17 @@ import CommentList from './CommentList';
 export default function ArticleView() {
   const article = useData() as Article;
   const commentForm = useForm();
+  const [error, setError] = useState<string | null>(null);
 
   const handleCommentSubmit = async (values: any) => {
-    await http.post(`articles/${article.slug}/comments`, {
-      comment: {body: values.body}
-    });
-    reset(commentForm);
+    try {
+      await http.post(`articles/${article.slug}/comments`, {
+        comment: {body: values.body}
+      });
+      reset(commentForm);
+    } catch (e: any) {
+      setError(e.message);
+    }
   };
 
   return (
@@ -24,12 +30,12 @@ export default function ArticleView() {
       <Divider />
       <div>
         {article.body.split('\\n').map((p, i) => (
-          // eslint-disable-next-line react/no-array-index-key
           <Text key={i}>{p}</Text>
         ))}
       </div>
       <Divider />
       <Title level={3}>Comments</Title>
+      {error && <Alert variant='danger'>{error}</Alert>}
       <Form form={commentForm} onValidSubmit={handleCommentSubmit}>
         <Field
           name='body'

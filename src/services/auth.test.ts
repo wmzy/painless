@@ -28,7 +28,9 @@ describe('auth service', () => {
 
   describe('register', () => {
     it('should call post with register endpoint and return user', async () => {
-      const mockUser = {user: {username: 'test', email: 'test@test.com', token: 'abc'}};
+      const mockUser = {
+        user: {username: 'test', email: 'test@test.com', token: 'abc'}
+      };
       vi.mocked(http.post).mockResolvedValue(mockUser as any);
 
       const result = await auth.register('test', 'test@test.com', 'password');

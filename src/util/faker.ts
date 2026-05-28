@@ -1,6 +1,11 @@
 import * as R from 'ramda';
 import {format} from 'date-fns';
-import {type JsonSchema, generate, define, registerFormat} from 'json-schema-faker';
+import {
+  type JsonSchema,
+  generate,
+  define,
+  registerFormat
+} from 'json-schema-faker';
 import {faker} from '@faker-js/faker';
 
 define('faker', () => faker);

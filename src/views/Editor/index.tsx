@@ -1,5 +1,6 @@
+import {useState} from 'react';
 import {Form, useForm, Field} from 'react-f0rm';
-import {Card, Title, Input, Textarea, TagInput} from 'haze-ui';
+import {Card, Title, Input, Textarea, TagInput, Alert} from 'haze-ui';
 import {useRouter, useData} from '@native-router/react';
 import {navigate} from '@native-router/core';
 import * as http from '@/util/http';
@@ -9,6 +10,7 @@ export default function Editor() {
   const form = useForm();
   const router = useRouter();
   const article = useData() as Article | undefined;
+  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (values: any) => {
     try {
@@ -28,13 +30,14 @@ export default function Editor() {
       }
       navigate(router, '/');
     } catch (e: any) {
-      alert(e.message);
+      setError(e.message);
     }
   };
 
   return (
     <Card>
       <Title>{article ? 'Edit Article' : 'New Article'}</Title>
+      {error && <Alert variant='danger'>{error}</Alert>}
       <Form form={form} onValidSubmit={handleSubmit}>
         <Field
           name='title'

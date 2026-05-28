@@ -24,7 +24,6 @@ export default function Loading(): ReactPortal | null {
     });
   }, [key]);
 
-  // eslint-disable-next-line consistent-return
   useEffect(() => {
     const remove = () => {
       if (el.parentElement) document.body.removeChild(el);

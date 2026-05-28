@@ -1,5 +1,6 @@
+import {useState} from 'react';
 import {Form, useForm, Field} from 'react-f0rm';
-import {Card, Title, Input, Text} from 'haze-ui';
+import {Card, Title, Input, Text, Alert} from 'haze-ui';
 import {useRouter} from '@native-router/react';
 import {navigate} from '@native-router/core';
 import * as auth from '@/services/auth';
@@ -7,19 +8,21 @@ import * as auth from '@/services/auth';
 export default function Register() {
   const form = useForm();
   const router = useRouter();
+  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (values: any) => {
     try {
       await auth.register(values.username, values.email, values.password);
       navigate(router, '/');
     } catch (e: any) {
-      alert(e.message);
+      setError(e.message);
     }
   };
 
   return (
     <Card>
       <Title>Register</Title>
+      {error && <Alert variant='danger'>{error}</Alert>}
       <Form form={form} onValidSubmit={handleSubmit}>
         <Field
           name='username'

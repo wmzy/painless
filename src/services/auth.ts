@@ -6,7 +6,11 @@ export async function login(email: string, password: string) {
     .then(({user}) => user);
 }
 
-export async function register(username: string, email: string, password: string) {
+export async function register(
+  username: string,
+  email: string,
+  password: string
+) {
   return http
     .post('users', {user: {username, email, password}})
     .then(({user}) => user);

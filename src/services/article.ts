@@ -1,4 +1,3 @@
-/* eslint-disable no-underscore-dangle */
 import * as http from '@/util/http';
 import {ArticleQuery, Comment} from '@/types/index';
 

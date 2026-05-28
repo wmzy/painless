@@ -1,5 +1,11 @@
 declare module 'react-f0rm' {
-  import { ComponentType, ReactNode, FormEvent, InputHTMLAttributes, Ref } from 'react';
+  import {
+    ComponentType,
+    ReactNode,
+    FormEvent,
+    InputHTMLAttributes,
+    Ref
+  } from 'react';
 
   export interface FormInstance {
     emitter: any;
@@ -22,7 +28,10 @@ declare module 'react-f0rm' {
 
   export function createForm(options?: CreateFormOptions): FormInstance;
 
-  export interface FormProps extends Omit<React.FormHTMLAttributes<HTMLFormElement>, 'onSubmit'> {
+  export interface FormProps extends Omit<
+    React.FormHTMLAttributes<HTMLFormElement>,
+    'onSubmit'
+  > {
     form?: FormInstance;
     initialValues?: any;
     onSubmit?: (values: any, form: FormInstance) => void;
@@ -79,7 +88,7 @@ declare module 'react-f0rm' {
   }
 
   export function useFieldArray(options: UseFieldArrayOptions): {
-    fields: Array<{ id: string; index: number }>;
+    fields: Array<{id: string; index: number}>;
     append: (value: any) => void;
     prepend: (value: any) => void;
     insert: (index: number, value: any) => void;
@@ -97,17 +106,30 @@ declare module 'react-f0rm' {
   export function useSubmitCount(): number;
 
   export const FormContext: React.Context<FormInstance | null>;
-  export const FormProvider: ComponentType<{ value: FormInstance; children: ReactNode }>;
+  export const FormProvider: ComponentType<{
+    value: FormInstance;
+    children: ReactNode;
+  }>;
   export const CheckboxGroupContext: React.Context<any>;
-  export const CheckboxGroupProvider: ComponentType<{ value: any; children: ReactNode }>;
+  export const CheckboxGroupProvider: ComponentType<{
+    value: any;
+    children: ReactNode;
+  }>;
 
   export function getValues(form: FormInstance): any;
   export function getValue(form: FormInstance, name: string): any;
   export function setValue(form: FormInstance, name: string, value: any): void;
-  export function getError(form: FormInstance, name: string): string | undefined;
+  export function getError(
+    form: FormInstance,
+    name: string
+  ): string | undefined;
   export function getErrors(form: FormInstance): string[];
   export function getFirstError(form: FormInstance): string | undefined;
-  export function setError(form: FormInstance, name: string, error: string): void;
+  export function setError(
+    form: FormInstance,
+    name: string,
+    error: string
+  ): void;
   export function clearErrors(form: FormInstance): void;
   export function setTouched(form: FormInstance, name: string): void;
   export function hasTouched(form: FormInstance, name: string): boolean;

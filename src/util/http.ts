@@ -7,7 +7,6 @@ export function fetchJSON(
   return fetch(`https://api.realworld.io/api/${url}`, {
     ...init,
     headers: {
-      // eslint-disable-next-line @typescript-eslint/naming-convention
       'content-type': 'application/json',
       accept: 'application/json',
       ...init?.headers
