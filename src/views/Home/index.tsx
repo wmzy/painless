@@ -27,7 +27,7 @@ export default function Home() {
                 <PreviewLink to={`/article/${a.slug}`}>{a.title}</PreviewLink>
               </Title>
               <Text>{a.description}</Text>
-              <Flex gap='xs' wrap='wrap'>
+              <Flex gap='xs' wrap>
                 {a.tagList.map((tag) => (
                   <Badge key={tag}>{tag}</Badge>
                 ))}
