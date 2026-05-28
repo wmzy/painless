@@ -21,7 +21,7 @@ export function fetchJSON(
     });
 }
 
-export function get(url: string, params?: {[k in string]: string | number}) {
+export function get(url: string, params?: Record<string, string | number | undefined>) {
   if (params) url += `?${encode(params)}`;
   return fetchJSON(url, {method: 'get'});
 }
