@@ -1,10 +1,16 @@
 import {useState} from 'react';
 import {useData} from '@native-router/react';
-import {Form, useForm, Field, reset} from 'react-f0rm';
+import {Form, useForm, Field, reset, useError} from 'react-f0rm';
 import {Card, Title, Text, Avatar, Divider, Textarea, Alert} from 'haze-ui';
+import {css} from '@linaria/core';
 import type {Article} from '@/types';
 import * as http from '@/util/http';
 import CommentList from './CommentList';
+
+function FieldError({name}: {name: string}) {
+  const error = useError(name);
+  return error ? <Text className={css`color: red; font-size: 0.875em;`}>{error}</Text> : null;
+}
 
 export default function ArticleView() {
   const article = useData() as Article;
@@ -36,13 +42,14 @@ export default function ArticleView() {
       <Divider />
       <Title level={3}>Comments</Title>
       {error && <Alert variant='danger'>{error}</Alert>}
-      <Form form={commentForm} onValidSubmit={handleCommentSubmit}>
+      <Form form={commentForm} onValidSubmit={handleCommentSubmit} aria-label='Comment form'>
         <Field
           name='body'
           as={Textarea}
           placeholder='Write a comment...'
           validate={(v: any) => (!v ? 'Comment is required' : undefined)}
         />
+        <FieldError name='body' />
         <button type='submit'>Post Comment</button>
       </Form>
       <CommentList title={article.slug} />

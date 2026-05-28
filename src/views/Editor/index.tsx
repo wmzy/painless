@@ -1,10 +1,16 @@
 import {useState} from 'react';
-import {Form, useForm, Field} from 'react-f0rm';
-import {Card, Title, Input, Textarea, TagInput, Alert} from 'haze-ui';
+import {Form, useForm, Field, useError} from 'react-f0rm';
+import {Card, Title, Input, Textarea, TagInput, Text, Alert} from 'haze-ui';
+import {css} from '@linaria/core';
 import {useRouter, useData} from '@native-router/react';
 import {navigate} from '@native-router/core';
 import * as http from '@/util/http';
 import type {Article} from '@/types';
+
+function FieldError({name}: {name: string}) {
+  const error = useError(name);
+  return error ? <Text className={css`color: red; font-size: 0.875em;`}>{error}</Text> : null;
+}
 
 export default function Editor() {
   const form = useForm();
@@ -38,7 +44,7 @@ export default function Editor() {
     <Card>
       <Title>{article ? 'Edit Article' : 'New Article'}</Title>
       {error && <Alert variant='danger'>{error}</Alert>}
-      <Form form={form} onValidSubmit={handleSubmit}>
+      <Form form={form} onValidSubmit={handleSubmit} aria-label='Article editor form'>
         <Field
           name='title'
           as={Input}
@@ -46,6 +52,7 @@ export default function Editor() {
           initialValue={article?.title}
           validate={(v: any) => (!v ? 'Title is required' : undefined)}
         />
+        <FieldError name='title' />
         <Field
           name='description'
           as={Input}
@@ -53,6 +60,7 @@ export default function Editor() {
           initialValue={article?.description}
           validate={(v: any) => (!v ? 'Description is required' : undefined)}
         />
+        <FieldError name='description' />
         <Field
           name='body'
           as={Textarea}
@@ -60,6 +68,7 @@ export default function Editor() {
           initialValue={article?.body}
           validate={(v: any) => (!v ? 'Body is required' : undefined)}
         />
+        <FieldError name='body' />
         <Field
           name='tagList'
           as={TagInput}

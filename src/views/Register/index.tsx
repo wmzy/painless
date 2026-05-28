@@ -1,9 +1,15 @@
 import {useState} from 'react';
-import {Form, useForm, Field} from 'react-f0rm';
+import {Form, useForm, Field, useError} from 'react-f0rm';
 import {Card, Title, Input, Text, Alert} from 'haze-ui';
-import {useRouter} from '@native-router/react';
+import {useRouter, Link} from '@native-router/react';
+import {css} from '@linaria/core';
 import {navigate} from '@native-router/core';
 import * as auth from '@/services/auth';
+
+function FieldError({name}: {name: string}) {
+  const error = useError(name);
+  return error ? <Text className={css`color: red; font-size: 0.875em;`}>{error}</Text> : null;
+}
 
 export default function Register() {
   const form = useForm();
@@ -23,13 +29,14 @@ export default function Register() {
     <Card>
       <Title>Register</Title>
       {error && <Alert variant='danger'>{error}</Alert>}
-      <Form form={form} onValidSubmit={handleSubmit}>
+      <Form form={form} onValidSubmit={handleSubmit} aria-label='Register form'>
         <Field
           name='username'
           as={Input}
           placeholder='Username'
           validate={(v: any) => (!v ? 'Username is required' : undefined)}
         />
+        <FieldError name='username' />
         <Field
           name='email'
           as={Input}
@@ -41,6 +48,7 @@ export default function Register() {
             return undefined;
           }}
         />
+        <FieldError name='email' />
         <Field
           name='password'
           as={Input}
@@ -52,10 +60,11 @@ export default function Register() {
             return undefined;
           }}
         />
+        <FieldError name='password' />
         <button type='submit'>Register</button>
       </Form>
       <Text>
-        Already have an account? <a href='/login'>Login</a>
+        Already have an account? <Link to='/login'>Login</Link>
       </Text>
     </Card>
   );
