@@ -30,6 +30,7 @@
     "react": "^19.0.0"
   },
   "devDependencies": {
+    "@faker-js/faker": "^10.4.0",
     "@babel/core": "^7.29.7",
     "@babel/preset-env": "^7.29.7",
     "@babel/preset-typescript": "^7.29.7",
@@ -67,20 +68,19 @@
     "prettier": "^3.8.3",
     "rollup-plugin-type-as-json-schema": "^0.2.6",
     "terser": "^5.48.0",
+    "date-fns": "^4.3.0",
+    "json-schema-faker": "^0.6.2",
     "tsc-alias": "^1.8.17",
     "typescript": "^6.0.3",
     "vite": "^8.0.14",
     "vitest": "^4.1.7"
   },
   "dependencies": {
-    "@faker-js/faker": "^10.4.0",
     "@for-fun/event-emitter": "^1.0.0",
     "@linaria/core": "^7.0.0",
     "@native-router/core": "^1.1.0",
     "@native-router/react": "^1.1.2",
-    "date-fns": "^4.3.0",
     "haze-ui": "^1.6.0",
-    "json-schema-faker": "^0.6.2",
     "qss": "^3.0.0",
     "ramda": "^0.32.0",
     "react": "^19.2.6",

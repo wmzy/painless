@@ -85,6 +85,10 @@ export default function Loading(): ReactPortal | null {
     >
       {percent ? (
         <div
+          role="progressbar"
+          aria-valuenow={percent}
+          aria-valuemin={0}
+          aria-valuemax={100}
           style={{width: `${percent}%`} as CSSProperties}
           className={css`
             transition: width 0.5s;

@@ -24,5 +24,5 @@ export function fakerWhenNothing<F extends (...args: any) => Promise<any>>(
     fn,
     R.andThen(R.when(R.isEmpty, () => schemaFaker(schema))),
     R.otherwise(() => schemaFaker(schema))
-  );
+  ) as F;
 }

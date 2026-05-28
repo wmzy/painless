@@ -22,8 +22,8 @@ export default function Preview({visible}: Props) {
     pointer-events: none;
   `;
   if (!visible) return null;
-  if (loading) return <Popover className={style}>loading</Popover>;
-  if (error) return <Popover className={style}>error</Popover>;
-  if (view) return <Popover className={style}>{view}</Popover>;
+  if (loading) return <Popover className={style} aria-hidden="true">loading</Popover>;
+  if (error) return <Popover className={style} aria-hidden="true">error</Popover>;
+  if (view) return <Popover className={style} aria-hidden="true">{view}</Popover>;
   return null;
 }

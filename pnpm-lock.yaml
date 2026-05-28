@@ -8,9 +8,6 @@ importers:
 
   .:
     dependencies:
-      '@faker-js/faker':
-        specifier: ^10.4.0
-        version: 10.4.0
       '@for-fun/event-emitter':
         specifier: ^1.0.0
         version: 1.0.0
@@ -23,15 +20,9 @@ importers:
       '@native-router/react':
         specifier: ^1.1.2
         version: 1.1.2(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
-      date-fns:
-        specifier: ^4.3.0
-        version: 4.3.0
       haze-ui:
         specifier: ^1.6.0
         version: 1.6.0(@linaria/core@7.0.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
-      json-schema-faker:
-        specifier: ^0.6.2
-        version: 0.6.2
       qss:
         specifier: ^3.0.0
         version: 3.0.0
@@ -66,6 +57,9 @@ importers:
       '@eslint/js':
         specifier: ^10.0.1
         version: 10.0.1(eslint@10.4.0(jiti@2.6.1))
+      '@faker-js/faker':
+        specifier: ^10.4.0
+        version: 10.4.0
       '@testing-library/jest-dom':
         specifier: ^6.9.1
         version: 6.9.1
@@ -120,6 +114,9 @@ importers:
       cross-env:
         specifier: ^10.1.0
         version: 10.1.0
+      date-fns:
+        specifier: ^4.3.0
+        version: 4.3.0
       eslint:
         specifier: ^10.4.0
         version: 10.4.0(jiti@2.6.1)
@@ -150,6 +147,9 @@ importers:
       jsdom:
         specifier: ^29.1.1
         version: 29.1.1
+      json-schema-faker:
+        specifier: ^0.6.2
+        version: 0.6.2
       lint-staged:
         specifier: ^17.0.5
         version: 17.0.5

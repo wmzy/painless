@@ -4,10 +4,12 @@ import {createPortal} from 'react-dom';
 
 export default function Popover({
   children,
-  className
+  className,
+  'aria-hidden': ariaHidden
 }: {
   children: ReactNode;
   className?: string;
+  'aria-hidden'?: 'true' | 'false';
 }) {
   const el = useMemo(() => document.createElement('div'), []);
 
@@ -20,6 +22,9 @@ export default function Popover({
 
   return createPortal(
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-hidden={ariaHidden}
       x-class={[
         css`
           position: fixed;
