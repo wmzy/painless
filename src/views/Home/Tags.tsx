@@ -8,6 +8,7 @@ import {
   useResult,
   useRun
 } from 'react-toolroom/async';
+import {TagGroup, TagGroupItem, Spinner, Alert, Title} from 'haze-ui';
 import {useMock} from '@/components/DevTool';
 import * as articleService from '@/services/article';
 import {tagListSchema} from '@/types/index.schema';
@@ -28,10 +29,20 @@ export default function Tags() {
   useRun(fetchTags, []);
 
   if (loading) {
-    return <aside>loading...</aside>;
+    return (
+      <aside>
+        <Spinner />
+      </aside>
+    );
   }
 
-  if (error) return <aside>error</aside>;
+  if (error) {
+    return (
+      <aside>
+        <Alert variant='danger'>Failed to load tags</Alert>
+      </aside>
+    );
+  }
 
   return (
     <aside
@@ -42,26 +53,12 @@ export default function Tags() {
         `
       }
     >
-      <h1>Popular Tags</h1>
-      <ul
-        x-class={css`
-          display: flex;
-          width: 200px;
-          flex-wrap: wrap;
-          gap: 8px;
-
-          > li {
-            list-style: none;
-            border: 1px solid #e5e5e5;
-            border-radius: 4px;
-            padding: 0 8px;
-          }
-        `}
-      >
+      <Title level={3}>Popular Tags</Title>
+      <TagGroup>
         {tags.map((t) => (
-          <li key={t}>{t}</li>
+          <TagGroupItem key={t}>{t}</TagGroupItem>
         ))}
-      </ul>
+      </TagGroup>
     </aside>
   );
 }
