@@ -1,15 +1,10 @@
-import {css} from '@linaria/core';
+import {Card, Title, Text} from 'haze-ui';
 
 export default function Help() {
   return (
-    <div
-      className={css`
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-      `}
-    >
-      <h1>Help</h1>
-    </div>
+    <Card>
+      <Title>Help</Title>
+      <Text>Welcome to Painless — a lightweight React framework for modern client-side apps.</Text>
+    </Card>
   );
 }

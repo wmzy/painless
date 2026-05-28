@@ -1,21 +1,10 @@
-import {css} from '@linaria/core';
+import {Card, Title, Text} from 'haze-ui';
 
-/**
- * About 页面
- */
 export default function About() {
   return (
-    <div
-      className={css`
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-      `}
-    >
-      <h1>About Native Router</h1>
-      <p>
-        Native Router is another router lib which work like the native browser.
-      </p>
-    </div>
+    <Card>
+      <Title>About Native Router</Title>
+      <Text>Native Router is another router lib which works like the native browser.</Text>
+    </Card>
   );
 }
