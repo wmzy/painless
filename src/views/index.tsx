@@ -36,6 +36,22 @@ export default function App() {
         {
           path: '/about',
           component: () => import('./About')
+        },
+        {
+          path: '/login',
+          component: () => import('./Login')
+        },
+        {
+          path: '/register',
+          component: () => import('./Register')
+        },
+        {
+          path: '/editor',
+          component: () => import('./Editor')
+        },
+        {
+          path: '/editor/:slug',
+          component: () => import('./Editor')
         }
       ]
     } as Route;
