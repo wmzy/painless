@@ -1,7 +1,8 @@
 import {useState} from 'react';
 import {useData} from '@native-router/react';
-import {Form, useForm, Field, reset, useFormContext, useError} from 'react-f0rm';
-import {Card, Title, Text, Avatar, Divider, Textarea, Alert} from 'haze-ui';
+import {Form, useForm, reset, useFormContext, useError} from 'react-f0rm';
+import {Card, Title, Text, Avatar, Divider, Alert} from 'haze-ui';
+import ControlledField from '@/components/ControlledField';
 import {css} from '@linaria/core';
 import type {Article} from '@/types';
 import * as http from '@/util/http';
@@ -44,9 +45,9 @@ export default function ArticleView() {
       <Title level={3}>Comments</Title>
       {error && <Alert variant='danger'>{error}</Alert>}
       <Form form={commentForm} onValidSubmit={handleCommentSubmit} aria-label='Comment form'>
-        <Field
+        <ControlledField
           name='body'
-          as={Textarea}
+          as='textarea'
           placeholder='Write a comment...'
           validate={(v: unknown) => (!v ? 'Comment is required' : undefined)}
         />

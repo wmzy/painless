@@ -3,7 +3,7 @@ import {css} from '@linaria/core';
 import {ReactNode, useEffect, useState} from 'react';
 import {refresh} from '@native-router/core';
 import {useInject, createMemoryCacheProvider} from 'react-toolroom/async';
-import {Button, Card} from 'haze-ui';
+import {Button, Card, useControl} from 'haze-ui';
 import {fakerWhenNothing, schemaFaker} from '@/util/faker';
 import Popover from './Popover';
 
@@ -35,7 +35,7 @@ type Props = {
 };
 
 function DevToolInner() {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useControl<boolean>(undefined, false);
   const [config, setConfig] = useState(getMockConfigs);
 
   useEffect(
@@ -92,7 +92,7 @@ function MockView({
   value: Record<string, unknown>;
   onChange?: (when: string) => void;
 }) {
-  const [show, setShow] = useState(false);
+  const [show, setShow] = useControl<boolean>(undefined, false);
 
   return (
     <div>

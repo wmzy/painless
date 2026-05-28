@@ -1,6 +1,7 @@
 import {useState} from 'react';
-import {Form, useForm, Field, useFormContext, useError} from 'react-f0rm';
-import {Card, Title, Input, Text, Alert} from 'haze-ui';
+import {Form, useForm, useFormContext, useError} from 'react-f0rm';
+import {Card, Title, Text, Alert} from 'haze-ui';
+import ControlledField from '@/components/ControlledField';
 import {useRouter, Link} from '@native-router/react';
 import {css} from '@linaria/core';
 import {navigate} from '@native-router/core';
@@ -31,16 +32,14 @@ export default function Register() {
       <Title>Register</Title>
       {error && <Alert variant='danger'>{error}</Alert>}
       <Form form={form} onValidSubmit={handleSubmit} aria-label='Register form'>
-        <Field
+        <ControlledField
           name='username'
-          as={Input}
           placeholder='Username'
           validate={(v: unknown) => (!v ? 'Username is required' : undefined)}
         />
         <FieldError name='username' />
-        <Field
+        <ControlledField
           name='email'
-          as={Input}
           type='email'
           placeholder='Email'
           validate={(v: unknown) => {
@@ -50,9 +49,8 @@ export default function Register() {
           }}
         />
         <FieldError name='email' />
-        <Field
+        <ControlledField
           name='password'
-          as={Input}
           type='password'
           placeholder='Password'
           validate={(v: unknown) => {

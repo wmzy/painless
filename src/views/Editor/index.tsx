@@ -1,6 +1,7 @@
 import {useState} from 'react';
 import {Form, useForm, Field, useFormContext, useError} from 'react-f0rm';
-import {Card, Title, Input, Textarea, TagInput, Text, Alert} from 'haze-ui';
+import {Card, Title, TagInput, Text, Alert} from 'haze-ui';
+import ControlledField from '@/components/ControlledField';
 import {css} from '@linaria/core';
 import {useRouter, useData} from '@native-router/react';
 import {navigate} from '@native-router/core';
@@ -45,28 +46,33 @@ export default function Editor() {
     <Card>
       <Title>{article ? 'Edit Article' : 'New Article'}</Title>
       {error && <Alert variant='danger'>{error}</Alert>}
-      <Form form={form} onValidSubmit={handleSubmit} aria-label='Article editor form'>
-        <Field
+      <Form
+        form={form}
+        onValidSubmit={handleSubmit}
+        initialValues={{
+          title: article?.title ?? '',
+          description: article?.description ?? '',
+          body: article?.body ?? '',
+          tagList: article?.tagList || []
+        }}
+        aria-label='Article editor form'
+      >
+        <ControlledField
           name='title'
-          as={Input}
           placeholder='Article Title'
-          initialValue={article?.title}
           validate={(v: unknown) => (!v ? 'Title is required' : undefined)}
         />
         <FieldError name='title' />
-        <Field
+        <ControlledField
           name='description'
-          as={Input}
           placeholder="What's this article about?"
-          initialValue={article?.description}
           validate={(v: unknown) => (!v ? 'Description is required' : undefined)}
         />
         <FieldError name='description' />
-        <Field
+        <ControlledField
           name='body'
-          as={Textarea}
+          as='textarea'
           placeholder='Write your article...'
-          initialValue={article?.body}
           validate={(v: unknown) => (!v ? 'Body is required' : undefined)}
         />
         <FieldError name='body' />
@@ -74,7 +80,6 @@ export default function Editor() {
           name='tagList'
           as={TagInput}
           placeholder='Add tags'
-          initialValue={article?.tagList || []}
         />
         <button type='submit'>
           {article ? 'Update Article' : 'Publish Article'}
