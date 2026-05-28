@@ -4,7 +4,7 @@ import {css} from '@linaria/core';
 import {ReactNode, useEffect, useState} from 'react';
 import {refresh} from '@native-router/core';
 import {useInject, createMemoryCacheProvider} from 'react-toolroom/async';
-import {Button, Card, Radio, RadioGroup, Title} from 'haze-ui';
+import {Button, Card} from 'haze-ui';
 import {fakerWhenNothing, schemaFaker} from '@/util/faker';
 import Popover from './Popover';
 
@@ -97,20 +97,19 @@ function MockView({
 
   return (
     <div>
-      <RadioGroup
-        name={name}
-        value={value.when}
-      >
+      <div onChange={(e) => onChange?.((e.target as HTMLInputElement).value)}>
         {['always', 'empty', 'disabled'].map((when) => (
-          <Radio
-            key={when}
-            value={when}
-            onChange={() => onChange?.(when)}
-          >
+          <label key={when}>
+            <input
+              name={name}
+              type='radio'
+              value={when}
+              defaultChecked={value.when === when}
+            />
             {when}
-          </Radio>
+          </label>
         ))}
-      </RadioGroup>
+      </div>
       <Button onClick={value.refresh}>Refresh</Button>
       <Button onClick={() => setShow(!show)}>
         {show ? 'Hide' : 'Show'} Schema
