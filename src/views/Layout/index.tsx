@@ -6,14 +6,14 @@ export default function Layout() {
   return (
     <div>
       <NavigationBar>
-        <NavLink to='/'>
+        <NavLink href='/'>
           <Title level={3}>Painless</Title>
         </NavLink>
-        <NavLink to='/'>Home</NavLink>
-        <NavLink to='/help'>Help</NavLink>
-        <NavLink to='/about'>About</NavLink>
-        <NavLink to='/login'>Login</NavLink>
-        <NavLink to='/register'>Register</NavLink>
+        <NavLink href='/'>Home</NavLink>
+        <NavLink href='/help'>Help</NavLink>
+        <NavLink href='/about'>About</NavLink>
+        <NavLink href='/login'>Login</NavLink>
+        <NavLink href='/register'>Register</NavLink>
       </NavigationBar>
       <Container>
         <View />
