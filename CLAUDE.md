@@ -38,7 +38,7 @@ Babel plugins `transform-jsx-condition` and `transform-jsx-class` enable extende
 - `x-if`, `x-elseif`, `x-else` — conditional rendering as JSX attributes
 - `x-class` — conditional className merging
 
-These are allowed by ESLint as unknown JSX properties.
+These are allowed by ESLint (no `react/no-unknown-property` rule).
 
 ## Path Aliases
 
@@ -58,4 +58,4 @@ These are allowed by ESLint as unknown JSX properties.
 
 - Prettier: single quotes, no trailing commas, no bracket spacing
 - 2-space indentation, LF line endings
-- ESLint flat config with TypeScript type-checking, React, jsx-a11y, import, compat, and Prettier plugins
+- ESLint flat config with TypeScript type-checking, react-hooks, jsx-a11y, import, compat, and Prettier plugins
