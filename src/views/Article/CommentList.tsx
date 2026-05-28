@@ -7,6 +7,7 @@ import {
   useResult,
   useRun
 } from 'react-toolroom/async';
+import {List, ListItem, Avatar, Text, Spinner, Alert} from 'haze-ui';
 import * as articleService from '@/services/article';
 
 type Props = {title: string};
@@ -27,14 +28,17 @@ export default function CommentList({title}: Props) {
 
   useRun(fetchCommentsByTitle, [title]);
 
-  if (loading) return <div>Loading...</div>;
-  if (error) return <div>Error</div>;
+  if (loading) return <Spinner />;
+  if (error) return <Alert variant='danger'>Failed to load comments</Alert>;
 
   return (
-    <ul>
+    <List>
       {comments.map((c) => (
-        <li key={c.id}>{c.body}</li>
+        <ListItem key={c.id}>
+          <Avatar src={c.author.image} alt={c.author.username} />
+          <Text>{c.body}</Text>
+        </ListItem>
       ))}
-    </ul>
+    </List>
   );
 }
