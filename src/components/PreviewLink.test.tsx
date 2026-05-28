@@ -1,6 +1,5 @@
 import {describe, it, expect, vi} from 'vitest';
 import {render, screen, fireEvent} from '@testing-library/react';
-import PreviewLink from './PreviewLink';
 
 vi.mock('@native-router/react', () => ({
   PrefetchLink: ({children, ...props}: any) => (
@@ -10,6 +9,16 @@ vi.mock('@native-router/react', () => ({
 }));
 
 vi.mock('@native-router/core', () => ({}));
+
+vi.mock('haze-ui', () => ({
+  useControl: (initial: any) => {
+    const React = require('react');
+    return React.useState(initial);
+  }
+}));
+
+// Import after mocks
+const PreviewLink = (await import('./PreviewLink')).default;
 
 describe('PreviewLink', () => {
   it('renders children text', () => {
