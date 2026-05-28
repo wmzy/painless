@@ -12,6 +12,9 @@ export default function PreviewLink({
       <span
         onMouseEnter={() => setVisible(true)}
         onMouseLeave={() => setVisible(false)}
+        onFocus={() => setVisible(true)}
+        onBlur={() => setVisible(false)}
+        tabIndex={0}
       >
         {children}
       </span>
