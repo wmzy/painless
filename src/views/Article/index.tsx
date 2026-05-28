@@ -1,6 +1,6 @@
 import {useState} from 'react';
 import {useData} from '@native-router/react';
-import {Form, useForm, Field, reset, useError} from 'react-f0rm';
+import {Form, useForm, Field, reset, useFormContext, useError} from 'react-f0rm';
 import {Card, Title, Text, Avatar, Divider, Textarea, Alert} from 'haze-ui';
 import {css} from '@linaria/core';
 import type {Article} from '@/types';
@@ -8,7 +8,8 @@ import * as http from '@/util/http';
 import CommentList from './CommentList';
 
 function FieldError({name}: {name: string}) {
-  const error = useError(name);
+  const form = useFormContext();
+  const error = useError(form, name);
   return error ? <Text className={css`color: red; font-size: 0.875em;`}>{error}</Text> : null;
 }
 

@@ -1,5 +1,5 @@
 import {useState} from 'react';
-import {Form, useForm, Field, useError} from 'react-f0rm';
+import {Form, useForm, Field, useFormContext, useError} from 'react-f0rm';
 import {Card, Title, Input, Text, Alert} from 'haze-ui';
 import {useRouter, Link} from '@native-router/react';
 import {css} from '@linaria/core';
@@ -7,7 +7,8 @@ import {navigate} from '@native-router/core';
 import * as auth from '@/services/auth';
 
 function FieldError({name}: {name: string}) {
-  const error = useError(name);
+  const form = useFormContext();
+  const error = useError(form, name);
   return error ? <Text className={css`color: red; font-size: 0.875em;`}>{error}</Text> : null;
 }
 

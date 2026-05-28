@@ -30,12 +30,12 @@
     "react": "^19.0.0"
   },
   "devDependencies": {
-    "@faker-js/faker": "^10.4.0",
     "@babel/core": "^7.29.7",
     "@babel/preset-env": "^7.29.7",
     "@babel/preset-typescript": "^7.29.7",
     "@babel/register": "^7.29.7",
     "@eslint/js": "^10.0.1",
+    "@faker-js/faker": "^10.4.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^25.9.1",
@@ -54,6 +54,7 @@
     "commitizen": "^4.3.1",
     "core-js": "^3.49.0",
     "cross-env": "^10.1.0",
+    "date-fns": "^4.3.0",
     "eslint": "^10.4.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-compat": "^7.0.2",
@@ -64,12 +65,11 @@
     "gh-pages": "^6.3.0",
     "husky": "^9.1.7",
     "jsdom": "^29.1.1",
+    "json-schema-faker": "^0.6.2",
     "lint-staged": "^17.0.5",
     "prettier": "^3.8.3",
     "rollup-plugin-type-as-json-schema": "^0.2.6",
     "terser": "^5.48.0",
-    "date-fns": "^4.3.0",
-    "json-schema-faker": "^0.6.2",
     "tsc-alias": "^1.8.17",
     "typescript": "^6.0.3",
     "vite": "^8.0.14",
@@ -85,7 +85,7 @@
     "ramda": "^0.32.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
-    "react-f0rm": "^0.2.1",
+    "react-f0rm": "^0.2.2",
     "react-toolroom": "^0.5.2"
   }
 }

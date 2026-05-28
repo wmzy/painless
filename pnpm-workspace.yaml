@@ -2,5 +2,4 @@ allowBuilds:
   core-js: true
   esbuild: true
 minimumReleaseAgeExclude:
-  - haze-ui@1.6.0
-  - react-f0rm@0.2.1
+  - react-f0rm@0.2.2
