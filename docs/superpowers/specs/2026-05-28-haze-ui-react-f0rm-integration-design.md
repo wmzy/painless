@@ -18,7 +18,7 @@ Layer-first: establish foundation (theme, layout, navigation), then rewrite page
 
 ### Entry Point (`src/index.tsx`)
 - Import `haze-ui/styles.css` for component styles
-- Apply `lightTheme` token class to the root wrapper
+- Apply `lightTheme` CSS class (from haze-ui token system) to the root wrapper element
 - Keep DevTool wrapping in dev mode
 
 ### Router Config (`src/views/index.tsx`)
@@ -83,6 +83,7 @@ All forms follow this pattern:
 - `Card` as visual container
 - `Button` from haze-ui for submit
 - `onValidSubmit` handler calls API via `@/util/http`
+- Validation: use react-f0rm's built-in `validate` prop on `Field` (sync validators returning string | undefined). No external validation library needed for these simple forms.
 
 ### Login (`src/views/Login/index.tsx`) — route: `/login`
 - `Field` + `as={Input}` for email (validation: required, email format)
@@ -141,7 +142,8 @@ All forms follow this pattern:
 - `src/util/styles.tsx` — replace `center` class with haze-ui `Flex` component
 - `src/util/faker.ts` — keep as-is, used by DevTool
 - `src/types/` — keep as-is, domain types unchanged
-- `src/services/article.ts` — keep as-is, add auth/article service functions as needed
+- `src/services/article.ts` — keep as-is
+- `src/services/auth.ts` — new file with `login(email, password)` and `register(username, email, password)` functions, using `post()` from `@/util/http`. RealWorld API endpoints: `POST /users/login`, `POST /users`
 
 ## Dependencies to Add
 
