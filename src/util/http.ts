@@ -1,10 +1,12 @@
 import {encode} from 'qss';
 
+const BASE_URL = import.meta.env.VITE_API_URL || 'https://api.realworld.io/api/';
+
 export function fetchJSON(
   url: string,
   init?: RequestInit & {headers?: {[k in Lowercase<string>]: string}}
 ) {
-  return fetch(`https://api.realworld.io/api/${url}`, {
+  return fetch(BASE_URL + url, {
     ...init,
     headers: {
       'content-type': 'application/json',
