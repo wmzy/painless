@@ -73,5 +73,6 @@
     /* Advanced Options */
     "skipLibCheck": true,                     /* Skip type checking of declaration files. */
     "forceConsistentCasingInFileNames": true  /* Disallow inconsistently-cased references to the same file. */
-  }
+  },
+  "exclude": ["eslint.config.js", "babel.config.js", "vitest.config.ts"]
 }
