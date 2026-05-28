@@ -21,7 +21,7 @@ export function fetchJSON(
     });
 }
 
-export function get(url: string, params?: {[k in string]: any}) {
+export function get(url: string, params?: {[k in string]: string | number}) {
   if (params) url += `?${encode(params)}`;
   return fetchJSON(url, {method: 'get'});
 }
@@ -30,10 +30,10 @@ export function del(url: string) {
   return fetchJSON(url, {method: 'delete'});
 }
 
-export function post(url: string, data: any) {
+export function post(url: string, data: unknown) {
   return fetchJSON(url, {method: 'post', body: JSON.stringify(data)});
 }
 
-export function put(url: string, data: any) {
+export function put(url: string, data: unknown) {
   return fetchJSON(url, {method: 'put', body: JSON.stringify(data)});
 }

@@ -16,7 +16,7 @@ export default function Register() {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = async (values: any) => {
+  const handleSubmit = async (values: {username: string; email: string; password: string}) => {
     try {
       await auth.register(values.username, values.email, values.password);
       navigate(router, '/');
@@ -34,7 +34,7 @@ export default function Register() {
           name='username'
           as={Input}
           placeholder='Username'
-          validate={(v: any) => (!v ? 'Username is required' : undefined)}
+          validate={(v: unknown) => (!v ? 'Username is required' : undefined)}
         />
         <FieldError name='username' />
         <Field
@@ -42,9 +42,9 @@ export default function Register() {
           as={Input}
           type='email'
           placeholder='Email'
-          validate={(v: any) => {
+          validate={(v: unknown) => {
             if (!v) return 'Email is required';
-            if (!/\S+@\S+\.\S+/.test(v)) return 'Invalid email';
+            if (!/\S+@\S+\.\S+/.test(v as string)) return 'Invalid email';
             return undefined;
           }}
         />
@@ -54,9 +54,9 @@ export default function Register() {
           as={Input}
           type='password'
           placeholder='Password'
-          validate={(v: any) => {
+          validate={(v: unknown) => {
             if (!v) return 'Password is required';
-            if (v.length < 8) return 'Password must be at least 8 characters';
+            if ((v as string).length < 8) return 'Password must be at least 8 characters';
             return undefined;
           }}
         />

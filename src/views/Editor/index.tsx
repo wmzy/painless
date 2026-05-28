@@ -18,7 +18,7 @@ export default function Editor() {
   const article = useData() as Article | undefined;
   const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = async (values: any) => {
+  const handleSubmit = async (values: {title: string; description: string; body: string; tagList: string[]}) => {
     try {
       const payload = {
         article: {
@@ -50,7 +50,7 @@ export default function Editor() {
           as={Input}
           placeholder='Article Title'
           initialValue={article?.title}
-          validate={(v: any) => (!v ? 'Title is required' : undefined)}
+          validate={(v: unknown) => (!v ? 'Title is required' : undefined)}
         />
         <FieldError name='title' />
         <Field
@@ -58,7 +58,7 @@ export default function Editor() {
           as={Input}
           placeholder="What's this article about?"
           initialValue={article?.description}
-          validate={(v: any) => (!v ? 'Description is required' : undefined)}
+          validate={(v: unknown) => (!v ? 'Description is required' : undefined)}
         />
         <FieldError name='description' />
         <Field
@@ -66,7 +66,7 @@ export default function Editor() {
           as={Textarea}
           placeholder='Write your article...'
           initialValue={article?.body}
-          validate={(v: any) => (!v ? 'Body is required' : undefined)}
+          validate={(v: unknown) => (!v ? 'Body is required' : undefined)}
         />
         <FieldError name='body' />
         <Field

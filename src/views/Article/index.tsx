@@ -17,7 +17,7 @@ export default function ArticleView() {
   const commentForm = useForm();
   const [error, setError] = useState<string | null>(null);
 
-  const handleCommentSubmit = async (values: any) => {
+  const handleCommentSubmit = async (values: {body: string}) => {
     try {
       await http.post(`articles/${article.slug}/comments`, {
         comment: {body: values.body}
@@ -47,7 +47,7 @@ export default function ArticleView() {
           name='body'
           as={Textarea}
           placeholder='Write a comment...'
-          validate={(v: any) => (!v ? 'Comment is required' : undefined)}
+          validate={(v: unknown) => (!v ? 'Comment is required' : undefined)}
         />
         <FieldError name='body' />
         <button type='submit'>Post Comment</button>

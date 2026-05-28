@@ -16,7 +16,7 @@ export default function Login() {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = async (values: any) => {
+  const handleSubmit = async (values: {email: string; password: string}) => {
     try {
       await auth.login(values.email, values.password);
       navigate(router, '/');
@@ -35,9 +35,9 @@ export default function Login() {
           as={Input}
           type='email'
           placeholder='Email'
-          validate={(v: any) => {
+          validate={(v: unknown) => {
             if (!v) return 'Email is required';
-            if (!/\S+@\S+\.\S+/.test(v)) return 'Invalid email';
+            if (!/\S+@\S+\.\S+/.test(v as string)) return 'Invalid email';
             return undefined;
           }}
         />
@@ -47,7 +47,7 @@ export default function Login() {
           as={Input}
           type='password'
           placeholder='Password'
-          validate={(v: any) => (!v ? 'Password is required' : undefined)}
+          validate={(v: unknown) => (!v ? 'Password is required' : undefined)}
         />
         <FieldError name='password' />
         <button type='submit'>Login</button>

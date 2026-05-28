@@ -89,7 +89,7 @@ function MockView({
   onChange
 }: {
   name: string;
-  value: any;
+  value: Record<string, unknown>;
   onChange?: (when: string) => void;
 }) {
   const [show, setShow] = useState(false);
@@ -109,7 +109,7 @@ function MockView({
           </label>
         ))}
       </div>
-      <Button onClick={value.refresh}>Refresh</Button>
+      <Button onClick={value.refresh as () => void}>Refresh</Button>
       <Button onClick={() => setShow(!show)}>
         {show ? 'Hide' : 'Show'} Schema
       </Button>

@@ -1,19 +1,24 @@
 import * as R from 'ramda';
-import {format} from 'date-fns';
-import {
-  type JsonSchema,
-  generate,
-  define,
-  registerFormat
-} from 'json-schema-faker';
-import {faker} from '@faker-js/faker';
 
-define('faker', () => faker);
-registerFormat('date-string', () => format(faker.date.recent(), 'yyyy-MM-dd'));
+let initialized = false;
 
-export function schemaFaker<T = unknown>(schema: unknown): Promise<T> {
+async function initFaker() {
+  if (initialized) return;
+  const [{format}, {define, registerFormat}, {faker}] = await Promise.all([
+    import('date-fns'),
+    import('json-schema-faker'),
+    import('@faker-js/faker')
+  ]);
+  define('faker', () => faker);
+  registerFormat('date-string', () => format(faker.date.recent(), 'yyyy-MM-dd'));
+  initialized = true;
+}
+
+export async function schemaFaker<T = unknown>(schema: unknown): Promise<T> {
+  await initFaker();
+  const {generate} = await import('json-schema-faker');
   console.log('faker:', schema);
-  return generate(schema as JsonSchema) as Promise<T>;
+  return generate(schema as any) as Promise<T>;
 }
 
 export function fakerWhenNothing<F extends (...args: any) => Promise<any>>(
