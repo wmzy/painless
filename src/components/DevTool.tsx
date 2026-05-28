@@ -1,8 +1,10 @@
+/* eslint-disable no-underscore-dangle */
 import * as ee from '@for-fun/event-emitter';
 import {css} from '@linaria/core';
 import {ReactNode, useEffect, useState} from 'react';
 import {refresh} from '@native-router/core';
 import {useInject, createMemoryCacheProvider} from 'react-toolroom/async';
+import {Button, Card, Radio, RadioGroup, Title} from 'haze-ui';
 import {fakerWhenNothing, schemaFaker} from '@/util/faker';
 import Popover from './Popover';
 
@@ -53,23 +55,19 @@ function DevToolInner() {
           height: 300px;
           top: 0;
           overflow: auto;
-          background: white;
         `}
       >
-        <div>
-          <button type='button' onClick={() => setOpen(false)}>
-            Close
-          </button>
-        </div>
-        {Object.entries(config).map(([key, val]) => (
-          // eslint-disable-next-line @typescript-eslint/no-use-before-define
-          <MockView
-            key={key}
-            name={key}
-            value={val}
-            onChange={(e) => setMockConfig(key, {...val, when: e.target.value})}
-          />
-        ))}
+        <Card>
+          <Button onClick={() => setOpen(false)}>Close</Button>
+          {Object.entries(config).map(([key, val]) => (
+            <MockView
+              key={key}
+              name={key}
+              value={val}
+              onChange={(when) => setMockConfig(key, {...val, when})}
+            />
+          ))}
+        </Card>
       </Popover>
     );
   }
@@ -81,9 +79,7 @@ function DevToolInner() {
         top: 0;
       `}
     >
-      <button type='button' onClick={() => setOpen(true)}>
-        DEV
-      </button>
+      <Button onClick={() => setOpen(true)}>DEV</Button>
     </Popover>
   );
 }
@@ -95,32 +91,30 @@ function MockView({
 }: {
   name: string;
   value: any;
-  onChange?: (value: any) => void;
+  onChange?: (when: string) => void;
 }) {
   const [show, setShow] = useState(false);
 
   return (
     <div>
-      <div onChange={onChange}>
+      <RadioGroup
+        name={name}
+        value={value.when}
+      >
         {['always', 'empty', 'disabled'].map((when) => (
-          // eslint-disable-next-line jsx-a11y/label-has-associated-control
-          <label key={when}>
-            <input
-              name={name}
-              type='radio'
-              value={when}
-              defaultChecked={value.when === when}
-            />
+          <Radio
+            key={when}
+            value={when}
+            onChange={() => onChange?.(when)}
+          >
             {when}
-          </label>
+          </Radio>
         ))}
-        <button type='button' onClick={value.refresh}>
-          Refresh
-        </button>
-      </div>
-      <button type='button' onClick={() => setShow(!show)}>
+      </RadioGroup>
+      <Button onClick={value.refresh}>Refresh</Button>
+      <Button onClick={() => setShow(!show)}>
         {show ? 'Hide' : 'Show'} Schema
-      </button>
+      </Button>
       <pre x-if={show}>{JSON.stringify(value, null, 2)}</pre>
     </div>
   );
