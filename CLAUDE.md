@@ -91,6 +91,9 @@ function FormField() {
 
 ## Code Style
 
-- Prettier: single quotes, no trailing commas, no bracket spacing
+- Prettier config from `tools-config/prettier` (single quotes, jsx single quotes, es5 trailing commas)
 - 2-space indentation, LF line endings
-- ESLint flat config with TypeScript type-checking, react-hooks, jsx-a11y, import, compat, and Prettier plugins
+- ESLint extends `tools-config/eslint` with TypeScript strict+stylistic type-checked rules, react, react-hooks, import-x, and prettier
+- TypeScript extends `tools-config/typescript` (strict, `noUncheckedIndexedAccess`, bundler module resolution)
+- `eslint-plugin-compat` for browser compatibility checks (`.browserslistrc`)
+- Shared tool configs live in `../tools-config/` (local `file:` dependency)

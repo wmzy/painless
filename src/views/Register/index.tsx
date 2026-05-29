@@ -4,10 +4,13 @@ import {Card, Title, Input, Text, Alert} from 'haze-ui';
 import {useRouter, Link} from '@native-router/react';
 import {css} from '@linaria/core';
 import {navigate} from '@native-router/core';
+
 import * as auth from '@/services/auth';
 
 function FieldError({name}: {name: string}) {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
   const form = useFormContext();
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
   const error = useError(form, name);
   return error ? <Text className={css`color: red; font-size: 0.875em;`}>{error}</Text> : null;
 }
@@ -20,9 +23,9 @@ export default function Register() {
   const handleSubmit = async (values: {username: string; email: string; password: string}) => {
     try {
       await auth.register(values.username, values.email, values.password);
-      navigate(router, '/');
-    } catch (e: any) {
-      setError(e.message);
+      void navigate(router, '/');
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -30,6 +33,7 @@ export default function Register() {
     <Card>
       <Title>Register</Title>
       {error && <Alert variant='danger'>{error}</Alert>}
+      {/* eslint-disable-next-line @typescript-eslint/no-misused-promises */}
       <Form form={form} onValidSubmit={handleSubmit} aria-label='Register form'>
         <Field
           name='username'

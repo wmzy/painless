@@ -18,7 +18,8 @@ export async function schemaFaker<T = unknown>(schema: unknown): Promise<T> {
   await initFaker();
   const {generate} = await import('json-schema-faker');
   console.log('faker:', schema);
-  return generate(schema as any) as Promise<T>;
+   
+  return generate(schema as Parameters<typeof generate>[0]) as Promise<T>;
 }
 
 export function fakerWhenNothing<F extends (...args: any) => Promise<any>>(

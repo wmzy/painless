@@ -1,10 +1,9 @@
 /// <reference types="vite/client" />
 
-interface ImportMetaEnv {
-  // readonly DEV: boolean;
-  // more env variables...
-}
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+type ImportMetaEnv = {};
 
-interface ImportMeta {
+ 
+type ImportMeta = {
   readonly env: ImportMetaEnv;
-}
+};

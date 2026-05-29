@@ -1,14 +1,18 @@
+import type {Article} from '@/types';
+
 import {useState} from 'react';
 import {Form, useForm, Field, useFormContext, useError} from 'react-f0rm';
 import {Card, Title, Input, Textarea, TagInput, Text, Alert} from 'haze-ui';
 import {css} from '@linaria/core';
 import {useRouter, useData} from '@native-router/react';
 import {navigate} from '@native-router/core';
+
 import * as http from '@/util/http';
-import type {Article} from '@/types';
 
 function FieldError({name}: {name: string}) {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
   const form = useFormContext();
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
   const error = useError(form, name);
   return error ? <Text className={css`color: red; font-size: 0.875em;`}>{error}</Text> : null;
 }
@@ -26,7 +30,7 @@ export default function Editor() {
           title: values.title,
           description: values.description,
           body: values.body,
-          tagList: values.tagList || []
+          tagList: values.tagList
         }
       };
 
@@ -35,9 +39,9 @@ export default function Editor() {
       } else {
         await http.post('articles', payload);
       }
-      navigate(router, '/');
-    } catch (e: any) {
-      setError(e.message);
+      void navigate(router, '/');
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -45,6 +49,7 @@ export default function Editor() {
     <Card>
       <Title>{article ? 'Edit Article' : 'New Article'}</Title>
       {error && <Alert variant='danger'>{error}</Alert>}
+      {/* eslint-disable-next-line @typescript-eslint/no-misused-promises */}
       <Form form={form} onValidSubmit={handleSubmit} aria-label='Article editor form'>
         <Field
           name='title'

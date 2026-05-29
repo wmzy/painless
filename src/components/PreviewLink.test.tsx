@@ -11,8 +11,9 @@ vi.mock('@native-router/react', () => ({
 vi.mock('@native-router/core', () => ({}));
 
 vi.mock('haze-ui', () => ({
-  useControl: (initial: any) => {
-    const React = require('react');
+  useControl: (initial: unknown) => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const React = require('react') as typeof import('react');
     return React.useState(initial);
   }
 }));

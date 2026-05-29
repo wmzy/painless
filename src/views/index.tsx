@@ -1,6 +1,7 @@
 import {View, HistoryRouter as Router, Route} from '@native-router/react';
 import {decode} from 'qss';
 import {useMemo} from 'react';
+
 import Loading from '@/components/Loading';
 import RouterError from '@/components/RouterError';
 import * as articleService from '@/services/article';
@@ -27,7 +28,7 @@ export default function App() {
         {
           path: '/article/:title',
           component: () => import('./Article'),
-          data: ({params: {title}}) => articleService.findByTitle(title)
+          data: ({params: {title}}) => articleService.findByTitle(title!)
         },
         {
           path: '/help',
@@ -60,7 +61,7 @@ export default function App() {
       <Router
         routes={routes}
         // baseUrl={import.meta.env.BASE_URL.slice(0, -1)}
-        // eslint-disable-next-line react/no-unstable-nested-components
+         
         errorHandler={(e) => <RouterError error={e} />}
       >
         <View />

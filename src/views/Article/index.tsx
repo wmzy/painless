@@ -1,14 +1,19 @@
+import type {Article} from '@/types';
+
 import {useState} from 'react';
 import {useData} from '@native-router/react';
 import {Form, useForm, Field, reset, useFormContext, useError} from 'react-f0rm';
 import {Card, Title, Text, Avatar, Divider, Textarea, Alert} from 'haze-ui';
 import {css} from '@linaria/core';
-import type {Article} from '@/types';
+
 import * as http from '@/util/http';
+
 import CommentList from './CommentList';
 
 function FieldError({name}: {name: string}) {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
   const form = useFormContext();
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
   const error = useError(form, name);
   return error ? <Text className={css`color: red; font-size: 0.875em;`}>{error}</Text> : null;
 }
@@ -24,8 +29,8 @@ export default function ArticleView() {
         comment: {body: values.body}
       });
       reset(commentForm);
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -43,6 +48,7 @@ export default function ArticleView() {
       <Divider />
       <Title level={3}>Comments</Title>
       {error && <Alert variant='danger'>{error}</Alert>}
+      {/* eslint-disable-next-line @typescript-eslint/no-misused-promises */}
       <Form form={commentForm} onValidSubmit={handleCommentSubmit} aria-label='Comment form'>
         <Field
           name='body'

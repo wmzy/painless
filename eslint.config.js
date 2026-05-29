@@ -1,92 +1,64 @@
-const js = require('@eslint/js');
-const tseslint = require('@typescript-eslint/eslint-plugin');
-const tsparser = require('@typescript-eslint/parser');
-const reactHooks = require('eslint-plugin-react-hooks');
-const jsxA11y = require('eslint-plugin-jsx-a11y');
-const importPlugin = require('eslint-plugin-import');
-const prettierPlugin = require('eslint-plugin-prettier');
-const prettierConfig = require('eslint-config-prettier');
-const compat = require('eslint-plugin-compat');
+import compat from 'eslint-plugin-compat';
+import config from 'tools-config/eslint';
 
-module.exports = [
-  js.configs.recommended,
+const reactFreeConfig = config.filter(
+  (c) =>
+    !c.plugins ||
+    (!Object.keys(c.plugins).includes('react') &&
+      !Object.keys(c.plugins).includes('react-hooks') &&
+      !Object.keys(c.plugins).includes('react-refresh'))
+);
+
+export default [
   {
-    ignores: ['dist', 'node_modules', 'coverage', '*.min.js', 'babel.config.js', 'eslint.config.js', 'vitest.config.ts'],
+    ignores: [
+      'dist',
+      'node_modules',
+      'coverage',
+      '*.min.js',
+      'babel.config.js',
+      'eslint.config.js',
+      'vitest.config.ts'
+    ]
   },
+  ...reactFreeConfig,
   {
     files: ['**/*.{ts,tsx}'],
     languageOptions: {
-      parser: tsparser,
       parserOptions: {
-        project: './tsconfig.json',
-        ecmaVersion: 'latest',
-        sourceType: 'module',
-      },
-      globals: {
-        __dirname: 'readonly',
-        __filename: 'readonly',
-        module: 'readonly',
-        require: 'readonly',
-        document: 'readonly',
-        window: 'readonly',
-        fetch: 'readonly',
-        setTimeout: 'readonly',
-        clearTimeout: 'readonly',
-        setInterval: 'readonly',
-        clearInterval: 'readonly',
-        console: 'readonly',
-        process: 'readonly',
-      },
-    },
-    plugins: {
-      '@typescript-eslint': tseslint,
-      'react-hooks': reactHooks,
-      'jsx-a11y': jsxA11y,
-      import: importPlugin,
-      prettier: prettierPlugin,
-      compat,
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname
+      }
     },
     rules: {
-      ...reactHooks.configs.recommended.rules,
-      ...jsxA11y.configs.recommended.rules,
-      ...prettierConfig.rules,
-      'prettier/prettier': 'error',
-      'no-unused-vars': 'off',
-      'no-undef': 'off',
-      'no-return-assign': ['error', 'except-parens'],
-      'no-sequences': 'off',
-      'no-shadow': 'off',
-      'no-plusplus': 'off',
-      'no-param-reassign': 'off',
-      'no-void': 'off',
-      'no-use-before-define': ['error', {functions: false}],
-      'no-console': 'off',
-      'no-debugger': 'off',
-    },
+      'import-x/no-unresolved': [
+        'error',
+        {ignore: ['\\.schema$']}
+      ]
+    }
+  },
+  {
+    ...compat.configs['flat/recommended'],
+    files: ['**/*.{ts,tsx,js,jsx}'],
     settings: {
-      'import/resolver': {
-        typescript: {},
-      },
-      polyfills: ['Promise'],
-    },
+      polyfills: ['Promise']
+    }
   },
   {
     files: ['**/*.js', '**/*.jsx'],
-    languageOptions: {
-      ecmaVersion: 'latest',
-      sourceType: 'module',
-      globals: {
-        browser: true,
-        node: true,
-        __DEV__: true,
-      },
-    },
-    plugins: {
-      prettier: prettierPlugin,
-    },
     rules: {
-      ...prettierConfig.rules,
-      'prettier/prettier': 'error',
-    },
+      'prettier/prettier': 'error'
+    }
   },
+  {
+    files: ['**/*.test.{ts,tsx}'],
+    rules: {
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/no-unsafe-call': 'off',
+      '@typescript-eslint/no-unsafe-return': 'off',
+      '@typescript-eslint/no-unsafe-argument': 'off',
+      '@typescript-eslint/require-await': 'off'
+    }
+  }
 ];

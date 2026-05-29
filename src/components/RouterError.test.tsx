@@ -1,5 +1,6 @@
 import {describe, it, expect, vi} from 'vitest';
 import {render, screen} from '@testing-library/react';
+
 import RouterError from './RouterError';
 
 vi.mock('@native-router/core', () => ({

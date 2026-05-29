@@ -1,11 +1,5 @@
 import {css} from '@linaria/core';
-import {
-  type CSSProperties,
-  type ReactPortal,
-  useMemo,
-  useEffect,
-  useState
-} from 'react';
+import {type ReactPortal, useMemo, useEffect, useState} from 'react';
 import {createPortal} from 'react-dom';
 import {cancel} from '@native-router/core';
 import {useLoading, useRouter} from '@native-router/react';
@@ -89,7 +83,7 @@ export default function Loading(): ReactPortal | null {
           aria-valuenow={percent}
           aria-valuemin={0}
           aria-valuemax={100}
-          style={{width: `${percent}%`} as CSSProperties}
+          style={{width: `${percent}%`}}
           className={css`
             transition: width 0.5s;
             background: #ffa8b6;

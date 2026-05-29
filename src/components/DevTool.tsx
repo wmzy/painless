@@ -4,24 +4,27 @@ import {ReactNode, useEffect, useState} from 'react';
 import {refresh} from '@native-router/core';
 import {useInject, createMemoryCacheProvider} from 'react-toolroom/async';
 import {Button, Card, useControl} from 'haze-ui';
+
 import {fakerWhenNothing, schemaFaker} from '@/util/faker';
+
 import Popover from './Popover';
 
 type CacheProvider = ReturnType<typeof createMemoryCacheProvider>;
 
 const emitter = ee.create();
 
-let mockConfig = {} as Record<string, any>;
+type MockConfigValue = Record<string, unknown>;
+let mockConfig: Record<string, MockConfigValue> = {};
 
-export function getMockConfigs() {
+export function getMockConfigs(): Record<string, MockConfigValue> {
   return mockConfig;
 }
 
-export function getMockConfig(key: string) {
-  return mockConfig[key];
+export function getMockConfig(key: string): MockConfigValue {
+  return mockConfig[key] ?? {};
 }
 
-export function setMockConfig(key: string, config: any) {
+export function setMockConfig(key: string, config: MockConfigValue): void {
   mockConfig = {...mockConfig, [key]: config};
   ee.emit(emitter, 'change');
 }
@@ -89,7 +92,7 @@ function MockView({
   onChange
 }: {
   name: string;
-  value: Record<string, unknown>;
+  value: MockConfigValue;
   onChange?: (when: string) => void;
 }) {
   const [show, setShow] = useControl<boolean>(undefined, false);
@@ -127,6 +130,7 @@ export default function DevTool({children}: Props) {
   );
 }
 
+ 
 export function mockViewData<F extends (ctx: any) => Promise<any>>(
   fn: F,
   schema: unknown,
@@ -134,9 +138,9 @@ export function mockViewData<F extends (ctx: any) => Promise<any>>(
 ): F {
   if (import.meta.env.PROD) return fn;
 
-  return ((ctx) => {
+  return ((ctx: Record<string, unknown>) => {
     const config = getMockConfig(key);
-    const {router, location} = ctx;
+    const {router, location} = ctx as {router: unknown; location: unknown};
 
     const localConfig = {
       when: 'empty',
@@ -146,7 +150,7 @@ export function mockViewData<F extends (ctx: any) => Promise<any>>(
       schema,
       refresh: () => {
         console.log('refresh');
-        refresh(router);
+        void refresh(router as Parameters<typeof refresh>[0]);
       }
     };
 
@@ -163,16 +167,17 @@ export function mockViewData<F extends (ctx: any) => Promise<any>>(
     return fn(ctx);
   }) as F;
 }
+ 
 
-export function useMock<F extends (...params: any[]) => Promise<any>>(
-  fn: F,
+export function useMock(
+  fn: (...params: unknown[]) => Promise<unknown>,
   schema: unknown,
   key: string,
   cache?: Pick<CacheProvider, 'clear'>
 ) {
-  useInject(fn, ((f: F) => {
+  useInject(fn, (f: typeof fn) => {
     const config = getMockConfig(key);
-    return (...args: Parameters<F>) => {
+    return (...args: Parameters<typeof fn>) => {
       const localConfig = {
         when: 'empty',
         ...config,
@@ -181,7 +186,7 @@ export function useMock<F extends (...params: any[]) => Promise<any>>(
         schema,
         refresh: () => {
           cache?.clear();
-          fn(...args);
+          void fn(...args);
         }
       };
 
@@ -195,5 +200,5 @@ export function useMock<F extends (...params: any[]) => Promise<any>>(
       }
       return f(...args);
     };
-  }) as unknown as F);
+  });
 }

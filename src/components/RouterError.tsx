@@ -13,7 +13,7 @@ export default function RouterError({error}: Props) {
       <Title>Error</Title>
       <Text>{error.message}</Text>
       <pre>{error.stack}</pre>
-      <Button onClick={() => refresh(router)}>Refresh</Button>
+      <Button onClick={() => void refresh(router)}>Refresh</Button>
       <Link to='/'>Home</Link>
     </Card>
   );

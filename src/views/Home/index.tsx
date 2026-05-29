@@ -1,8 +1,10 @@
 import {css} from '@linaria/core';
 import {useData} from '@native-router/react';
 import {Card, Title, Text, Badge, Avatar, Flex} from 'haze-ui';
+
 import {ArticlePage} from '@/types';
 import PreviewLink from '@/components/PreviewLink';
+
 import Tags from './Tags';
 
 export default function Home() {

@@ -1,4 +1,5 @@
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
+
 import {fetchJSON, get, del, post, put} from '@/util/http';
 
 describe('http utilities', () => {

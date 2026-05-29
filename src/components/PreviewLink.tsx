@@ -1,6 +1,7 @@
 import {PrefetchLink} from '@native-router/react';
 import {ComponentProps} from 'react';
 import {useControl} from 'haze-ui';
+
 import Preview from './Preview';
 
 export default function PreviewLink({

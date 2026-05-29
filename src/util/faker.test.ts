@@ -1,4 +1,5 @@
 import {describe, it, expect, vi} from 'vitest';
+
 import {schemaFaker, fakerWhenNothing} from '@/util/faker';
 
 describe('schemaFaker', () => {

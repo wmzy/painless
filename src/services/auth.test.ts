@@ -1,4 +1,5 @@
 import {describe, it, expect, vi, beforeEach} from 'vitest';
+
 import * as auth from '@/services/auth';
 
 vi.mock('@/util/http', () => ({
@@ -15,7 +16,7 @@ describe('auth service', () => {
   describe('login', () => {
     it('should call post with login endpoint and return user', async () => {
       const mockUser = {user: {email: 'test@test.com', token: 'abc'}};
-      vi.mocked(http.post).mockResolvedValue(mockUser as any);
+      vi.mocked(http.post).mockResolvedValue(mockUser);
 
       const result = await auth.login('test@test.com', 'password');
 
@@ -31,7 +32,7 @@ describe('auth service', () => {
       const mockUser = {
         user: {username: 'test', email: 'test@test.com', token: 'abc'}
       };
-      vi.mocked(http.post).mockResolvedValue(mockUser as any);
+      vi.mocked(http.post).mockResolvedValue(mockUser);
 
       const result = await auth.register('test', 'test@test.com', 'password');
 
