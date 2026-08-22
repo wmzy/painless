@@ -2,6 +2,19 @@ import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 
 import {fetchJSON, get, del, post, put} from '@/util/http';
 
+// fetch-fun 的 json reader 通过 res.text() 读取响应体，HTTPError 构造
+// 读取 status/statusText/url，fetchData 检查 res.type —— mock 需补全形态。
+function mockResponse(body: unknown, ok = true) {
+  return {
+    ok,
+    status: ok ? 200 : 422,
+    statusText: ok ? 'OK' : 'Unprocessable Entity',
+    url: 'https://api.realworld.io/api/test',
+    type: 'basic' as const,
+    text: vi.fn().mockResolvedValue(JSON.stringify(body))
+  };
+}
+
 describe('http utilities', () => {
   let fetchMock: ReturnType<typeof vi.fn>;
 
@@ -16,11 +29,7 @@ describe('http utilities', () => {
 
   describe('fetchJSON', () => {
     it('should make a request with correct headers', async () => {
-      const mockResponse = {
-        ok: true,
-        json: vi.fn().mockResolvedValue({data: 'test'})
-      };
-      fetchMock.mockResolvedValue(mockResponse);
+      fetchMock.mockResolvedValue(mockResponse({data: 'test'}));
 
       const result = await fetchJSON('test');
 
@@ -37,11 +46,7 @@ describe('http utilities', () => {
     });
 
     it('should merge custom headers', async () => {
-      const mockResponse = {
-        ok: true,
-        json: vi.fn().mockResolvedValue({data: 'test'})
-      };
-      fetchMock.mockResolvedValue(mockResponse);
+      fetchMock.mockResolvedValue(mockResponse({data: 'test'}));
 
       await fetchJSON('test', {
         headers: {Authorization: 'Bearer token'}
@@ -60,11 +65,9 @@ describe('http utilities', () => {
     });
 
     it('should throw error when response is not ok', async () => {
-      const mockResponse = {
-        ok: false,
-        json: vi.fn().mockResolvedValue({message: 'Error message'})
-      };
-      fetchMock.mockResolvedValue(mockResponse);
+      fetchMock.mockResolvedValue(
+        mockResponse({message: 'Error message'}, false)
+      );
 
       await expect(fetchJSON('test')).rejects.toThrow('Error message');
     });
@@ -72,11 +75,7 @@ describe('http utilities', () => {
 
   describe('get', () => {
     it('should make GET request', async () => {
-      const mockResponse = {
-        ok: true,
-        json: vi.fn().mockResolvedValue({data: 'test'})
-      };
-      fetchMock.mockResolvedValue(mockResponse);
+      fetchMock.mockResolvedValue(mockResponse({data: 'test'}));
 
       await get('articles');
 
@@ -87,11 +86,7 @@ describe('http utilities', () => {
     });
 
     it('should append query string when params provided', async () => {
-      const mockResponse = {
-        ok: true,
-        json: vi.fn().mockResolvedValue({data: 'test'})
-      };
-      fetchMock.mockResolvedValue(mockResponse);
+      fetchMock.mockResolvedValue(mockResponse({data: 'test'}));
 
       await get('articles', {limit: 10, offset: 0});
 
@@ -104,11 +99,7 @@ describe('http utilities', () => {
 
   describe('del', () => {
     it('should make DELETE request', async () => {
-      const mockResponse = {
-        ok: true,
-        json: vi.fn().mockResolvedValue({success: true})
-      };
-      fetchMock.mockResolvedValue(mockResponse);
+      fetchMock.mockResolvedValue(mockResponse({success: true}));
 
       await del('articles/123');
 
@@ -121,11 +112,7 @@ describe('http utilities', () => {
 
   describe('post', () => {
     it('should make POST request with JSON body', async () => {
-      const mockResponse = {
-        ok: true,
-        json: vi.fn().mockResolvedValue({article: {id: 1}})
-      };
-      fetchMock.mockResolvedValue(mockResponse);
+      fetchMock.mockResolvedValue(mockResponse({article: {id: 1}}));
 
       const data = {title: 'Test', body: 'Content'};
       await post('articles', data);
@@ -142,11 +129,7 @@ describe('http utilities', () => {
 
   describe('put', () => {
     it('should make PUT request with JSON body', async () => {
-      const mockResponse = {
-        ok: true,
-        json: vi.fn().mockResolvedValue({article: {id: 1}})
-      };
-      fetchMock.mockResolvedValue(mockResponse);
+      fetchMock.mockResolvedValue(mockResponse({article: {id: 1}}));
 
       const data = {title: 'Updated'};
       await put('articles/123', data);

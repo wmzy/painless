@@ -1,3 +1,4 @@
+storeDir: /home/zlt/.pnpm-store/v11
 allowBuilds:
   core-js: true
   esbuild: true

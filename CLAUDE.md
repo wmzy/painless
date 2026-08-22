@@ -33,7 +33,7 @@ These are intentional design decisions, not missing features. Do not suggest add
 
 **Layout:** `src/views/Layout/index.tsx` is the app shell (header, nav, `<View />` outlet).
 
-**Services:** `src/services/article.ts` — all API calls go through `src/util/http.ts` (fetch wrapper with base URL `https://api.realworld.io/api/`).
+**Services:** `src/services/article.ts` — all API calls go through `src/util/http.ts`, a thin wrapper over [`fetch-fun`](../fetch-fun) (local `file:` dependency, pipeable functional fetch toolkit) with base URL `https://api.realworld.io/api/` and JSON headers.
 
 **Async data:** Components use `react-toolroom/async` hooks (`useResult`, `useLoading`, `useError`, `useCache`, `useRun`) for data fetching with caching and staleness.
 
