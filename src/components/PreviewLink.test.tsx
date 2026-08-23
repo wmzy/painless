@@ -41,4 +41,22 @@ describe('PreviewLink', () => {
     fireEvent.mouseLeave(span);
     expect(span).toBeDefined();
   });
+
+  it('passes prefetch prop through to PrefetchLink', () => {
+    render(
+      <PreviewLink to="/test" prefetch="viewport">
+        Viewport
+      </PreviewLink>
+    );
+    // mock 的 PrefetchLink 把透传 props 铺到 <a> 上，据此断言透传成功
+    const link = screen.getByText('Viewport').closest('a');
+    expect(link?.getAttribute('prefetch')).toBe('viewport');
+  });
+
+  it('keeps library default when prefetch is not provided', () => {
+    render(<PreviewLink to="/test">Default</PreviewLink>);
+    // 不注入任何 prefetch 值，未传时仍走库默认 'intent'
+    const link = screen.getByText('Default').closest('a');
+    expect(link?.getAttribute('prefetch')).toBeNull();
+  });
 });

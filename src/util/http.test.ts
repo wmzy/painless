@@ -1,13 +1,22 @@
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 
-import {fetchJSON, get, del, post, put, setTokenGetter} from '@/util/http';
+import {
+  fetchJSON,
+  get,
+  del,
+  post,
+  put,
+  setTokenGetter,
+  setUnauthorizedHandler,
+  ApiError
+} from '@/util/http';
 
 // fetch-fun 的 json reader 通过 res.text() 读取响应体，HTTPError 构造
 // 读取 status/statusText/url，fetchData 检查 res.type —— mock 需补全形态。
-function mockResponse(body: unknown, ok = true) {
+function mockResponse(body: unknown, ok = true, status = ok ? 200 : 422) {
   return {
     ok,
-    status: ok ? 200 : 422,
+    status,
     statusText: ok ? 'OK' : 'Unprocessable Entity',
     url: 'https://api.realworld.io/api/test',
     type: 'basic' as const,
@@ -29,6 +38,8 @@ describe('http utilities', () => {
     fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     setTokenGetter(() => undefined);
+    // 401 钩子是模块级状态，重置避免用例间泄漏
+    setUnauthorizedHandler(() => undefined);
   });
 
   afterEach(() => {
@@ -106,6 +117,55 @@ describe('http utilities', () => {
       await expect(fetchJSON('test')).rejects.toThrow(
         /^unauthorized$/
       );
+    });
+
+    it('should map non-2xx responses to ApiError with status and errors', async () => {
+      fetchMock.mockResolvedValue(
+        mockResponse({errors: {email: ['has already been taken']}}, false)
+      );
+
+      const error = (await fetchJSON('test').catch((e: unknown) => e)) as ApiError;
+
+      expect(error).toBeInstanceOf(ApiError);
+      expect(error.status).toBe(422);
+      expect(error.errors).toEqual({email: ['has already been taken']});
+      expect(error.message).toBe('email has already been taken');
+    });
+
+    it('should invoke unauthorized handler on 401 and still throw ApiError', async () => {
+      const handler = vi.fn();
+      setUnauthorizedHandler(handler);
+      fetchMock.mockResolvedValue(
+        mockResponse({message: 'unauthorized'}, false, 401)
+      );
+
+      const error = (await fetchJSON('test').catch((e: unknown) => e)) as ApiError;
+
+      expect(error).toBeInstanceOf(ApiError);
+      expect(error.status).toBe(401);
+      // 错误体没有 errors 对象时缺省为 {}
+      expect(error.errors).toEqual({});
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
+
+    it('should tolerate a throwing unauthorized handler', async () => {
+      setUnauthorizedHandler(() => {
+        throw new Error('handler boom');
+      });
+      fetchMock.mockResolvedValue(mockResponse({}, false, 401));
+
+      // 回调异常被吞掉，401 错误照常抛给调用方
+      await expect(fetchJSON('test')).rejects.toBeInstanceOf(ApiError);
+    });
+
+    it('should not invoke unauthorized handler on success', async () => {
+      const handler = vi.fn();
+      setUnauthorizedHandler(handler);
+      fetchMock.mockResolvedValue(mockResponse({data: 'test'}));
+
+      await fetchJSON('test');
+
+      expect(handler).not.toHaveBeenCalled();
     });
   });
 

@@ -1,23 +1,37 @@
 // 项目级数据获取 preset（模板示范：每个项目可按自身理念定制这一层）。
 // 把 react-toolroom/async 的 useInjectable / useCache / useRun / useResult /
-// useLoading / useError 组合为单一 hook useQuery(fn, args, opts)，统一：
+// useLoading / useInitialLoading / useError / useDedup / useRetry 组合为
+// 单一 hook useQuery(fn, args, opts)，统一：
 // - 模块级共享内存缓存（cacheTime 默认 10000ms）；
 // - 陈旧标记（staleTime 默认 2000ms）——均对齐迁移前 Tags / CommentList
 //   手写组合的取值；
-// - refetch：清掉当前参数的缓存条目后重发（绕过缓存），引用稳定。
+// - 并发去重（useDedup）：同参数的并发 in-flight 共享同一 promise，
+//     底层 fn 只执行一次；
+// - 取消（useRun 的 signal）：args 变化或卸载时 abort 上一次请求，经
+//     服务层尾参 signal 透传到 fetch；
+// - 可选重试（QueryOptions.retry，默认禁用：retries 0）；
+// - refetch：清掉当前参数的缓存条目后重发（绕过缓存），引用稳定；
+// - loading 仅指初载（useInitialLoading，SWR 语义）：已有结果后的后台
+//   重拉不再置 true，已渲染内容不闪整屏 Spinner；任意 in-flight（含
+//   后台刷新）见 fetching（useLoading）。
 import {useCallback, type DependencyList} from 'react';
 import {
   createMemoryCacheProvider,
+  isAbortSignal,
+  stableHash,
   useCache,
+  useDedup,
   useError,
   useInject,
   useInjectable,
+  useInitialLoading,
   useLoading,
   useResult,
+  useRetry,
   useRun
 } from 'react-toolroom/async';
 
-import {useMock} from '@/components/DevTool';
+import {useMock} from '@/util/mock';
 
 type AsyncFunc = (...args: any[]) => Promise<any>;
 // 与 react-toolroom 内部的 Awaited/R 保持同构，避免泛型延迟求值时类型对不上
@@ -26,13 +40,21 @@ type R<F extends AsyncFunc> = ReturnType<F> extends Promise<infer A> ? A : Retur
 const DEFAULT_CACHE_TIME = 10000;
 const DEFAULT_STALE_TIME = 2000;
 
+// 统一 hash：结构化 stableHash（对象键序无关），并把参数中混入的
+// AbortSignal 剥掉。useRun({signal: true}) 每次 run 都在尾部附加一个
+// 新 signal，若让它进 key，同一参数的缓存/去重条目会被拆散——['x', sig]
+// 与 ['x']（如 refetch 的 cache.delete(args) 对 useRun 存下的带 signal
+// 条目）必须归一为同一 key。
+const hashArgs = (args: unknown[]) =>
+  stableHash(args.filter((a) => !isAbortSignal(a)));
+
 // 显式以 any 实例化值类型，保证与任意 F 的 R<F> 双向兼容
 export type QueryCache = ReturnType<typeof createMemoryCacheProvider<any, any[]>>;
 
 export function createQueryCache(cacheTime = DEFAULT_CACHE_TIME): QueryCache {
   return createMemoryCacheProvider<any, any[]>({
     cacheTime,
-    hash: (k) => JSON.stringify(k)
+    hash: hashArgs
   });
 }
 
@@ -95,11 +117,29 @@ export type QueryOptions<T> = {
    * hooks 调用顺序；mock 配置需在调用点保持恒定。
    */
   mock?: MockConfig;
+  /**
+   * 失败重试（useRetry 预设）。默认禁用（retries: 0）：瞬态故障的传输层
+   * 重试已由 http 层 withRetry 承担，这里留给调用方按查询粒度叠加。
+   * retries 为初始失败后的重试次数上限；backoff 为退避策略，默认
+   * 'exponential'（1s/2s/4s…，也可传函数自定义）。
+   */
+  retry?: {
+    retries?: number;
+    backoff?: 'exponential' | 'linear' | ((n: number) => number);
+  };
 };
 
 export type QueryResult<T> = {
   data: T;
+  /**
+   * 初载中（useInitialLoading，对齐 TanStack Query 的 isLoading / SWR 的
+   * 初载语义）：有请求 in-flight 且尚无任何结果。已有结果后的重拉
+   * （缓存过期后台刷新、invalidate / refetch 触发）不会置 true——
+   * 已渲染内容保持原样，不闪整屏 Spinner。
+   */
   loading: boolean;
+  /** 任意 in-flight（useLoading），含已有结果后的后台重拉；需要细化加载指示时用 */
+  fetching: boolean;
   error: Error | undefined;
   stale: boolean;
   /** 删除当前 args 的缓存条目后重新请求 */
@@ -123,7 +163,8 @@ export function useQuery<F extends AsyncFunc>(
     cache = queryCache,
     staleTime = DEFAULT_STALE_TIME,
     initData,
-    mock
+    mock,
+    retry
   }: QueryOptions<R<F>> = {}
 ): QueryResult<R<F> | undefined> {
   const injectable = useSharedInjectable(fn);
@@ -137,9 +178,22 @@ export function useQuery<F extends AsyncFunc>(
     );
   }
 
+  // 注册顺序即洋葱层次（先注册在内层）：mock 最内直接包住原始 fn，往上
+  // 依次 retry → dedup → cache。retry 在 dedup 内层，整个重试循环是
+  // 单次 in-flight，并发消费者共享同一循环；缓存/错误/加载状态只感知
+  // 最终结果（重试期间不闪 error/loading）。无条件调用以满足 hooks
+  // 规则——默认 {retries: 0} 即直通，失败原样上抛。
+  useRetry(injectable, retry ?? {retries: 0});
+
+  // 并发去重：同参数的并发 in-flight 共享同一 promise，底层 fn 只执行
+  // 一次（挂载竞态、stale 后台刷新都受益）。hash 与缓存同用 hashArgs，
+  // useRun 附加的 signal 不影响去重 key。
+  useDedup(injectable, {hash: hashArgs});
+
   const stale = useCache(injectable, cache, staleTime);
   const data = useResult(injectable, initData!);
-  const loading = useLoading(injectable);
+  const fetching = useLoading(injectable);
+  const loading = useInitialLoading(injectable);
   const error = useError(injectable);
 
   // 兜底：useError 的中间件在记录错误后会重抛。这里在最外层接住，
@@ -149,12 +203,17 @@ export function useQuery<F extends AsyncFunc>(
     ((...args: Parameters<F>) => f(...args).catch(() => undefined)) as F
   );
 
-  useRun(injectable, args);
+  // signal: true：每次 run 在 args 尾部附加 AbortSignal，args 变化或卸载
+  // 时 abort 上一次（经服务层尾参透传到 fetch）；hash 让「结构变化」取代
+  // 引用相等作为重跑依据——内联对象字面量做 args 不会每渲染重发。
+  useRun(injectable, args, {signal: true, hash: hashArgs});
 
   const refetch = useCallback(() => {
+    // useRun 存下的条目带 signal 尾参，hashArgs 剥离后与本处 args 归一
+    // 为同一 key，delete 必然命中。
     cache.delete(args);
     void injectable(...args);
   }, args as DependencyList);
 
-  return {data, loading, error, stale, refetch};
+  return {data, loading, fetching, error, stale, refetch};
 }

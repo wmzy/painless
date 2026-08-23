@@ -8,24 +8,38 @@ import type {
 
 import * as http from '@/util/http';
 
-export function query(params?: ArticleQuery): Promise<ArticlePage> {
-  return http.get<ArticlePage>('articles', params);
+// 只读查询统一接可选尾参 signal：useQuery 的 useRun({signal: true}) 在
+// args 变化/卸载时 abort 上一次请求，透传到 fetch 取消旧响应；写操作
+// （favorite/follow/addComment）不接——非幂等，取消语义以服务端为准。
+export function query(
+  params?: ArticleQuery,
+  signal?: AbortSignal
+): Promise<ArticlePage> {
+  return http.get<ArticlePage>('articles', params, signal);
 }
 
-export function findByTitle(title: string): Promise<Article> {
+export function findByTitle(
+  title: string,
+  signal?: AbortSignal
+): Promise<Article> {
   return http
-    .get<{article: Article}>(`articles/${title}`)
+    .get<{article: Article}>(`articles/${title}`, undefined, signal)
     .then(({article}) => article);
 }
 
-export function fetchCommentsByTitle(title: string): Promise<Comment[]> {
+export function fetchCommentsByTitle(
+  title: string,
+  signal?: AbortSignal
+): Promise<Comment[]> {
   return http
-    .get<{comments: Comment[]}>(`articles/${title}/comments`)
+    .get<{comments: Comment[]}>(`articles/${title}/comments`, undefined, signal)
     .then(({comments}) => comments);
 }
 
-export function fetchTags(): Promise<string[]> {
-  return http.get<{tags: string[]}>('tags').then(({tags}) => tags);
+export function fetchTags(signal?: AbortSignal): Promise<string[]> {
+  return http
+    .get<{tags: string[]}>('tags', undefined, signal)
+    .then(({tags}) => tags);
 }
 
 // ---- mutations ------------------------------------------------------------

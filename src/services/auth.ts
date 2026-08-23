@@ -1,6 +1,7 @@
 import {create, on, emit} from '@for-fun/event-emitter';
 
 import * as http from '@/util/http';
+import {queryCache} from '@/util/useQuery';
 
 export type User = {
   username: string;
@@ -36,6 +37,14 @@ let currentUser: User | null = readStoredUser();
 // token 供应商交给 http，登录/登出后管道自动取到最新 token。
 http.setTokenGetter(() => currentUser?.token);
 
+// 401 自动登出：已登录态凭据过期时后端返回 401，http 层在错误映射处
+// 触发此回调；登录失败的 401 发生在未登录态，getCurrentUser() 为 null
+// 直接 no-op。logout/getCurrentUser 是函数声明，回调真正执行时模块早已
+// 初始化完成，不存在 TDZ 问题。
+http.setUnauthorizedHandler(() => {
+  if (getCurrentUser()) logout();
+});
+
 const authEvents = create<['change', [User | null]]>();
 
 function setUser(user: User | null) {
@@ -57,7 +66,13 @@ export function onAuthChange(handler: (user: User | null) => void) {
   return on(authEvents, 'change', handler);
 }
 
+// 切账号/登出后，缓存里上一账号拉过的数据不可复用（可能含私有内容，
+// 也会被下一账号的页面当作命中数据直接渲染），必须整体清空。
+// 先 clear 再 setUser(null)：setUser 会发 change 事件，订阅者（如
+// Layout 导航）可能随即发起新请求；先清缓存可保证这些登出后的新请求
+// 写回的是匿名数据，而不是被本次 clear 误删。
 export function logout() {
+  queryCache.clear();
   setUser(null);
 }
 

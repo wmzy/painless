@@ -11,7 +11,12 @@ const state = vi.hoisted(() => ({
   router: {pathname: '/editor'}
 }));
 
-vi.mock('@/util/http', () => ({post: vi.fn(), put: vi.fn()}));
+// 保留真实模块（构造 422 拒绝值需要 ApiError 类），只覆写视图用到的 post/put
+vi.mock('@/util/http', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/util/http')>()),
+  post: vi.fn(),
+  put: vi.fn()
+}));
 vi.mock('@native-router/react', () => ({
   useRouter: () => state.router,
   // useData<T>() 泛型在 mock 中以类型断言透传即可
@@ -154,5 +159,27 @@ describe('Editor', () => {
     expect(postMock).not.toHaveBeenCalled();
     const button = asButton(await screen.findByRole('button', {name: 'Publish Article'}));
     expect(button.disabled).toBe(false);
+  });
+
+  // P1 表单层收敛：服务端 422 字段错误经共享回填落到对应字段下方，
+  // 顶部 Alert 不再显示整句 e.message
+  it('服务端 422 字段错误：回填到字段下方且顶部不显示整句 Alert', async () => {
+    postMock.mockRejectedValueOnce(
+      new http.ApiError(422, 'title has already been taken', {
+        title: ['has already been taken']
+      })
+    );
+    render(<Editor />);
+
+    fillRequired();
+    fireEvent.click(screen.getByRole('button', {name: 'Publish Article'}));
+
+    // title 字段下方出现服务端文案（FieldError 渲染），按钮恢复可用
+    expect(await screen.findByText('has already been taken')).toBeDefined();
+    const button = asButton(await screen.findByRole('button', {name: 'Publish Article'}));
+    expect(button.disabled).toBe(false);
+    // 全部错误已回填字段：顶部 Alert 不显示 e.message 整句
+    expect(screen.queryByText('title has already been taken')).toBeNull();
+    expect(navigateMock).not.toHaveBeenCalled();
   });
 });

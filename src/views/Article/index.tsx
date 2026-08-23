@@ -4,7 +4,7 @@ import {useState} from 'react';
 import {css} from '@linaria/core';
 import {navigate} from '@native-router/core';
 import {useData, useMatched} from '@native-router/react';
-import {Form, useForm, Field, reset, useIsSubmitting} from 'react-f0rm';
+import {Form, useForm, reset, useIsSubmitting} from 'react-f0rm';
 import {useMutation} from 'react-toolroom/async';
 import {
   Card,
@@ -18,11 +18,11 @@ import {
   Badge,
   Flex
 } from 'haze-ui';
+import {FormItem} from 'haze-ui/form';
 
 import * as articleService from '@/services/article';
 import {getCurrentUser} from '@/services/auth';
 import {useQueryOf} from '@/util/useQuery';
-import FieldError from '@/components/FieldError';
 
 import CommentList from './CommentList';
 
@@ -39,6 +39,8 @@ const pushRight = css`
 `;
 
 export default function ArticleView() {
+  // useData 约定：本路由挂了 loader，进组件前数据必有值，用 ! 收窄；
+  // 无 loader 的可选数据路由（如 Editor）则用 ?? undefined
   const article = useData<Article>()!;
   const {router} = useMatched();
   const commentForm = useForm();
@@ -52,8 +54,6 @@ export default function ArticleView() {
   // 失败回滚到点击前的值（请求失败即服务端状态未变，回滚即权威值）。
   const [favOverride, setFavOverride] = useState<FavOverride | null>(null);
   const [followOverride, setFollowOverride] = useState<boolean | null>(null);
-  // 重挂评论表单子树（清空 Textarea 显存文本用），与列表刷新无关
-  const [formRefresh, setFormRefresh] = useState(0);
 
   // 发评论 → 声明式失效：useMutation 的 invalidates 在成功后删除
   // fetchCommentsByTitle 的匹配缓存并重拉其活跃订阅者（CommentList）。
@@ -118,13 +118,11 @@ export default function ArticleView() {
   const handleCommentSubmit = async (values: {body: string}) => {
     try {
       await mutateAddComment(article.slug, values.body);
-      // 两层清理：
-      // 1) reset 清 form values/touched/errors（haze-ui 输入控件的 value
-      //    仅播种其 useControl 内部态，prop 变化不会改显存的文本）；
-      // 2) key 递增重挂表单子树，才是真正清空 Textarea 的机制。
-      // 评论列表刷新由 invalidates 声明式负责（见上），不再手动重挂。
+      // 评论字段的 Textarea 经 FormItem 的 control 桥接后是受控语义
+      //（control 每次渲染读取 useValueByPath 订阅的实时表单值），reset
+      // 改写表单值即可同步清空显存文本——不再需要 key 递增重挂子树。
+      // 评论列表刷新由 invalidates 声明式负责（见上）。
       reset(commentForm, {body: ''});
-      setFormRefresh((k) => k + 1);
     } catch (e: unknown) {
       setError(errText(e));
     }
@@ -161,19 +159,24 @@ export default function ArticleView() {
       </div>
       <Divider />
       <Title level={3}>Comments</Title>
-      <Form
-        key={formRefresh}
-        form={commentForm}
-        onSubmit={handleCommentSubmit}
-        aria-label='Comment form'
-      >
-        <Field
+      {/* 同 Editor：FormItem 桥接字段与控件（control 受控 + aria 链路），
+          首条错误由 FormItem 渲染为字段下方的 <span role='alert'> */}
+      <Form form={commentForm} onSubmit={handleCommentSubmit} aria-label='Comment form'>
+        <FormItem
+          form={commentForm}
           name='body'
-          as={Textarea}
-          placeholder='Write a comment...'
           validate={(v: unknown) => (!v ? 'Comment is required' : undefined)}
-        />
-        <FieldError name='body' />
+        >
+          {({id, errorId, invalid, control}) => (
+            <Textarea
+              id={id}
+              value={control}
+              placeholder='Write a comment...'
+              aria-describedby={invalid ? errorId : undefined}
+              aria-invalid={invalid}
+            />
+          )}
+        </FormItem>
         <button type='submit' disabled={commentSubmitting}>
           {commentSubmitting ? 'Posting...' : 'Post Comment'}
         </button>

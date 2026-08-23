@@ -5,6 +5,7 @@ import {useRouter, Link} from '@native-router/react';
 import {navigate} from '@native-router/core';
 
 import * as auth from '@/services/auth';
+import {required, email, compose, applyApiFieldErrors} from '@/util/validators';
 import FieldError from '@/components/FieldError';
 
 export default function Login() {
@@ -19,7 +20,9 @@ export default function Login() {
       await auth.login(values.email, values.password);
       void navigate(router, '/');
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      // 422 字段错误回填到对应字段下方；对不上字段的键（如 RealWorld
+      // 登录 422 的 "email or password"）与非 ApiError 才留在顶部 Alert
+      setError(applyApiFieldErrors(form, e, ['email', 'password']));
     }
   };
 
@@ -35,11 +38,7 @@ export default function Login() {
           as={Input}
           type='email'
           placeholder='Email'
-          validate={(v: string) => {
-            if (!v) return 'Email is required';
-            if (!/\S+@\S+\.\S+/.test(v)) return 'Invalid email';
-            return undefined;
-          }}
+          validate={compose(required('Email is required'), email('Invalid email'))}
         />
         <FieldError name='email' />
         <Field
@@ -48,7 +47,7 @@ export default function Login() {
           as={Input}
           type='password'
           placeholder='Password'
-          validate={(v: string) => (!v ? 'Password is required' : undefined)}
+          validate={required('Password is required')}
         />
         <FieldError name='password' />
         <button type='submit'>Login</button>

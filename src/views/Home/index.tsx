@@ -124,7 +124,13 @@ export default function Home() {
                   </Button>
                 </Flex>
                 <Title level={2}>
-                  <PreviewLink to={`/article/${a.slug}`}>{a.title}</PreviewLink>
+                  {/* 卡片滚入视口即预取 data+chunk，比 hover 更早，点击近乎零等待 */}
+                  <PreviewLink
+                    to={`/article/${a.slug}`}
+                    prefetch='viewport'
+                  >
+                    {a.title}
+                  </PreviewLink>
                 </Title>
                 <Text>{a.description}</Text>
                 <Flex gap='xs' wrap>

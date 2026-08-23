@@ -219,8 +219,18 @@ describe('发评论后刷新评论列表', () => {
     // 注：不能直接 findByText('second comment')——重挂提交前 textarea 的
     // DOM 文本仍短暂保留该值，会假命中；限定在评论列表项内断言。
     await waitFor(() => expect(fetchCommentsMock).toHaveBeenCalledTimes(2));
-    expect(fetchCommentsMock).toHaveBeenNthCalledWith(1, 'some-title-1');
-    expect(fetchCommentsMock).toHaveBeenNthCalledWith(2, 'some-title-1');
+    // useQuery 的 useRun({signal: true}) 给每次 run（含 invalidate 触发的
+    // 重拉）尾附 AbortSignal，args 变化/卸载时取消上一次。
+    expect(fetchCommentsMock).toHaveBeenNthCalledWith(
+      1,
+      'some-title-1',
+      expect.any(AbortSignal)
+    );
+    expect(fetchCommentsMock).toHaveBeenNthCalledWith(
+      2,
+      'some-title-1',
+      expect.any(AbortSignal)
+    );
     expect(
       await screen.findByText('second comment', {selector: 'li span'})
     ).toBeDefined();

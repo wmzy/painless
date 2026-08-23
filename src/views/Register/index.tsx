@@ -5,6 +5,13 @@ import {useRouter, Link} from '@native-router/react';
 import {navigate} from '@native-router/core';
 
 import * as auth from '@/services/auth';
+import {
+  required,
+  email,
+  minLength,
+  compose,
+  applyApiFieldErrors
+} from '@/util/validators';
 import FieldError from '@/components/FieldError';
 
 export default function Register() {
@@ -18,7 +25,8 @@ export default function Register() {
       await auth.register(values.username, values.email, values.password);
       void navigate(router, '/');
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      // 422 字段错误回填到对应字段下方，顶部 Alert 只兜非字段错误
+      setError(applyApiFieldErrors(form, e, ['username', 'email', 'password']));
     }
   };
 
@@ -32,7 +40,7 @@ export default function Register() {
           name='username'
           as={Input}
           placeholder='Username'
-          validate={(v: string) => (!v ? 'Username is required' : undefined)}
+          validate={required('Username is required')}
         />
         <FieldError name='username' />
         <Field
@@ -41,11 +49,7 @@ export default function Register() {
           as={Input}
           type='email'
           placeholder='Email'
-          validate={(v: string) => {
-            if (!v) return 'Email is required';
-            if (!/\S+@\S+\.\S+/.test(v)) return 'Invalid email';
-            return undefined;
-          }}
+          validate={compose(required('Email is required'), email('Invalid email'))}
         />
         <FieldError name='email' />
         <Field
@@ -54,11 +58,10 @@ export default function Register() {
           as={Input}
           type='password'
           placeholder='Password'
-          validate={(v: string) => {
-            if (!v) return 'Password is required';
-            if (v.length < 8) return 'Password must be at least 8 characters';
-            return undefined;
-          }}
+          validate={compose(
+            required('Password is required'),
+            minLength(8, 'Password must be at least 8 characters')
+          )}
         />
         <FieldError name='password' />
         <button type='submit'>Register</button>

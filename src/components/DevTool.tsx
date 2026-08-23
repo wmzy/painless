@@ -1,40 +1,30 @@
-import * as ee from '@for-fun/event-emitter';
 import {css} from '@linaria/core';
-import {ReactNode, useEffect, useState} from 'react';
-import {refresh} from '@native-router/core';
-import {useInject, createMemoryCacheProvider} from 'react-toolroom/async';
+import {useCallback, ReactNode, useEffect, useState} from 'react';
 import {Button, Card, useControl} from 'haze-ui';
 
-import {fakerWhenNothing, schemaFaker} from '@/util/faker';
+import {
+  getMockConfigs,
+  onMockConfigChange,
+  setMockConfig,
+  type MockConfigValue
+} from '@/util/mock';
+import {queryCache} from '@/util/useQuery';
 
 import Popover from './Popover';
 
-type CacheProvider = ReturnType<typeof createMemoryCacheProvider>;
-
-const emitter = ee.create();
-
-type MockConfigValue = Record<string, unknown>;
-let mockConfig: Record<string, MockConfigValue> = {};
-
-export function getMockConfigs(): Record<string, MockConfigValue> {
-  return mockConfig;
-}
-
-export function getMockConfig(key: string): MockConfigValue {
-  return mockConfig[key] ?? {};
-}
-
-export function setMockConfig(key: string, config: MockConfigValue): void {
-  mockConfig = {...mockConfig, [key]: config};
-  ee.emit(emitter, 'change');
-}
-
-export function onMockConfigChange(cb: () => void) {
-  return ee.on(emitter, 'change', cb);
-}
-
 type Props = {
   children: ReactNode;
+};
+
+// queryCache.snapshot() 的条目形状（react-toolroom CacheProvider 契约：
+// key 为 hash 后的字符串——createQueryCache 现用结构化 stableHash 并剥离
+// AbortSignal（见 src/util/useQuery.ts 的 hashArgs），形如 [s:tag]——
+// cachedAt 为写入时的毫秒时间戳。key 具体格式归 useQuery 层所有，此处
+// 仅原样展示，不感知其形态）
+type CacheEntry = {
+  key: string;
+  value: unknown;
+  cachedAt: number;
 };
 
 function DevToolInner() {
@@ -69,6 +59,8 @@ function DevToolInner() {
               onChange={(when) => setMockConfig(key, {...val, when})}
             />
           ))}
+          <hr />
+          <CacheView />
         </Card>
       </Popover>
     );
@@ -83,6 +75,60 @@ function DevToolInner() {
     >
       <Button onClick={() => setOpen(true)}>DEV</Button>
     </Popover>
+  );
+}
+
+// key 是 hash 后的字符串（stableHash 结构化序列化，如 [s:tag]），可能很长：
+// 面板里截断展示，完整串放 title 悬浮提示
+export function truncateKey(key: string, max = 24): string {
+  return key.length > max ? `${key.slice(0, max)}…` : key;
+}
+
+// 距 now 的缓存秒数（向下取整；时钟偏差导致的负值按 0 处理）
+export function ageSeconds(cachedAt: number, now: number = Date.now()): number {
+  return Math.max(0, Math.floor((now - cachedAt) / 1000));
+}
+
+// 共享缓存检查器：snapshot() 拉取条目，subscribe() 在任意条目变更（含
+// clear）时刷新；面板关闭即卸载取消订阅，重开时重新挂载拉取一次即可。
+function CacheView() {
+  const [entries, setEntries] = useState<CacheEntry[]>(
+    () => queryCache.snapshot?.() ?? []
+  );
+  const [now, setNow] = useState(() => Date.now());
+
+  const refresh = useCallback(() => {
+    setEntries(queryCache.snapshot?.() ?? []);
+    setNow(Date.now());
+  }, []);
+
+  useEffect(() => queryCache.subscribe?.(refresh), [refresh]);
+
+  return (
+    <div>
+      <div
+        x-class={css`
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        `}
+      >
+        <b>Cache: {entries.length}</b>
+        <Button
+          onClick={() => {
+            queryCache.clear();
+            refresh();
+          }}
+        >
+          Clear
+        </Button>
+      </div>
+      {entries.map((entry) => (
+        <div key={entry.key} title={entry.key}>
+          {truncateKey(entry.key)} · {ageSeconds(entry.cachedAt, now)}s
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -128,77 +174,4 @@ export default function DevTool({children}: Props) {
       <DevToolInner />
     </>
   );
-}
-
- 
-export function mockViewData<F extends (ctx: any) => Promise<any>>(
-  fn: F,
-  schema: unknown,
-  key: string
-): F {
-  if (import.meta.env.PROD) return fn;
-
-  return ((ctx: Record<string, unknown>) => {
-    const config = getMockConfig(key);
-    const {router, location} = ctx as {router: unknown; location: unknown};
-
-    const localConfig = {
-      when: 'empty',
-      ...config,
-      type: 'viewData',
-      location,
-      schema,
-      refresh: () => {
-        console.log('refresh');
-        void refresh(router as Parameters<typeof refresh>[0]);
-      }
-    };
-
-    setMockConfig(key, localConfig);
-
-    if (localConfig.when === 'empty') {
-      return fakerWhenNothing(fn, schema)(ctx);
-    }
-
-    if (localConfig.when === 'always') {
-      return schemaFaker(schema);
-    }
-
-    return fn(ctx);
-  }) as F;
-}
- 
-
-export function useMock(
-  fn: (...params: unknown[]) => Promise<unknown>,
-  schema: unknown,
-  key: string,
-  cache?: Pick<CacheProvider, 'clear'>
-) {
-  useInject(fn, (f: typeof fn) => {
-    const config = getMockConfig(key);
-    return (...args: Parameters<typeof fn>) => {
-      const localConfig = {
-        when: 'empty',
-        ...config,
-        type: 'async',
-        location: null,
-        schema,
-        refresh: () => {
-          cache?.clear();
-          void fn(...args);
-        }
-      };
-
-      setMockConfig(key, localConfig);
-
-      if (localConfig.when === 'always') {
-        return schemaFaker(schema);
-      }
-      if (localConfig.when === 'empty') {
-        return fakerWhenNothing(f, schema)(...args);
-      }
-      return f(...args);
-    };
-  });
 }

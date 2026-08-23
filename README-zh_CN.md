@@ -159,7 +159,7 @@ export default function PreviewLink({children, ...props}) {
 
 ### 项目级 `useQuery` preset
 
-模板不引入数据请求库，而是把 `react-toolroom/async` 的原语（`useInjectable`、`useCache`、`useRun`、`useResult`、`useLoading`、`useError`）组合成**一个**项目自有的 hook——示范「每个项目定制自己的查询层」这一理念：
+模板不引入数据请求库，而是把 `react-toolroom/async` 的原语（`useInjectable`、`useCache`、`useRun`、`useResult`、`useLoading`、`useInitialLoading`、`useError`、`useDedup`、`useRetry`）组合成**一个**项目自有的 hook——示范「每个项目定制自己的查询层」这一理念：
 
 ```ts
 // src/util/useQuery.ts（签名）
@@ -173,17 +173,24 @@ type QueryOptions<T> = {
   cache?: QueryCache;   // 默认模块级共享 queryCache（cacheTime 10s）
   staleTime?: number;   // 默认 2000ms
   initData?: T;         // 初始数据，避免首屏取到 undefined
+  retry?: {             // 接 useRetry，默认禁用
+    retries?: number;
+    backoff?: 'exponential' | 'linear' | ((attempt: number) => number);
+  };
   mock?: MockConfig;    // {schema, key} —— 接入 DevTool mock 面板
 };
 
 type QueryResult<T> = {
   data: T;
-  loading: boolean;
+  loading: boolean;     // 仅初载：首个结果产生前为 true
+  fetching: boolean;    // 任意请求进行中（含后台重拉）
   error: Error | undefined;
   stale: boolean;
   refetch: () => void;  // 删除当前 args 的缓存条目后重发（绕过缓存）
 };
 ```
+
+preset 开箱即接线了三个通常要项目自己手写的行为：同参数并发调用**去重**（`useDedup`）；依赖变化时经尾参 `AbortSignal` **中止**上一次请求（`useRun({signal: true})`，signal 一路穿透服务层到 fetch）；缓存/去重/refetch 的 key 统一为**结构化哈希**（剥除 signal 的 `stableHash`——键序无关）。
 
 真实用法，来自 tag 侧栏与评论列表：
 
@@ -227,16 +234,17 @@ const toggleFavorite = () => {
 };
 ```
 
-发表评论后：重置表单并通过递增 `key` 重挂子树（清空非受控 `Textarea` 的可靠手段），同一计数器再驱动 `CommentList` 绕过缓存 `refetch`。
+发表评论后：`reset(commentForm, {body: ''})` 重置表单——评论 `Textarea` 经 haze-ui `FormItem` 的 control 桥全受控绑定，reset 直接同步显存文本、无需重挂子树——mutation 的 `invalidates` 再声明式驱动 `CommentList` 绕过缓存刷新。
 
 ### 基于 `fetch-fun` 的类型化 HTTP 客户端
 
-`src/util/http.ts` 构建可管道组合的客户端：base URL（可用 `VITE_API_URL` 覆盖，默认 `https://api.realworld.io/api/`）、JSON 头、认证注入，以及把 RealWorld 错误体摊平为可读文案的统一错误映射——优先取 `message`，否则把 `errors` 对象拼接成文本：
+`src/util/http.ts` 构建可管道组合的客户端：base URL（可用 `VITE_API_URL` 覆盖，默认 `https://api.realworld.io/api/`）、JSON 头、认证注入、仅幂等 GET/HEAD 的重试 + 每次尝试 10s 超时，以及把非 2xx 响应映射为 `ApiError` 的错误映射——保留 `status` 与字段结构的 `errors` 对象，`message` 摊平为可读文案（优先取 `message`，否则把 `errors` 拼接成文本）。401 会触发已注册的未授权处理器（auth 服务用它实现 token 过期自动登出）：
 
 ```ts
-// src/util/http.ts
-export function setTokenGetter(getter: TokenGetter) {
-  tokenGetter = getter;
+// src/util/http.ts（节选）
+export class ApiError extends Error {
+  readonly status: number;
+  readonly errors: Record<string, string[]>;
 }
 
 const client = ff
@@ -245,10 +253,9 @@ const client = ff
   .pipe(ff.header, 'accept', 'application/json')
   .pipe(ff.use, ff.withAuth(() => tokenGetter() ?? '', 'Token'))
   .pipe(ff.use, stripEmptyAuth) // 绝不发送空的 Authorization 头
-  .pipe(
-    ff.mapError,
-    (e: unknown) => (e instanceof ff.HTTPError ? new Error(errorText(e.data)) : e)
-  );
+  .pipe(ff.use, ff.withRetry(2, {methods: ['GET', 'HEAD']}))
+  .pipe(ff.use, ff.withTimeout(10_000)) // 每次尝试独立预算，位于 retry 内层
+  .pipe(ff.use, mapToApiError); // HTTPError → ApiError（+ 401 钩子）
 ```
 
 服务层是对 `get`/`post`/`put`/`del` 的薄封装：

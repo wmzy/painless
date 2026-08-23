@@ -4,9 +4,11 @@ import Loading from '@/components/Loading';
 import RouterError from '@/components/RouterError';
 import * as articleService from '@/services/article';
 import {getCurrentUser} from '@/services/auth';
-import {mockViewData} from '@/components/DevTool';
+import {mockViewData} from '@/util/mock';
 import {articlePageSchema} from '@/types/index.schema';
 import {homeSearchSchema} from '@/types/search';
+
+import NotFound from './Article/NotFound';
 
 // 路由守卫：@native-router ≥1.2 的 beforeLoad。返回路径即由路由器在
 // resolve 期重定向（导航提交前生效，URL 不落守卫路由）；返回 undefined
@@ -35,7 +37,10 @@ const routes = {
     {
       path: '/article/:title',
       component: () => import('./Article'),
-      data: ({params: {title}}) => articleService.findByTitle(title!)
+      data: ({params: {title}}) => articleService.findByTitle(title!),
+      // 路由级错误组件：文章不存在/加载失败渲染页面级提示（含返回首页），
+      // 其它路由仍走全局 errorHandler → RouterError
+      errorComponent: NotFound
     },
     {
       path: '/help',

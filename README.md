@@ -159,7 +159,7 @@ export default function PreviewLink({children, ...props}) {
 
 ### A Project-Level `useQuery` Preset
 
-Instead of adopting a data-fetching library, the template composes `react-toolroom/async` primitives (`useInjectable`, `useCache`, `useRun`, `useResult`, `useLoading`, `useError`) into **one** project-owned hook — demonstrating the idea that each project should shape its own query layer:
+Instead of adopting a data-fetching library, the template composes `react-toolroom/async` primitives (`useInjectable`, `useCache`, `useRun`, `useResult`, `useLoading`, `useInitialLoading`, `useError`, `useDedup`, `useRetry`) into **one** project-owned hook — demonstrating the idea that each project should shape its own query layer:
 
 ```ts
 // src/util/useQuery.ts (signature)
@@ -173,17 +173,24 @@ type QueryOptions<T> = {
   cache?: QueryCache;   // defaults to the shared module-level queryCache (cacheTime 10s)
   staleTime?: number;   // defaults to 2000ms
   initData?: T;         // initial data to avoid undefined on first render
+  retry?: {             // feeds useRetry; disabled by default
+    retries?: number;
+    backoff?: 'exponential' | 'linear' | ((attempt: number) => number);
+  };
   mock?: MockConfig;    // {schema, key} — hooks the DevTool mock panel
 };
 
 type QueryResult<T> = {
   data: T;
-  loading: boolean;
+  loading: boolean;     // initial load only — true until the first result exists
+  fetching: boolean;    // any request in flight (incl. background refetches)
   error: Error | undefined;
   stale: boolean;
   refetch: () => void;  // drops the cache entry for the current args and re-runs
 };
 ```
+
+Out of the box the preset wires three behaviors projects usually hand-roll: concurrent same-args calls are **deduplicated** (`useDedup`), dependency changes **abort** the previous request via a trailing `AbortSignal` threaded through the service layer to `fetch` (`useRun({signal: true})`), and cache/dedup/refetch keys are all one **structural hash** (`stableHash` with signals stripped — key-order-insensitive).
 
 Real usage, from the tag sidebar and the comment list:
 
@@ -227,16 +234,17 @@ const toggleFavorite = () => {
 };
 ```
 
-After posting a comment, the form is reset and the subtree is remounted via an incremented `key` (the reliable way to clear an uncontrolled `Textarea`), and the same counter tells `CommentList` to `refetch` past the cache.
+After posting a comment, the form resets with `reset(commentForm, {body: ''})` — the comment `Textarea` is bound through haze-ui's `FormItem` control bridge (fully controlled), so the reset syncs the displayed text with no remounting — and the mutation's `invalidates` declaratively refreshes `CommentList` past the cache.
 
 ### A Typed HTTP Client on `fetch-fun`
 
-`src/util/http.ts` builds a pipeable client: base URL (`VITE_API_URL` override, default `https://api.realworld.io/api/`), JSON headers, auth injection, and a single error mapper that flattens RealWorld error bodies into readable messages — `message` first, otherwise the `errors` object joined into text:
+`src/util/http.ts` builds a pipeable client: base URL (`VITE_API_URL` override, default `https://api.realworld.io/api/`), JSON headers, auth injection, retry (idempotent GET/HEAD only) with a per-attempt 10s timeout, and an error mapper that turns non-2xx responses into `ApiError` — `status` and the field-structured `errors` object preserved, `message` flattened for readability (`message` first, otherwise the `errors` object joined into text). A 401 fires the registered unauthorized handler (the auth service uses it to auto-logout on expired tokens):
 
 ```ts
-// src/util/http.ts
-export function setTokenGetter(getter: TokenGetter) {
-  tokenGetter = getter;
+// src/util/http.ts (excerpt)
+export class ApiError extends Error {
+  readonly status: number;
+  readonly errors: Record<string, string[]>;
 }
 
 const client = ff
@@ -245,10 +253,9 @@ const client = ff
   .pipe(ff.header, 'accept', 'application/json')
   .pipe(ff.use, ff.withAuth(() => tokenGetter() ?? '', 'Token'))
   .pipe(ff.use, stripEmptyAuth) // never send an empty Authorization header
-  .pipe(
-    ff.mapError,
-    (e: unknown) => (e instanceof ff.HTTPError ? new Error(errorText(e.data)) : e)
-  );
+  .pipe(ff.use, ff.withRetry(2, {methods: ['GET', 'HEAD']}))
+  .pipe(ff.use, ff.withTimeout(10_000)) // per-attempt budget, inner of retry
+  .pipe(ff.use, mapToApiError); // HTTPError → ApiError (+ 401 hook)
 ```
 
 Services are thin functions over `get`/`post`/`put`/`del`:
