@@ -1,7 +1,11 @@
-storeDir: /home/zlt/.pnpm-store/v11
 allowBuilds:
   core-js: true
   esbuild: true
   unrs-resolver: true
 minimumReleaseAgeExclude:
-  - react-f0rm@0.2.2
+  - react-f0rm
+  - react-toolroom
+  - haze-ui
+  - '@native-router/core'
+  - '@native-router/react'
+  - '@for-fun/event-emitter'

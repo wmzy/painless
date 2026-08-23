@@ -18,7 +18,8 @@ export default [
       '*.min.js',
       'babel.config.js',
       'eslint.config.js',
-      'vitest.config.ts'
+      'vitest.config.mts',
+      'vite.config.mts'
     ]
   },
   ...reactFreeConfig,

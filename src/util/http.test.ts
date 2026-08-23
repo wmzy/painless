@@ -1,6 +1,6 @@
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 
-import {fetchJSON, get, del, post, put} from '@/util/http';
+import {fetchJSON, get, del, post, put, setTokenGetter} from '@/util/http';
 
 // fetch-fun 的 json reader 通过 res.text() 读取响应体，HTTPError 构造
 // 读取 status/statusText/url，fetchData 检查 res.type —— mock 需补全形态。
@@ -15,12 +15,20 @@ function mockResponse(body: unknown, ok = true) {
   };
 }
 
+// withAuth 中间件会把请求头归一成 Headers 实例再交给 fetch，
+// 断言请求头统一从这里取。
+function sentHeaders(mock: ReturnType<typeof vi.fn>) {
+  const init = mock.mock.calls[0]![1] as RequestInit;
+  return new Headers(init.headers);
+}
+
 describe('http utilities', () => {
   let fetchMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
+    setTokenGetter(() => undefined);
   });
 
   afterEach(() => {
@@ -35,41 +43,69 @@ describe('http utilities', () => {
 
       expect(fetchMock).toHaveBeenCalledWith(
         'https://api.realworld.io/api/test',
-        expect.objectContaining({
-          headers: expect.objectContaining({
-            'content-type': 'application/json',
-            accept: 'application/json'
-          })
-        })
+        expect.anything()
       );
+      expect(sentHeaders(fetchMock).get('content-type')).toBe(
+        'application/json'
+      );
+      expect(sentHeaders(fetchMock).get('accept')).toBe('application/json');
       expect(result).toEqual({data: 'test'});
     });
 
     it('should merge custom headers', async () => {
       fetchMock.mockResolvedValue(mockResponse({data: 'test'}));
 
+      // Authorization 由 withAuth 中间件统一接管（每次请求都会重设），
+      // 这里用普通自定义头验证逐个合并逻辑。
       await fetchJSON('test', {
-        headers: {Authorization: 'Bearer token'}
+        headers: {'x-custom': '42'}
       });
 
-      expect(fetchMock).toHaveBeenCalledWith(
-        'https://api.realworld.io/api/test',
-        expect.objectContaining({
-          headers: expect.objectContaining({
-            'content-type': 'application/json',
-            accept: 'application/json',
-            Authorization: 'Bearer token'
-          })
-        })
+      expect(sentHeaders(fetchMock).get('x-custom')).toBe('42');
+      expect(sentHeaders(fetchMock).get('content-type')).toBe(
+        'application/json'
       );
     });
 
     it('should throw error when response is not ok', async () => {
       fetchMock.mockResolvedValue(
-        mockResponse({message: 'Error message'}, false)
+        mockResponse({errors: {email: ['has already been taken']}}, false)
       );
 
-      await expect(fetchJSON('test')).rejects.toThrow('Error message');
+      await expect(fetchJSON('test')).rejects.toThrow(
+        'email has already been taken'
+      );
+    });
+
+    it('should join multiple field errors into one message', async () => {
+      fetchMock.mockResolvedValue(
+        mockResponse(
+          {
+            errors: {
+              email: ['has already been taken', 'is invalid'],
+              password: ['is too short (least is 8 characters)']
+            }
+          },
+          false
+        )
+      );
+
+      await expect(fetchJSON('test')).rejects.toThrow(
+        /^email has already been taken; email is invalid; password is too short \(least is 8 characters\)$/
+      );
+    });
+
+    it('should prefer message over errors when both present', async () => {
+      fetchMock.mockResolvedValue(
+        mockResponse(
+          {message: 'unauthorized', errors: {token: ['is expired']}},
+          false
+        )
+      );
+
+      await expect(fetchJSON('test')).rejects.toThrow(
+        /^unauthorized$/
+      );
     });
   });
 
@@ -141,6 +177,28 @@ describe('http utilities', () => {
           body: JSON.stringify(data)
         })
       );
+    });
+  });
+
+  describe('authorization', () => {
+    it('should attach Authorization header after token provider registered', async () => {
+      setTokenGetter(() => 'tok123');
+      fetchMock.mockResolvedValue(mockResponse({data: 'test'}));
+
+      await get('articles');
+
+      expect(sentHeaders(fetchMock).get('authorization')).toBe(
+        'Token tok123'
+      );
+    });
+
+    it('should not attach Authorization when no token', async () => {
+      setTokenGetter(() => undefined);
+      fetchMock.mockResolvedValue(mockResponse({data: 'test'}));
+
+      await get('articles');
+
+      expect(sentHeaders(fetchMock).get('authorization')).toBeNull();
     });
   });
 });

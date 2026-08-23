@@ -1,8 +1,10 @@
 # Painless
 
-> A lightweight React framework for building modern web applications.
+> A lightweight React SPA template — zero SSR, zero-runtime CSS, type-safe.
 
 English | [简体中文](./README-zh_CN.md)
+
+Painless is a [RealWorld](https://github.com/gothinkster/realworld) conduit demo built as a **template**: clone it, delete what you don't need, and you have a production-shaped client-side React app — routing with data loading and login guards, an HTTP client, a typed mock pipeline, and a test suite — without buying into any framework runtime.
 
 ## Why Painless?
 
@@ -43,134 +45,284 @@ Painless produces standard static assets. It does not couple to any specific dep
 
 ## Tech Stack
 
-- [React](https://react.dev) - UI Library
-- [Native Router](https://github.com/native-router/react) - Lightweight routing
+- [React](https://react.dev) - UI library
+- [@native-router/react](https://github.com/native-router/react) - Lightweight client-side routing with data loading and prefetching
+- [react-toolroom](https://github.com/wmzy/react-toolroom) - Async data hooks (`react-toolroom/async`)
+- [fetch-fun](https://github.com/wmzy/fetch-fun) - Pipeable functional fetch toolkit
+- [react-f0rm](https://github.com/wmzy/react-f0rm) - Event-driven form library
 - [haze-ui](https://github.com/wmzy/haze-ui) - Component library with zero-runtime CSS
 - [react-use-control](https://github.com/wmzy/react-use-control) - Controlled/uncontrolled state in one line
-- [react-f0rm](https://github.com/wmzy/react-f0rm) - Event-driven form library
 - [Linaria](https://github.com/callstack/linaria) - Zero-runtime CSS-in-JS
-- [Vite](https://vitejs.dev) - Next generation frontend tooling
+- [Vite](https://vitejs.dev) - Build tooling
 - TypeScript - Type safety
+- [Vitest](https://vitest.dev) - Test framework
 
 ## Features
 
-### Zero-Configuration Routing
+All examples below are taken from (or lightly adapted from) the actual source in `src/`.
+
+### Flat, Config-Driven Routing
+
+Routes are a plain module-level object: each route owns a `path`, a lazy `component`, and an optional async `data` loader that runs before the view renders.
 
 ```tsx
-// routes.ts
-export const routes = [
-  {
-    path: '/',
-    component: () => import('./pages/Home')
-  },
-  {
-    path: '/users',
-    component: () => import('./pages/Users'),
-    data: fetchUsers // Auto data fetching
-  }
-];
+// src/views/index.tsx
+import {View, HistoryRouter as Router} from '@native-router/react';
+
+const routes = {
+  component: () => import('./Layout'),
+  children: [
+    {
+      path: '/',
+      data: ({location}) => {
+        const query = decode(location.search.slice(1));
+        return articleService.query(query);
+      },
+      component: () => import('./Home')
+    },
+    {
+      path: '/article/:title',
+      data: ({params: {title}}) => articleService.findByTitle(title!),
+      component: () => import('./Article')
+    },
+    // ... /help, /about, /login, /register
+    {path: '/editor', beforeLoad: requireLogin, component: () => import('./Editor')},
+    {path: '/editor/:slug', beforeLoad: requireLogin, component: () => import('./Editor')}
+  ]
+} as Route;
+
+export default function App() {
+  return (
+    <Router routes={routes} errorHandler={(e) => <RouterError error={e} />}>
+      <View />
+      <Loading />
+    </Router>
+  );
+}
 ```
 
-### Type-Safe Data Fetching
+Views read route data with a typed `useData<T>()` and react to URL changes with `useMatched()`. In `Home`, the tag filter and pagination live entirely in the query string — the route declares a `search` schema (any Standard Schema — zod/valibot/…; here a hand-written one), the loader receives the coerced `ctx.search`, and changing the search re-runs the loader, so the URL is the state:
 
 ```tsx
-// services/user.ts
-interface User {
-  id: number;
-  name: string;
-}
+// src/views/Home/index.tsx
+import {useData, useSearch} from '@native-router/react';
 
-export async function fetchUsers(): Promise<User[]> {
-  return get('/api/users');
-}
-
-// pages/Users.tsx
-import { useData } from '@native-router/react';
-
-export default function Users() {
-  const users = useData<User[]>();
-  return <ul>{users.map(u => <li>{u.name}</li>)}</ul>;
+export default function Home() {
+  const {articles, articlesCount} = useData<ArticlePage>() ?? {articles: [], articlesCount: 0};
+  const {tag, offset, limit} = useSearch(homeSearchSchema);
+  // ...
 }
 ```
 
-### Built-in Mock
+### Login Guard via `beforeLoad`
+
+`@native-router` ships route guards: `beforeLoad` runs before the view resolves — return a path string and the router redirects during resolve, before the navigation commits (the URL never lands on the guarded route):
+
+```tsx
+// src/views/index.tsx
+const requireLogin: Route['beforeLoad'] = () => {
+  if (!getCurrentUser()) return '/login';
+};
+
+// routes
+{path: '/editor', beforeLoad: requireLogin, component: () => import('./Editor')},
+{path: '/editor/:slug', beforeLoad: requireLogin, component: () => import('./Editor')}
+```
+
+Prefetching runs the same guard — hovering a `PrefetchLink` to a guarded route while logged out just resolves the redirect target, no side effects.
+
+### Hover Prefetching with `PrefetchLink`
+
+`PrefetchLink` prefetches the target route's data **and** view chunk on hover (or focus). The template's `PreviewLink` wraps it and additionally renders a scaled-down live preview of the prefetched view:
+
+```tsx
+// src/components/PreviewLink.tsx
+import {PrefetchLink} from '@native-router/react';
+
+export default function PreviewLink({children, ...props}) {
+  const [visible, setVisible] = useControl<boolean>(undefined, false);
+  return (
+    <PrefetchLink {...props}>
+      <span
+        onMouseEnter={() => setVisible(true)}
+        onMouseLeave={() => setVisible(false)}
+      >
+        {children}
+      </span>
+      <Preview visible={visible} />
+    </PrefetchLink>
+  );
+}
+```
+
+> Note: prefetching runs route `beforeLoad` guards too — hovering a link to a guarded route while logged out just resolves the redirect target, no side effects.
+
+### A Project-Level `useQuery` Preset
+
+Instead of adopting a data-fetching library, the template composes `react-toolroom/async` primitives (`useInjectable`, `useCache`, `useRun`, `useResult`, `useLoading`, `useError`) into **one** project-owned hook — demonstrating the idea that each project should shape its own query layer:
 
 ```ts
-// services/user.ts (Mock)
-interface User {
-  id: number;
-  name: string;
+// src/util/useQuery.ts (signature)
+function useQuery<F extends AsyncFunc>(
+  fn: F,
+  args?: Parameters<F>,
+  opts?: QueryOptions<R<F>>
+): QueryResult<R<F> | undefined>;
+
+type QueryOptions<T> = {
+  cache?: QueryCache;   // defaults to the shared module-level queryCache (cacheTime 10s)
+  staleTime?: number;   // defaults to 2000ms
+  initData?: T;         // initial data to avoid undefined on first render
+  mock?: MockConfig;    // {schema, key} — hooks the DevTool mock panel
+};
+
+type QueryResult<T> = {
+  data: T;
+  loading: boolean;
+  error: Error | undefined;
+  stale: boolean;
+  refetch: () => void;  // drops the cache entry for the current args and re-runs
+};
+```
+
+Real usage, from the tag sidebar and the comment list:
+
+```tsx
+// src/views/Home/Tags.tsx
+const {data: tags, loading, error, stale} = useQuery(articleService.fetchTags, [], {
+  initData: [],
+  mock: {schema: tagListSchema, key: 'tagList'}
+});
+
+// src/views/Article/CommentList.tsx
+const {data: comments, loading, error, refetch} = useQuery(
+  articleService.fetchCommentsByTitle,
+  [title]
+);
+```
+
+### Optimistic Favorite / Follow
+
+Mutations update the UI first, then reconcile with the server: on success the server's authoritative response overwrites the local override; on failure the override rolls back to the pre-click value. The same pattern powers favorite buttons in `Home` and favorite/follow in `Article`:
+
+```tsx
+// src/views/Article/index.tsx
+const [favOverride, setFavOverride] = useState<FavOverride | null>(null);
+const favorited = favOverride?.favorited ?? article.favorited;
+
+const toggleFavorite = () => {
+  if (!requireAuth()) return;
+  const prev = {favorited, favoritesCount};
+  const next = {
+    favorited: !favorited,
+    favoritesCount: favorited ? favoritesCount - 1 : favoritesCount + 1
+  };
+  setFavOverride(next);
+  articleService
+    .favoriteArticle(article.slug, next.favorited)
+    .then((a) =>
+      setFavOverride({favorited: a.favorited, favoritesCount: a.favoritesCount})
+    )
+    .catch(() => setFavOverride(prev)); // rollback — server state never changed
+};
+```
+
+After posting a comment, the form is reset and the subtree is remounted via an incremented `key` (the reliable way to clear an uncontrolled `Textarea`), and the same counter tells `CommentList` to `refetch` past the cache.
+
+### A Typed HTTP Client on `fetch-fun`
+
+`src/util/http.ts` builds a pipeable client: base URL (`VITE_API_URL` override, default `https://api.realworld.io/api/`), JSON headers, auth injection, and a single error mapper that flattens RealWorld error bodies into readable messages — `message` first, otherwise the `errors` object joined into text:
+
+```ts
+// src/util/http.ts
+export function setTokenGetter(getter: TokenGetter) {
+  tokenGetter = getter;
 }
 
-/**
- * @mock {
- *   "users|5-10": [
- *     { "id": "@id", "name": "@name" }
- *   ]
- * }
- */
-export async function fetchUsers(): Promise<User[]> {
-  return get('/api/users');
+const client = ff
+  .create({baseUrl: BASE_URL})
+  .pipe(ff.header, 'content-type', 'application/json')
+  .pipe(ff.header, 'accept', 'application/json')
+  .pipe(ff.use, ff.withAuth(() => tokenGetter() ?? '', 'Token'))
+  .pipe(ff.use, stripEmptyAuth) // never send an empty Authorization header
+  .pipe(
+    ff.mapError,
+    (e: unknown) => (e instanceof ff.HTTPError ? new Error(errorText(e.data)) : e)
+  );
+```
+
+Services are thin functions over `get`/`post`/`put`/`del`:
+
+```ts
+// src/services/article.ts
+export function fetchTags(): Promise<string[]> {
+  return http.get<{tags: string[]}>('tags').then(({tags}) => tags);
 }
 ```
+
+### Auth with Token Injection
+
+`src/services/auth.ts` persists the current user to `localStorage` (`painless.user`), restores it on load, and registers a token supplier with the HTTP layer — so login/logout never requires rebuilding the client pipeline. `src/index.tsx` imports `@/services/auth` for its side effect, ensuring even the first route-`data` request after a cold refresh carries `Authorization`:
+
+```ts
+// src/services/auth.ts
+let currentUser: User | null = readStoredUser();
+http.setTokenGetter(() => currentUser?.token);
+
+export function getCurrentUser(): User | null;
+export function onAuthChange(handler: (user: User | null) => void): () => void;
+export function login(email: string, password: string): Promise<User>;
+export function register(username: string, email: string, password: string): Promise<User>;
+export function logout(): void;
+```
+
+`Layout` subscribes with `onAuthChange` and swaps the nav between `Login / Register` and `username / New Article / Logout`.
+
+### Typed Mock Data + DevTool Panel
+
+Domain types carry JSON Schema annotations as JSDoc tags. At build time, `rollup-plugin-type-as-json-schema` compiles them into `.schema` files; in dev, `src/util/faker.ts` feeds them to `json-schema-faker` with the `@faker-js/faker` instance (passed via `options.extensions`, as required by json-schema-faker 0.6):
+
+```ts
+// src/types/base.ts
+/**
+ * @faker {"lorem.sentence": [20]}
+ */
+export type Sentence = string;
+
+/**
+ * @faker {"lorem.paragraphs": [5]}
+ */
+export type Paragraphs = string;
+
+// src/types/index.ts
+export type Article = {
+  title: Sentence;
+  body: Paragraphs;
+  slug: Slug;
+  // ...
+};
+```
+
+Two integration points:
+
+- Route loaders: `mockViewData(fn, schema, key)` wraps a route `data` function.
+- Component queries: `useQuery`'s `mock: {schema, key}` option.
+
+Both register with the **DevTool** panel (dev-only), where each dataset can be switched between `empty` (mock only when the API errors or returns nothing) and `always`.
 
 ### Zero-Runtime CSS
 
-```tsx
-// components/Button.tsx
-import { css } from '@linaria/core';
-
-const styles = css\`
-  button {
-    padding: 8px 16px;
-    border-radius: 4px;
-    background: #0070f3;
-    color: white;
-    border: none;
-    cursor: pointer;
-  }
-  
-  button:hover {
-    background: #0050a0;
-  }
-\`;
-
-export function Button({ children }) {
-  return <button class={styles}>{children}</button>;
-}
-```
-
-### Clean Component State with `useControl`
-
-Every stateful component in React faces the same problem: should it be controlled (parent owns state) or uncontrolled (component owns state)? The traditional solution requires separate `value`/`defaultValue`/`onChange` props, internal `useState`, `useEffect` sync, and conditional logic.
-
-`react-use-control` collapses all of that into one line:
+Linaria styles are tagged template literals extracted at build time by `@wyw-in-js/vite` — nothing ships to the browser but class names:
 
 ```tsx
-import { useControl } from 'haze-ui';
+// src/views/Home/index.tsx
+import {css} from '@linaria/core';
 
-function Toggle({ open }: { open?: Control<boolean> | boolean }) {
-  const [isOpen, setOpen] = useControl(open, false);
-  return <button onClick={() => setOpen(!open)}>{isOpen ? 'Close' : 'Open'}</button>;
-}
+// Push the favorite button to the right end of the author row
+const pushRight = css`
+  margin-left: auto;
+`;
 ```
-
-That's it. The component works in both modes:
-
-```tsx
-// Uncontrolled — component owns state
-<Toggle />
-
-// Controlled — parent owns state
-const [open, setOpen] = useControl(false);
-<Toggle open={open} />
-```
-
-**How it works:** `useControl(prop, default)` returns `[value, setValue, control]` — same shape as `useState`, plus a `Control` object to pass down. If the prop is a `Control`, state is shared with the parent. If it's a plain value, it becomes the initial value. If omitted, the default is used.
-
-**In this project**, `useControl` is used for component-internal state (DevTool panel open/close, PreviewLink hover visibility). Form inputs use `react-f0rm` directly — form state is the form library's responsibility, not the component's.
-
-**Key principle:** `useControl` is for exposing internal state to external components. If a library already manages the state (like react-f0rm for forms), don't wrap it — let the library do its job.
 
 ## Getting Started
 
@@ -191,75 +343,56 @@ pnpm start
 ```
 painless/
 ├── src/
-│   ├── components/     # Reusable UI components
-│   ├── views/          # Page components
-│   ├── services/       # API & data fetching
-│   ├── types/          # TypeScript types
-│   ├── util/           # Utility functions
-│   └── index.tsx       # App entry point
+│   ├── components/     # Reusable UI: FieldError, Loading, RouterError,
+│   │                   # PreviewLink + Preview, Popover, DevTool (dev-only mock panel)
+│   ├── services/       # API layer over http: article.ts, auth.ts
+│   ├── types/          # Domain types; base.ts carries JSON Schema annotations
+│   ├── typings/        # Ambient declarations (vite.d.ts, schema.d.ts)
+│   ├── util/           # http.ts, useQuery.ts, faker.ts
+│   ├── views/          # index.tsx (router + routes), Layout/, Home/, Article/,
+│   │                   # Editor/, Login/, Register/, About/, Help/
+│   └── index.tsx       # Entry point
 ├── public/             # Static assets
-├── package.json
-└── vite.config.ts      # Vite configuration
+├── .github/workflows/  # CI (lint, test, build) and Pages deploy
+├── vite.config.mts     # Vite configuration (@ alias, Linaria, schema plugin)
+└── package.json
 ```
 
 ## Scripts
 
 | Command | Description |
 |---------|-------------|
-| `pnpm start` | Start development server |
+| `pnpm start` | Start development server (Vite) |
 | `pnpm build` | Build for production |
-| `pnpm preview` | Preview production build |
-| `pnpm lint` | Run ESLint |
+| `pnpm serve` | Preview the production build (`vite preview`) |
+| `pnpm lint` | Run ESLint with auto-fix |
+| `pnpm lint:ci` | Run ESLint without auto-fix (used in CI) |
+| `pnpm test` | Run tests in watch mode (Vitest) |
+| `pnpm test:run` | Run tests once (CI mode) |
+| `pnpm test:ui` | Run tests in the Vitest UI |
+| `pnpm coverage` | Run tests with coverage |
+| `pnpm deploy` | Build the demo and publish to GitHub Pages |
+| `pnpm commit` | Run lint-staged, then an interactive commitizen prompt |
 
-## Native Router API
+CI runs on every push/PR to `main`: `lint:ci` → `test:run` → `build`.
 
-### Router Props
+## Testing
 
-```tsx
-<Router
-  routes={routes}
-  baseUrl="/app"
-  onNavigate={(to, from) => console.log(to)}
-/>
+Tests use Vitest with Testing Library. Component tests (`Home`, `Editor`, `Article`, `PreviewLink`, `Loading`, `RouterError`) mock the service layer rather than the network, so they exercise real view logic; unit tests cover `useQuery`, `http`, `faker`, and `auth` directly.
+
+```bash
+pnpm test:run                      # all tests
+pnpm test:run -- src/util          # a directory
 ```
-
-### Link Component
-
-```tsx
-import { Link } from '@native-router/react';
-
-<Link to="/users">Users</Link>
-<Link to="/users/1" prefetch>Prefetch on hover</Link>
-```
-
-### Data Hooks
-
-```tsx
-import { useData, useLoading, useError } from '@native-router/react';
-
-function Page() {
-  const data = useData<MyData>();
-  const loading = useLoading();
-  const error = useError();
-  
-  if (loading) return <Spinner />;
-  if (error) return <Error error={error} />;
-  
-  return <div>{data}</div>;
-}
-```
-
-## Migration from Create React App
-
-1. Replace `react-scripts` with Vite
-2. Move from `react-router` to `@native-router/react`
-3. Replace CSS-in-JS with Linaria
 
 ## Related Projects
 
 - [@native-router/react](https://github.com/native-router/react) - Routing
-- [react-toolroom](https://github.com/wmzy/react-toolroom) - React utilities
-- [Linaria](https://github.com/callstack/linaria) - CSS-in-JS
+- [react-toolroom](https://github.com/wmzy/react-toolroom) - Async data hooks
+- [fetch-fun](https://github.com/wmzy/fetch-fun) - Functional fetch toolkit
+- [react-f0rm](https://github.com/wmzy/react-f0rm) - Event-driven forms
+- [haze-ui](https://github.com/wmzy/haze-ui) - Component library
+- [react-use-control](https://github.com/wmzy/react-use-control) - Controlled/uncontrolled state
 
 ## Contributing
 
@@ -267,4 +400,4 @@ Contributions are welcome! Please read our [contributing guide](./CONTRIBUTING.m
 
 ## License
 
-MIT
+[ISC](https://choosealicense.com/licenses/isc/)

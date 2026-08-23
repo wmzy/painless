@@ -1,22 +1,15 @@
 import {useState} from 'react';
-import {Form, useForm, Field, useFormContext, useError} from 'react-f0rm';
+import {Form, useForm, Field} from 'react-f0rm';
 import {Card, Title, Input, Text, Alert} from 'haze-ui';
 import {useRouter, Link} from '@native-router/react';
-import {css} from '@linaria/core';
 import {navigate} from '@native-router/core';
 
 import * as auth from '@/services/auth';
-
-function FieldError({name}: {name: string}) {
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-  const form = useFormContext();
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-  const error = useError(form, name);
-  return error ? <Text className={css`color: red; font-size: 0.875em;`}>{error}</Text> : null;
-}
+import FieldError from '@/components/FieldError';
 
 export default function Register() {
-  const form = useForm();
+  type RegisterValues = {username: string; email: string; password: string};
+  const form = useForm<RegisterValues>();
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
 
@@ -33,35 +26,37 @@ export default function Register() {
     <Card>
       <Title>Register</Title>
       {error && <Alert variant='danger'>{error}</Alert>}
-      {/* eslint-disable-next-line @typescript-eslint/no-misused-promises */}
-      <Form form={form} onValidSubmit={handleSubmit} aria-label='Register form'>
+      <Form form={form} onSubmit={handleSubmit} aria-label='Register form'>
         <Field
+          form={form}
           name='username'
           as={Input}
           placeholder='Username'
-          validate={(v: unknown) => (!v ? 'Username is required' : undefined)}
+          validate={(v: string) => (!v ? 'Username is required' : undefined)}
         />
         <FieldError name='username' />
         <Field
+          form={form}
           name='email'
           as={Input}
           type='email'
           placeholder='Email'
-          validate={(v: unknown) => {
+          validate={(v: string) => {
             if (!v) return 'Email is required';
-            if (!/\S+@\S+\.\S+/.test(v as string)) return 'Invalid email';
+            if (!/\S+@\S+\.\S+/.test(v)) return 'Invalid email';
             return undefined;
           }}
         />
         <FieldError name='email' />
         <Field
+          form={form}
           name='password'
           as={Input}
           type='password'
           placeholder='Password'
-          validate={(v: unknown) => {
+          validate={(v: string) => {
             if (!v) return 'Password is required';
-            if ((v as string).length < 8) return 'Password must be at least 8 characters';
+            if (v.length < 8) return 'Password must be at least 8 characters';
             return undefined;
           }}
         />

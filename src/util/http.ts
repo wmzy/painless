@@ -5,17 +5,68 @@ const BASE_URL: string =
   'https://api.realworld.io/api/';
 
 // 基础客户端：统一 baseUrl 与 JSON 头；mapError 保持既有错误契约
-// （非 2xx 抛 Error(body.message)，调用方依赖 e.message 呈现错误文案）。
+// （非 2xx 抛 Error(文案)，调用方依赖 e.message 呈现错误文案）。
+// RealWorld 非 2xx 错误体是 {errors: {field: string[]}}（如 422
+// {"errors":{"email":["has already been taken"]}}}），也有 {message} 形状：
+// 优先取 message，否则把 errors 拼成可读文案。
+function errorText(data: unknown): string {
+  const body = data as {message?: unknown; errors?: unknown} | undefined;
+  if (typeof body?.message === 'string' && body.message) return body.message;
+  if (body?.errors && typeof body.errors === 'object') {
+    const parts: string[] = [];
+    for (const [field, messages] of Object.entries(body.errors)) {
+      for (const m of Array.isArray(messages) ? messages : [messages]) {
+        if (typeof m === 'string') parts.push(`${field} ${m}`);
+      }
+    }
+    if (parts.length) return parts.join('; ');
+  }
+  return '';
+}
+
+// ---- 动态 token 注入 ------------------------------------------------------
+// auth 服务依赖本模块发请求，本模块不能反向 import auth（会循环依赖）。
+// 改为导出注册口：auth 在模块加载时注册 token 供应商，登录/登出只换变量，
+// client 管道无需重建。
+export type TokenGetter = () => string | undefined;
+
+let tokenGetter: TokenGetter = () => undefined;
+
+export function setTokenGetter(getter: TokenGetter) {
+  tokenGetter = getter;
+}
+
+// fetch-fun 的 withAuth 每次请求都会无条件设置 Authorization（无凭据时
+// 会产生 "Token " 空头）。在其内侧剥掉无凭据的 Authorization，保证
+// 未登录的请求不带该头。经 withAuth 后该头必为 `${scheme} ${credentials}`
+// 形态，按「scheme 之后的凭据段」判空。
+const stripEmptyAuth: ff.MiddlewareConfig = {
+  name: 'painless:strip-empty-auth',
+  inner: 'builtin:auth',
+  middleware: (f) => (input, init) => {
+    const headers = new Headers(init?.headers);
+    const value = headers.get('authorization');
+    if (value !== null) {
+      const credentials = value.trim().split(/\s+/).slice(1).join(' ');
+      if (!credentials) {
+        headers.delete('authorization');
+        return f(input, {...init, headers});
+      }
+    }
+    return f(input, init);
+  }
+};
+
 const client = ff
   .create({baseUrl: BASE_URL})
   .pipe(ff.header, 'content-type', 'application/json')
   .pipe(ff.header, 'accept', 'application/json')
+  // RealWorld 规范用 `Token <token>` 前缀；供应商每次请求重新求值
+  .pipe(ff.use, ff.withAuth(() => tokenGetter() ?? '', 'Token'))
+  .pipe(ff.use, stripEmptyAuth)
   .pipe(
     ff.mapError,
-    (e: unknown) =>
-      e instanceof ff.HTTPError
-        ? new Error((e.data as {message?: string} | undefined)?.message)
-        : e
+    (e: unknown) => (e instanceof ff.HTTPError ? new Error(errorText(e.data)) : e)
   );
 
 // fetch-fun 的 Options 是 RequestInit 的超集，init 的其余字段直接合入，

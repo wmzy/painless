@@ -1,33 +1,39 @@
 import {css} from '@linaria/core';
-import {
-  createMemoryCacheProvider,
-  useCache,
-  useError,
-  useInjectable,
-  useLoading,
-  useResult,
-  useRun
-} from 'react-toolroom/async';
+import {navigate} from '@native-router/core';
+import {useMatched, useSearch} from '@native-router/react';
+import {encode} from 'qss';
 import {TagGroup, TagGroupItem, Spinner, Alert, Title} from 'haze-ui';
 
-import {useMock} from '@/components/DevTool';
+import {useQuery} from '@/util/useQuery';
 import * as articleService from '@/services/article';
+import {homeSearchSchema} from '@/types/search';
 import {tagListSchema} from '@/types/index.schema';
 
-const cache = createMemoryCacheProvider<any, any[]>({
-  cacheTime: 10000,
-  hash: (k: any[]) => JSON.stringify(k)
-});
+const tagButton = css`
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+`;
+
+const staleAside = css`
+  opacity: 0.5;
+`;
 
 export default function Tags() {
-  const fetchTags = useInjectable(articleService.fetchTags);
-  useMock(fetchTags, tagListSchema, 'tagList', cache);
-  const isStale = useCache(fetchTags, cache, 2000);
-  const tags = useResult(fetchTags, []);
-  const loading = useLoading(fetchTags);
-  const error = useError(fetchTags);
+  const {data: tags, loading, error, stale} = useQuery(articleService.fetchTags, [], {
+    initData: [],
+    mock: {schema: tagListSchema, key: 'tagList'}
+  });
 
-  useRun(fetchTags, []);
+  const {router} = useMatched();
+  const {tag: activeTag} = useSearch(homeSearchSchema);
+
+  // 点 tag 写入 search（由 Home 的 route loader 重新查询），再点同一个则清除
+  const toggleTag = (t: string) => {
+    void navigate(router, activeTag === t ? '/' : `/?${encode({tag: t})}`);
+  };
 
   if (loading) {
     return (
@@ -46,18 +52,19 @@ export default function Tags() {
   }
 
   return (
-    <aside
-      x-class={
-        isStale &&
-        css`
-          opacity: 0.5;
-        `
-      }
-    >
+    <aside className={stale ? staleAside : undefined}>
       <Title level={3}>Popular Tags</Title>
       <TagGroup>
-        {tags.map((t) => (
-          <TagGroupItem key={t}>{t}</TagGroupItem>
+        {tags.map((t, i) => (
+          <button
+            key={`${t}-${i}`}
+            type='button'
+            aria-pressed={activeTag === t}
+            className={tagButton}
+            onClick={() => toggleTag(t)}
+          >
+            <TagGroupItem>{t}</TagGroupItem>
+          </button>
         ))}
       </TagGroup>
     </aside>
