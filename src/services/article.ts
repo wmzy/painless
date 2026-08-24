@@ -85,3 +85,17 @@ export function addComment(
     )
     .then(({comment}) => comment);
 }
+
+// 发布/编辑文章：slug 缺省走新建（POST articles），否则更新指定文章
+//（PUT articles/{slug}）。RealWorld 契约请求体 {article}、响应 {article}，
+// 统一解包返回实体，调用方拿服务端权威值（含最终 slug）做后续跳转/失效。
+export function saveArticle(
+  slug: string | undefined,
+  article: Pick<Article, 'title' | 'description' | 'body' | 'tagList'>,
+  signal?: AbortSignal
+): Promise<Article> {
+  const request = slug
+    ? http.put<{article: Article}>(`articles/${slug}`, {article}, {signal})
+    : http.post<{article: Article}>('articles', {article}, {signal});
+  return request.then(({article: saved}) => saved);
+}

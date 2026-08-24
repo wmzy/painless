@@ -3,6 +3,9 @@
 // react-f0rm 0.5.0 + haze-ui 1.8.0 接入批：422 拒绝值改用鸭子形状普通对象
 // （http 层错误升级为 fetch-fun HTTPError 后不再有可构造的 ApiError 类），
 // 断言走 FormItem 渲染的字段错误 span 与 aria 接线。
+// 提交链路 useMutation 批：提交走 services/article.saveArticle（内部仍
+// http.post/put，mock 层不变），成功经 invalidates 失效共享 queryCache 的
+// ['home']/['article'] 前缀条目——用 queryCache.set 预置条目断言被删。
 import type {Article} from '@/types';
 
 import {describe, it, expect, vi, beforeEach} from 'vitest';
@@ -31,6 +34,8 @@ vi.mock('@native-router/core', () => ({navigate: vi.fn()}));
 import {navigate} from '@native-router/core';
 
 import * as http from '@/util/http';
+import {homeCacheArgs, articleCacheArgs} from '@/util/loaderCache';
+import {queryCache} from '@/util/useQuery';
 
 import Editor from './index';
 
@@ -80,6 +85,8 @@ beforeEach(() => {
   putMock.mockReset();
   navigateMock.mockReset();
   state.article = undefined;
+  // 模块级共享缓存逐用例清空，防止 invalidates 断言被上一用例残留串场
+  queryCache.clear();
 });
 
 describe('Editor', () => {
@@ -101,15 +108,18 @@ describe('Editor', () => {
     fireEvent.click(submitting);
     expect(postMock).toHaveBeenCalledTimes(1);
 
-    pending.resolve(undefined);
+    // saveArticle 按契约解包 {article}，mock 响应给同形载荷
+    pending.resolve({article: makeArticle({slug: 'new-title-1'})});
     const restored = asButton(await screen.findByRole('button', {name: 'Publish Article'}));
     expect(restored.disabled).toBe(false);
     expect(postMock).toHaveBeenCalledTimes(1);
     expect(navigateMock).toHaveBeenCalledWith(state.router, '/');
-    expect(postMock).toHaveBeenCalledWith(
+    // saveArticle 透传尾参 signal（未用时为 undefined），按调用元组断言
+    // payload 本体（同 tagList 用例的取位方式）
+    expect(postMock.mock.calls[0]?.slice(0, 2)).toEqual([
       'articles',
       expect.objectContaining({article: expect.objectContaining({title: 'New title'})})
-    );
+    ]);
   });
 
   it('编辑文章：提交中按钮禁用并显示 Updating...，走 http.put', async () => {
@@ -125,19 +135,19 @@ describe('Editor', () => {
     const submitting = asButton(await screen.findByRole('button', {name: 'Updating...'}));
     expect(submitting.disabled).toBe(true);
     expect(putMock).toHaveBeenCalledTimes(1);
-    expect(putMock).toHaveBeenCalledWith(
+    expect(putMock.mock.calls[0]?.slice(0, 2)).toEqual([
       'articles/old-title-1',
       expect.objectContaining({article: expect.objectContaining({tagList: ['existing'], title: 'Old title'})})
-    );
+    ]);
 
-    pending.resolve(undefined);
+    pending.resolve({article: makeArticle()});
     const restored = asButton(await screen.findByRole('button', {name: 'Update Article'}));
     expect(restored.disabled).toBe(false);
     expect(navigateMock).toHaveBeenCalled();
   });
 
   it('tagList：TagInput 录入的标签进入提交 payload', async () => {
-    postMock.mockResolvedValueOnce(undefined);
+    postMock.mockResolvedValueOnce({article: makeArticle()});
     render(<Editor />);
 
     fillRequired();
@@ -151,8 +161,7 @@ describe('Editor', () => {
     expect(postMock).toHaveBeenCalledTimes(1);
     expect(postMock.mock.calls[0]?.[1]).toEqual(
       expect.objectContaining({article: expect.objectContaining({tagList: ['react']})})
-    );
-  });
+    );  });
 
   it('校验失败：展示字段错误且不发请求，按钮恢复可用', async () => {
     render(<Editor />);
@@ -204,6 +213,63 @@ describe('Editor', () => {
     expect(button.disabled).toBe(false);
     // 全部错误已回填字段：顶部 Alert 不显示 e.message 整句
     expect(screen.queryByText('title has already been taken')).toBeNull();
+    expect(navigateMock).not.toHaveBeenCalled();
+  });
+
+  // 提交链路 useMutation 化：成功经 invalidates 失效共享 queryCache 的
+  // ['home']/['article'] 前缀条目——否则 navigate('/') 后 Home / Article
+  // 的 loader 在 staleTime 内新鲜命中旧缓存，新文章 2 秒内不出现
+  it('发布成功：navigate 前失效 home/article 前缀缓存条目', async () => {
+    // 预置与 loader 同 key 的缓存条目（homeCacheArgs / articleCacheArgs
+    // 与 views/index.tsx 的 withCache(['home'])/['article'] 寻址同形）
+    queryCache.set(homeCacheArgs({offset: 0, limit: 10}), {articles: [], articlesCount: 0});
+    queryCache.set(homeCacheArgs({tag: 'react', offset: 0, limit: 10}), {articles: [], articlesCount: 0});
+    queryCache.set(articleCacheArgs('old-title-1'), makeArticle());
+    postMock.mockResolvedValueOnce({article: makeArticle({slug: 'new-title-1'})});
+    render(<Editor />);
+
+    fillRequired();
+    fireEvent.click(screen.getByRole('button', {name: 'Publish Article'}));
+
+    // await mutate → invalidates 已在其成功分支执行 → 才 navigate
+    await screen.findByRole('button', {name: 'Publish Article'});
+    expect(queryCache.peek!(homeCacheArgs({offset: 0, limit: 10}))).toBeUndefined();
+    expect(queryCache.peek!(homeCacheArgs({tag: 'react', offset: 0, limit: 10}))).toBeUndefined();
+    expect(queryCache.peek!(articleCacheArgs('old-title-1'))).toBeUndefined();
+    expect(navigateMock).toHaveBeenCalledWith(state.router, '/');
+  });
+
+  it('编辑成功：同样失效 home/article 前缀缓存条目', async () => {
+    state.article = makeArticle();
+    queryCache.set(homeCacheArgs({offset: 0, limit: 10}), {articles: [], articlesCount: 0});
+    queryCache.set(articleCacheArgs('old-title-1'), makeArticle());
+    putMock.mockResolvedValueOnce({article: makeArticle({title: 'New title'})});
+    render(<Editor />);
+
+    fireEvent.click(screen.getByRole('button', {name: 'Update Article'}));
+
+    await screen.findByRole('button', {name: 'Update Article'});
+    expect(queryCache.peek!(homeCacheArgs({offset: 0, limit: 10}))).toBeUndefined();
+    expect(queryCache.peek!(articleCacheArgs('old-title-1'))).toBeUndefined();
+    expect(navigateMock).toHaveBeenCalled();
+  });
+
+  // 失败自动不失效（useMutation 契约）：422 被拒时缓存条目保留，错误仍
+  // 走 applyApiFieldErrors 回填字段下方
+  it('提交失败：不失效缓存条目，错误回填字段下方', async () => {
+    queryCache.set(homeCacheArgs({offset: 0, limit: 10}), {articles: [], articlesCount: 0});
+    postMock.mockRejectedValueOnce({
+      status: 422,
+      message: 'title has already been taken',
+      data: {errors: {title: ['has already been taken']}}
+    });
+    render(<Editor />);
+
+    fillRequired();
+    fireEvent.click(screen.getByRole('button', {name: 'Publish Article'}));
+
+    expect(await screen.findByText('has already been taken')).toBeDefined();
+    expect(queryCache.peek!(homeCacheArgs({offset: 0, limit: 10}))).toBeDefined();
     expect(navigateMock).not.toHaveBeenCalled();
   });
 });

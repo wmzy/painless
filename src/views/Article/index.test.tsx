@@ -240,6 +240,36 @@ describe('Article favorite / follow（写穿缓存 + refresh）', () => {
     expect(await screen.findByRole('button', {name: '❤ 7'})).toBeDefined();
   });
 
+  it('favorite 在飞期间 follow 已写穿 following：响应合并不回滚并发写', async () => {
+    const favPending = deferred();
+    // mock 实现须在点击前就位——点击即调用，晚挂实现会拿到 undefined
+    // 引发同步 TypeError
+    favoriteMock.mockReturnValueOnce(favPending.promise);
+    followMock.mockResolvedValueOnce({username: 'alice', image: '', following: true});
+    render(<ArticleView />);
+
+    // 先点 favorite（pending），再点 follow：follow 乐观写穿 + 服务端返回
+    // 依次把 author.following 换成 true
+    fireEvent.click(screen.getByRole('button', {name: '❤ 0'}));
+    fireEvent.click(screen.getByRole('button', {name: 'Follow alice'}));
+    expect(await screen.findByRole('button', {name: 'Unfollow alice'})).toBeDefined();
+
+    // favorite 随后成功：响应里的 author 是点击那一刻的旧值（following:
+    // false）——只取 favorited/favoritesCount 两个权威域字段，following
+    // 不能被旧响应回滚（对称于 toggleFollow 的 peek 合并防御）
+    favPending.resolve({...state.article, favorited: true, favoritesCount: 5});
+    expect(await screen.findByRole('button', {name: '❤ 5'})).toBeDefined();
+    expect(screen.getByRole('button', {name: 'Unfollow alice'})).toBeDefined();
+    // 缓存终值：follow 与 favorite 的并发写都保留
+    expect(
+      queryCache.peek!(articleCacheArgs('some-title-1'))?.value
+    ).toMatchObject({
+      favorited: true,
+      favoritesCount: 5,
+      author: {username: 'alice', following: true}
+    });
+  });
+
   it('follow：失败回滚文案并展示错误', async () => {
     followMock.mockRejectedValueOnce(new Error('follow failed'));
     render(<ArticleView />);

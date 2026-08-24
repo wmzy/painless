@@ -9,8 +9,10 @@ import {Card, Title, Input, Textarea, TagInput, Alert} from 'haze-ui';
 import {FormItem} from 'haze-ui/form';
 import {useRouter, useData} from '@native-router/react';
 import {navigate} from '@native-router/core';
+import {useMutation} from 'react-toolroom/async';
 
-import * as http from '@/util/http';
+import * as articleService from '@/services/article';
+import {queryCache} from '@/util/useQuery';
 import {required, applyApiFieldErrors} from '@/util/validators';
 
 // 表单值形状：validate 回调与 handleSubmit 的 values 都由此约束
@@ -47,22 +49,24 @@ export default function Editor() {
   });
   const isSubmitting = useIsSubmitting(form);
 
+  // 发布/编辑 → 声明式失效：提交成功后对共享 queryCache 做 ['home'] /
+  // ['article'] 前缀失效（provider 的 deleteWhere）。否则 navigate('/') 后
+  // Home / Article 的 loader 在 staleTime 内新鲜命中旧缓存，新发布/编辑
+  // 的文章 2 秒内不出现。失败自动不失效。同 Article 视图的 addComment。
+  const [save] = useMutation(articleService.saveArticle, {
+    invalidates: [[queryCache, 'home'], [queryCache, 'article']]
+  });
+
   const handleSubmit = async (values: {title: string; description: string; body: string; tagList: string[]}) => {
     try {
-      const payload = {
-        article: {
-          title: values.title,
-          description: values.description,
-          body: values.body,
-          tagList: values.tagList
-        }
-      };
-
-      if (article) {
-        await http.put(`articles/${article.slug}`, payload);
-      } else {
-        await http.post('articles', payload);
-      }
+      // await 保证 isSubmitting 覆盖整个提交 + 失效窗口，invalidates 在
+      // mutate 的成功分支里先于本 await 返回执行——navigate 时缓存必已失效
+      await save(article?.slug, {
+        title: values.title,
+        description: values.description,
+        body: values.body,
+        tagList: values.tagList
+      });
       void navigate(router, '/');
     } catch (e: unknown) {
       // 422 字段错误回填到对应字段下方，顶部 Alert 只兜非字段错误
@@ -131,12 +135,17 @@ export default function Editor() {
         {/* TagInput 的增删改经由 control 写回表单（string[] 直写，不再需要
             Field 时代的 eventToValue 恒等特判——那是给非 DOM onChange 事件的
             解包适配，control 通道没有此问题）。
-            注：TagInputProps 不透传 id（根元素是 div，haze-ui 1.8.0 仍如此），
-            FormItem 生成的字段 id 无处可挂；tagList 无前端校验，仅服务端
-            422 回填时错误 span 退化为无 aria 关联展示 */}
+            haze-ui ≥1.8.1：TagInput 把 id/aria-invalid/aria-describedby 转发
+            到内部可聚焦 input，字段 aria 链路与其它字段一致接通 */}
         <FormItem form={form} name='tagList'>
-          {({control}) => (
-            <TagInput value={control} placeholder='Add tags' />
+          {({id, errorId, invalid, control}) => (
+            <TagInput
+              id={id}
+              value={control}
+              placeholder='Add tags'
+              aria-invalid={invalid}
+              aria-describedby={invalid ? errorId : undefined}
+            />
           )}
         </FormItem>
         <button type='submit' disabled={isSubmitting}>

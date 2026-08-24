@@ -1,7 +1,7 @@
 // 项目级数据获取 preset（模板示范：每个项目可按自身理念定制这一层）。
-// 把 react-toolroom/async 的 useInjectable / useCache / useRun / useResult /
-// useLoading / useInitialLoading / useError / useRetry / useFocusRevalidate
-// 组合为单一 hook useQuery(fn, args, opts)，统一：
+// 把 react-toolroom/async 的 useInjectable / useCache / useRun /
+// useResultSelect / useLoading / useInitialLoading / useError / useRetry /
+// useFocusRevalidate 组合为单一 hook useQuery(fn, args, opts)，统一：
 // - 模块级共享内存缓存（cacheTime 默认 10000ms）；
 // - 陈旧标记（staleTime 默认 2000ms）——均对齐迁移前 Tags / CommentList
 //   手写组合的取值；
@@ -18,7 +18,7 @@
 // - loading 仅指初载（useInitialLoading，SWR 语义）：已有结果后的后台
 //   重拉不再置 true，已渲染内容不闪整屏 Spinner；任意 in-flight（含
 //   后台刷新）见 fetching（useLoading）。
-import {useCallback, type DependencyList} from 'react';
+import {useCallback, useRef, type DependencyList} from 'react';
 import {
   createMemoryCacheProvider,
   isAbortSignal,
@@ -30,7 +30,7 @@ import {
   useInjectable,
   useInitialLoading,
   useLoading,
-  useResult,
+  useResultSelect,
   useRetry,
   useRun
 } from 'react-toolroom/async';
@@ -43,6 +43,11 @@ type R<F extends AsyncFunc> = ReturnType<F> extends Promise<infer A> ? A : Retur
 
 const DEFAULT_CACHE_TIME = 10000;
 const DEFAULT_STALE_TIME = 2000;
+
+// select 缺省时的恒等投影：useResultSelect 只要结果存在就会调 select，
+// 传 undefined 会在首个结果到达时抛「select is not a function」。模块级
+// 常量保证身份稳定，恒等投影下输出即输入——与原 useResult 语义等价。
+const identity = <T,>(r: T) => r;
 
 // 统一 hash：结构化 stableHash（对象键序无关），并把参数中混入的
 // AbortSignal 剥掉。useRun({signal: true}) 每次 run 都在尾部附加一个
@@ -80,6 +85,14 @@ export type QueryOptions<T> = {
   /** 初始数据，避免首屏取到 undefined */
   initData?: T;
   /**
+   * 结果投影（useResultSelect）：消费者只订阅 select 后的切片——原始
+   * 结果变化但切片不变时（useResultSelect 按「结果 + select」双重身份
+   * memo）订阅组件不重渲染。select 的输入是 select 之前的原始数据，
+   * initData 同样以原始数据注入、经 select 投影后返回。引用不稳定也
+   * 安全：内部经 ref 透传首个 select，投影输出对同一结果保持引用稳定。
+   */
+  select?: (data: T) => unknown;
+  /**
    * 接入 DevTool mock 面板（useMock）。
    *
    * 为什么做成配置项而不是把 injectable 暴露给调用方自行 useMock：
@@ -104,6 +117,10 @@ export type QueryOptions<T> = {
 };
 
 export type QueryResult<T> = {
+  /**
+   * 无 select：查询结果（initData 兜底前为 undefined）；有 select：
+   * select 投影后的切片（T 已在重载处实例化为投影返回值）。
+   */
   data: T;
   /**
    * 初载中（useInitialLoading，对齐 TanStack Query 的 isLoading / SWR 的
@@ -120,6 +137,18 @@ export type QueryResult<T> = {
   refetch: () => void;
 };
 
+// select 重载：泛型 S 由调用点的 select 返回值推导，data 收窄为投影切片
+//（initData 语义仍是「select 之前的原始数据」，见实现注释）
+export function useQuery<F extends AsyncFunc, S = R<F>>(
+  fn: F,
+  args?: Parameters<F>,
+  opts?: QueryOptions<R<F>> & {select: (data: R<F>) => S; initData: R<F>}
+): QueryResult<S>;
+export function useQuery<F extends AsyncFunc, S = R<F>>(
+  fn: F,
+  args?: Parameters<F>,
+  opts?: QueryOptions<R<F>> & {select: (data: R<F>) => S}
+): QueryResult<S | undefined>;
 export function useQuery<F extends AsyncFunc>(
   fn: F,
   args?: Parameters<F>,
@@ -137,6 +166,7 @@ export function useQuery<F extends AsyncFunc>(
     cache = queryCache,
     staleTime = DEFAULT_STALE_TIME,
     initData,
+    select,
     mock,
     retry
   }: QueryOptions<R<F>> = {}
@@ -177,7 +207,22 @@ export function useQuery<F extends AsyncFunc>(
   // 是另一条请求线而非命中既有条目。
   useFocusRevalidate(injectable as AsyncFunc, {args});
 
-  const data = useResult(injectable, initData!);
+  // initData 是 select 之前的原始数据：注入 useResultSelect 的 init 槽，
+  // 首帧同样经 select 投影——有 select 的消费者拿到的 data 始终是切片，
+  // 形状不随首个结果到达而切换。
+  // select 透传给 useResultSelect（订阅粒度：切片不变不重渲染）。它对
+  // 「结果 + select」双重身份 memo——但调用点的 select 常是每渲染新建的
+  // 内联箭头（本项目未强制 useCallback），身份每变一次投影就重算一次，
+  // 产出新引用的同时击穿 memo 的引用稳定保证。这里固定取首个 select：
+  // 语义上投影函数本就该纯且与渲染周期无关，锁定身份即锁定 memo 桶。
+  const selectRef = useRef(select);
+  // R<F> 是延迟求值泛型，QueryOptions.select 的 unknown 返回在这里收拢
+  const project = (selectRef.current ?? identity) as (result: R<F>) => R<F>;
+  const data = useResultSelect<AsyncFunc, R<F> | undefined>(
+    injectable,
+    project,
+    initData
+  );
   const fetching = useLoading(injectable);
   const loading = useInitialLoading(injectable);
   const error = useError(injectable);

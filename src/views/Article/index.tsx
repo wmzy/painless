@@ -88,7 +88,18 @@ export default function ArticleView() {
     });
     articleService
       .favoriteArticle(snapshot.slug, !snapshot.favorited)
-      .then((a) => applyCache(a))
+      .then((a) => {
+        // 对称于 toggleFollow 的防御：favorite 在飞期间 follow 可能已写穿
+        // following，响应里的 author 是发出请求那一刻的旧值，直接铺开会
+        // 把它回滚——peek 取当前值合并，只从响应取 favorite 域的两个
+        // 权威字段
+        const cur = (queryCache.peek!(key)?.value as Article | undefined) ?? snapshot;
+        applyCache({
+          ...cur,
+          favorited: a.favorited,
+          favoritesCount: a.favoritesCount
+        });
+      })
       .catch((e: unknown) => {
         applyCache(snapshot);
         setError(errText(e));

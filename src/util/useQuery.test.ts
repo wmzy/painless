@@ -2,7 +2,8 @@
 // loading→data、缓存复用、stale 标记、refetch 与 error。util 下已有测试文件
 // 主题各异（http/faker），不便追加，故新建本文件。
 import {describe, it, expect, vi} from 'vitest';
-import {renderHook, act, waitFor} from '@testing-library/react';
+import {renderHook, render, screen, act, waitFor} from '@testing-library/react';
+import {memo, createElement} from 'react';
 
 // useQuery 的 mock 钩子已随 DevTool 拆分迁至 @/util/mock（无 haze-ui
 // 依赖），本测试无需再 mock haze-ui（早期 useQuery → DevTool → haze-ui
@@ -297,5 +298,92 @@ describe('useQuery', () => {
     await waitFor(() => expect(second.result.current.data).toEqual(['v1']));
     expect(fn).toHaveBeenCalledTimes(1); // 缓存命中，未重发
     second.unmount();
+  });
+
+  // select 选项：透传 useResultSelect，data 变为投影切片；initData 语义
+  // 是「select 之前的原始数据」——注入 init 槽后同样经投影返回
+  it('select：data 为投影切片，initData 以原始数据注入经投影返回', async () => {
+    const pending = deferred<{articlesCount: number; title: string}>();
+    const fn = () => pending.promise;
+    const cache = createQueryCache();
+
+    const {result} = renderHook(() =>
+      useQuery(fn, [], {
+        cache,
+        select: (r) => r.articlesCount,
+        initData: {articlesCount: 0, title: 'init'}
+      })
+    );
+
+    // 首帧：initData 投影后的切片，而非整个原始对象
+    expect(result.current.data).toBe(0);
+
+    await act(async () => {
+      pending.resolve({articlesCount: 5, title: 'v1'});
+    });
+
+    expect(result.current.data).toBe(5);
+  });
+
+  // 订阅粒度：useResultSelect 按「结果 + select」身份 memo——原始结果换
+  // 新但切片不变时（Object.is），订阅组件不重渲染。用 memo 子组件承接
+  // 切片做 render count spy：父组件因 loading 态等无关 store 仍会重渲染，
+  // memo 屏蔽后子组件只在切片真正变化时渲染。select 用每渲染新建的内联
+  // 箭头（项目不强制 useCallback）：useQuery 内部锁定首个身份，不影响 memo。
+  it('select：切片变化才重渲染，未变切片不触发（memo 子组件 render count）', async () => {
+    const p1 = deferred<{articlesCount: number; title: string}>();
+    const p2 = deferred<{articlesCount: number; title: string}>();
+    const p3 = deferred<{articlesCount: number; title: string}>();
+    const fn = vi
+      .fn()
+      .mockReturnValueOnce(p1.promise)
+      .mockReturnValueOnce(p2.promise)
+      .mockReturnValueOnce(p3.promise);
+    const cache = createQueryCache();
+
+    let childRenders = 0;
+    const Slice = memo(({count}: {count: number}) => {
+      childRenders++;
+      return createElement('span', {'data-testid': 'slice'}, count);
+    });
+
+    function Page({id}: {id: string}) {
+      const {data} = useQuery(fn, [id], {
+        cache,
+        select: (r) => r.articlesCount,
+        initData: {articlesCount: 0, title: 'init'}
+      });
+      // 本文件是 .ts（无 JSX）：createElement 等价表达
+      return createElement(Slice, {count: data!});
+    }
+
+    const {rerender} = render(createElement(Page, {id: 'a'}));
+    expect(screen.getByTestId('slice').textContent).toBe('0'); // initData 投影
+    childRenders = 0; // 首帧渲染不计入
+
+    // 首个结果：切片 0 → 3 变化，子组件渲染一次
+    await act(async () => {
+      p1.resolve({articlesCount: 3, title: 'v1'});
+    });
+    expect(screen.getByTestId('slice').textContent).toBe('3');
+    expect(childRenders).toBe(1);
+    childRenders = 0;
+
+    // args 变化重跑：新结果 title 变了但 articlesCount 仍为 3——父组件
+    // 随 loading 态重渲染，切片未变的 memo 子组件不渲染
+    rerender(createElement(Page, {id: 'b'}));
+    await act(async () => {
+      p2.resolve({articlesCount: 3, title: 'v2'});
+    });
+    expect(screen.getByTestId('slice').textContent).toBe('3');
+    expect(childRenders).toBe(0);
+
+    // 切片真正变化（3 → 9）：子组件渲染
+    rerender(createElement(Page, {id: 'c'}));
+    await act(async () => {
+      p3.resolve({articlesCount: 9, title: 'v3'});
+    });
+    expect(screen.getByTestId('slice').textContent).toBe('9');
+    expect(childRenders).toBe(1);
   });
 });

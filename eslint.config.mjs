@@ -59,7 +59,12 @@ export default [
       '@typescript-eslint/no-unsafe-call': 'off',
       '@typescript-eslint/no-unsafe-return': 'off',
       '@typescript-eslint/no-unsafe-argument': 'off',
-      '@typescript-eslint/require-await': 'off'
+      '@typescript-eslint/require-await': 'off',
+      // 占位参数（如签名对齐用的 _ctx）不算未使用
+      '@typescript-eslint/no-unused-vars': [
+        'warn',
+        {argsIgnorePattern: '^_', varsIgnorePattern: '^_'}
+      ]
     }
   }
 ];

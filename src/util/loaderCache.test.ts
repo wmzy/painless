@@ -143,7 +143,7 @@ describe('mock 面板与 loader 缓存的交互（DevTool Refresh 语义）', ()
     // 但不得因此清缓存——否则 dev 下凡带 mock 的 loader 永远 miss，
     // 共享缓存形同虚设。
     setMockConfig('articlePage', {when: 'disabled'});
-    const fn = vi.fn(async () => ({articles: [], articlesCount: 0}));
+    const fn = vi.fn(async (_ctx: unknown) => ({articles: [], articlesCount: 0}));
     const loader = mockViewData(withCache(fn, ['home']), {}, 'articlePage');
 
     await loader(homeCtx);
@@ -156,7 +156,7 @@ describe('mock 面板与 loader 缓存的交互（DevTool Refresh 语义）', ()
 
   it('DevTool 用户交互清缓存（Refresh/切换 when）后，loader miss 重跑真实 fn', async () => {
     setMockConfig('articlePage', {when: 'disabled'});
-    const fn = vi.fn(async () => ({articles: [], articlesCount: 0}));
+    const fn = vi.fn(async (_ctx: unknown) => ({articles: [], articlesCount: 0}));
     const loader = mockViewData(withCache(fn, ['home']), {}, 'articlePage');
 
     await loader(homeCtx);
@@ -164,10 +164,11 @@ describe('mock 面板与 loader 缓存的交互（DevTool Refresh 语义）', ()
 
     // Refresh 按钮语义 = mockViewData 存入配置的 refresh 闭包：清缓存
     // + refresh(router)。这里直接执行该闭包验证其清缓存效果
-    const config = getMockConfigs().articlePage;
-    expect(typeof config.refresh).toBe('function');
-    (config.refresh as () => void)();
-    expect(queryCache.peek(['home', {offset: 0, limit: 10}])).toBeUndefined();
+    const config = getMockConfigs().articlePage!;
+    const refresh = config.refresh as (() => void) | undefined;
+    expect(typeof refresh).toBe('function');
+    refresh!();
+    expect(queryCache.peek!(['home', {offset: 0, limit: 10}])).toBeUndefined();
 
     await loader(homeCtx);
     expect(fn).toHaveBeenCalledTimes(2);
