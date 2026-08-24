@@ -61,7 +61,7 @@
     "prettier": "^3.9.6",
     "rollup-plugin-type-as-json-schema": "^0.2.6",
     "terser": "^5.50.0",
-    "tools-config": "file:../tools-config",
+    "tools-config": "0.2.3",
     "tsc-alias": "^1.9.2",
     "typescript": "^6.0.3",
     "vite": "^8.2.2",
