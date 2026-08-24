@@ -159,7 +159,7 @@ export default function PreviewLink({children, ...props}) {
 
 ### A Project-Level `useQuery` Preset
 
-Instead of adopting a data-fetching library, the template composes `react-toolroom/async` primitives (`useInjectable`, `useCache`, `useRun`, `useResult`, `useLoading`, `useInitialLoading`, `useError`, `useDedup`, `useRetry`) into **one** project-owned hook — demonstrating the idea that each project should shape its own query layer:
+Instead of adopting a data-fetching library, the template composes `react-toolroom/async` primitives (`useInjectable`, `useCache`, `useRun`, `useResult`, `useLoading`, `useInitialLoading`, `useError`, `useRetry`, `useFocusRevalidate`) into **one** project-owned hook — demonstrating the idea that each project should shape its own query layer:
 
 ```ts
 // src/util/useQuery.ts (signature)
@@ -190,7 +190,7 @@ type QueryResult<T> = {
 };
 ```
 
-Out of the box the preset wires three behaviors projects usually hand-roll: concurrent same-args calls are **deduplicated** (`useDedup`), dependency changes **abort** the previous request via a trailing `AbortSignal` threaded through the service layer to `fetch` (`useRun({signal: true})`), and cache/dedup/refetch keys are all one **structural hash** (`stableHash` with signals stripped — key-order-insensitive).
+Out of the box the preset wires the behaviors projects usually hand-roll: concurrent same-args calls are **deduplicated at the provider level** — since react-toolroom 0.8, `useCache`'s miss/stale revalidation routes through `queryCache.load` (an atomic get-or-insert of the in-flight slot), so every consumer *and every channel* (another component, a route loader — see below) asking for the same key while a request is pending shares that one promise; dependency changes **abort** the previous request via a trailing `AbortSignal` threaded through the service layer to `fetch` (`useRun({signal: true})`); cache/load/refetch keys are all one **structural hash** (`stableHash` with signals stripped — key-order-insensitive); and window focus / visibility regain **revalidates in the background** (`useFocusRevalidate`) — fresh entries hit the cache without a request, stale ones swap in silently.
 
 Real usage, from the tag sidebar and the comment list:
 
@@ -208,31 +208,50 @@ const {data: comments, loading, error, refetch} = useQuery(
 );
 ```
 
-### Optimistic Favorite / Follow
+### Route Loaders Share the `useQuery` Cache (`withCache`)
 
-Mutations update the UI first, then reconcile with the server: on success the server's authoritative response overwrites the local override; on failure the override rolls back to the pre-click value. The same pattern powers favorite buttons in `Home` and favorite/follow in `Article`:
+The two data channels — route `data` loaders and `useQuery` — deliberately share the one module-level `queryCache`. They differ in *when* they trigger and whether they block (loader: navigation resolve, `pendingComponent` skeleton; query: post-mount, loading/error states), but cache and invalidation are one. `withCache(fn, prefix)` (`src/util/loaderCache.ts`) wraps a loader and addresses the cache as `[...prefix, ctx.search ?? ctx.params ?? {}]`; views compute the identical key via `homeCacheArgs(search)` / `articleCacheArgs(title)` (Home's payload must match `homeSearchSchema`'s output *shape* — no `tag` key when absent). That shared key is what lets mutations write through the cache (next section).
+
+`withCache` gives the loader SWR semantics — fresh hits return the cached value with zero requests, stale hits return the old value immediately and revalidate in the background (`refresh(router)` only on success), misses fall through to the skeleton/error paths. Combined with the router's view stack, a navigation lands in one of four states:
+
+| Navigation lands on | Loader runs? | What the user sees |
+| --- | --- | --- |
+| viewStack snapshot (POP within the session window) | no — replay | instant previous view, **zero requests** |
+| cache hit, fresh (< `staleTime` 2s) | yes — cache only | instant cached data, **zero requests** |
+| cache hit, stale | yes — background revalidate | old value immediately, refreshed in place — no skeleton, no flash |
+| cache miss | yes — network | `pendingComponent` skeleton (cold start) |
+
+In-flight requests are shared across channels at the provider level: a `PrefetchLink` warm-up and the real navigation resolve to the *same* in-flight promise, so hovering a link first does not double-fetch.
+
+Two session-level freshness edges are covered: on `logout()` the Layout also calls `invalidate(router)` (native-router ≥1.6) — view-stack snapshots of the previous account are dropped, so a later back POP re-resolves through guards and loaders instead of replaying the old account's views; and `pageshow` with `persisted: true` (bfcache restore — the SPA gets no navigation event) triggers `refresh(router)`: loaders re-run against the cache, fresh hits cost nothing, stale ones swap in silently.
+
+### Write-Through Favorite / Follow
+
+Mutations update the shared cache first, then reconcile with the server — the same pattern powers favorite buttons in `Home` and favorite/follow in `Article`. `applyCache(next)` writes the value into `queryCache` under the loader's key and calls `refresh(router)`: the loader re-run is a *fresh cache hit*, so the view updates with zero requests, zero skeletons (the hand-rolled local-override `useState` era is over — a cache write also benefits back-navigation hits, and the provider's generation counter protects it from being clobbered by responses that were already in flight):
 
 ```tsx
 // src/views/Article/index.tsx
-const [favOverride, setFavOverride] = useState<FavOverride | null>(null);
-const favorited = favOverride?.favorited ?? article.favorited;
+const key = articleCacheArgs(params.title!); // the very key the loader addresses
+const applyCache = (next: Article) => {
+  queryCache.set(key, next);
+  void refresh(router); // loader re-run = fresh cache hit → view swaps in
+};
 
 const toggleFavorite = () => {
-  if (!requireAuth()) return;
-  const prev = {favorited, favoritesCount};
-  const next = {
-    favorited: !favorited,
-    favoritesCount: favorited ? favoritesCount - 1 : favoritesCount + 1
-  };
-  setFavOverride(next);
+  const snapshot = article; // authoritative on failure
+  applyCache({
+    ...snapshot,
+    favorited: !snapshot.favorited,
+    favoritesCount: snapshot.favorited ? snapshot.favoritesCount - 1 : snapshot.favoritesCount + 1
+  });
   articleService
-    .favoriteArticle(article.slug, next.favorited)
-    .then((a) =>
-      setFavOverride({favorited: a.favorited, favoritesCount: a.favoritesCount})
-    )
-    .catch(() => setFavOverride(prev)); // rollback — server state never changed
+    .favoriteArticle(snapshot.slug, !snapshot.favorited)
+    .then((a) => applyCache(a)) // server truth wins
+    .catch(() => applyCache(snapshot)); // rollback — server state never changed
 };
 ```
+
+`Home` patches the page entry instead of replacing it — `queryCache.set(homeCacheArgs({...}), updater(page))` swaps one article inside the cached list (bailing out when there is no entry to patch, e.g. after a logout `clear()`; the next navigation re-fetches). A follow success merges with `queryCache.peek(key)`'s *current* value rather than the closure snapshot, so a favorite written while the follow was in flight survives the merge.
 
 After posting a comment, the form resets with `reset(commentForm, {body: ''})` — the comment `Textarea` is bound through haze-ui's `FormItem` control bridge (fully controlled), so the reset syncs the displayed text with no remounting — and the mutation's `invalidates` declaratively refreshes `CommentList` past the cache.
 
@@ -315,7 +334,7 @@ Two integration points:
 - Route loaders: `mockViewData(fn, schema, key)` wraps a route `data` function.
 - Component queries: `useQuery`'s `mock: {schema, key}` option.
 
-Both register with the **DevTool** panel (dev-only), where each dataset can be switched between `empty` (mock only when the API errors or returns nothing) and `always`.
+Both register with the **DevTool** panel (dev-only), where each dataset can be switched between `empty` (mock only when the API errors or returns nothing) and `always`. Every mock-config write (`setMockConfig`) clears the shared `queryCache` — mocks take precedence over cache: a mode switch or panel Refresh must bypass the loader's fresh `withCache` hits, or the mock would never take effect (dev-only; production has no `setMockConfig` callers).
 
 ### Zero-Runtime CSS
 

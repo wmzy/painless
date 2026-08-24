@@ -56,7 +56,13 @@ function DevToolInner() {
               key={key}
               name={key}
               value={val}
-              onChange={(when) => setMockConfig(key, {...val, when})}
+              onChange={(when) => {
+                setMockConfig(key, {...val, when});
+                // 用户切换 mock 模式即清共享缓存：避免上一模式的缓存
+                // 值（如 'always' 经 useMock 链写进缓存的假数据）新鲜
+                // 命中，挡住新模式生效
+                queryCache.clear();
+              }}
             />
           ))}
           <hr />

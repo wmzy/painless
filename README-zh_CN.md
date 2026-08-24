@@ -159,7 +159,7 @@ export default function PreviewLink({children, ...props}) {
 
 ### 项目级 `useQuery` preset
 
-模板不引入数据请求库，而是把 `react-toolroom/async` 的原语（`useInjectable`、`useCache`、`useRun`、`useResult`、`useLoading`、`useInitialLoading`、`useError`、`useDedup`、`useRetry`）组合成**一个**项目自有的 hook——示范「每个项目定制自己的查询层」这一理念：
+模板不引入数据请求库，而是把 `react-toolroom/async` 的原语（`useInjectable`、`useCache`、`useRun`、`useResult`、`useLoading`、`useInitialLoading`、`useError`、`useRetry`、`useFocusRevalidate`）组合成**一个**项目自有的 hook——示范「每个项目定制自己的查询层」这一理念：
 
 ```ts
 // src/util/useQuery.ts（签名）
@@ -190,7 +190,7 @@ type QueryResult<T> = {
 };
 ```
 
-preset 开箱即接线了三个通常要项目自己手写的行为：同参数并发调用**去重**（`useDedup`）；依赖变化时经尾参 `AbortSignal` **中止**上一次请求（`useRun({signal: true})`，signal 一路穿透服务层到 fetch）；缓存/去重/refetch 的 key 统一为**结构化哈希**（剥除 signal 的 `stableHash`——键序无关）。
+preset 开箱即接线了通常要项目自己手写的行为：同参数并发调用**在 provider 层去重**——react-toolroom 0.8 起 `useCache` 的 miss/stale 重验证内部走 `queryCache.load`（原子 get-or-insert 在飞槽位），请求未决期间每个消费者、**每条通道**（另一组件、路由 loader——见下节）拿到同一 key 都共享同一个 promise；依赖变化时经尾参 `AbortSignal` **中止**上一次请求（`useRun({signal: true})`，signal 一路穿透服务层到 fetch）；缓存/load/refetch 的 key 统一为**结构化哈希**（剥除 signal 的 `stableHash`——键序无关）；窗口重新聚焦/可见时**后台重验证**（`useFocusRevalidate`）——新鲜条目直接命中缓存不发请求，stale 条目静默换新。
 
 真实用法，来自 tag 侧栏与评论列表：
 
@@ -208,31 +208,50 @@ const {data: comments, loading, error, refetch} = useQuery(
 );
 ```
 
-### 收藏 / 关注的乐观更新
+### 路由 Loader 与 query 共享缓存（`withCache`）
 
-变更先更新 UI，再与服务端对账：成功时用服务端权威响应覆盖本地 override，失败时回滚到点击前的值。同一模式驱动 `Home` 的收藏按钮与 `Article` 的收藏/关注：
+两条数据通道——路由 `data` loader 与 `useQuery`——刻意共用同一份模块级 `queryCache`。二者差异在**触发时机**与是否阻塞（loader：导航 resolve 期，`pendingComponent` 骨架兜底；query：挂载后，loading/error 状态化），但缓存与失效是同一份。`withCache(fn, prefix)`（`src/util/loaderCache.ts`）包装 loader，按 `[...prefix, ctx.search ?? ctx.params ?? {}]` 寻址缓存；视图侧用 `homeCacheArgs(search)` / `articleCacheArgs(title)` 生成同形 key（Home 的载荷必须与 `homeSearchSchema` 输出**形状**一致——无 tag 时键不存在）。正是这把共享 key 让 mutation 能写穿缓存（见下节）。
+
+`withCache` 给 loader 带来 SWR 语义——新鲜命中直接返回缓存值零请求，stale 命中立即返回旧值并后台重验证（仅成功才 `refresh(router)`），miss 照旧落骨架/错误路径。叠加路由的视图栈，一次导航落在四态之一：
+
+| 落点 | 跑 loader？ | 用户看到 |
+| --- | --- | --- |
+| viewStack 快照（会话窗口内 POP） | 不跑——快照回放 | 立即呈现上一个视图，**零请求** |
+| 缓存命中且新鲜（< `staleTime` 2s） | 跑——只读缓存 | 立即呈现缓存数据，**零请求** |
+| 缓存命中但 stale | 跑——后台重验证 | 先见旧值，原地换新——不闪骨架、不闪屏 |
+| 缓存 miss | 跑——走网络 | `pendingComponent` 骨架（冷启动） |
+
+在飞请求跨通道共享（provider 层）：`PrefetchLink` 预热与正式导航 resolve 到**同一个**在飞 promise，先 hover 过的链接点击不会重复发请求。
+
+两个会话级新鲜度边界也有兜底：`logout()` 时 Layout 额外调用 `invalidate(router)`（native-router ≥1.6）——丢弃上一账号的视图栈快照，此后后退 POP 走守卫+loader 重解析，而不是回放旧账号的视图；`pageshow` 且 `persisted: true`（bfcache 恢复——SPA 收不到任何导航事件）触发 `refresh(router)`：loader 对缓存重跑，新鲜命中零成本，stale 静默换新。
+
+### 收藏 / 关注的写穿更新
+
+变更先写穿共享缓存，再与服务端对账——同一模式驱动 `Home` 的收藏按钮与 `Article` 的收藏/关注。`applyCache(next)` 把值按 loader 的 key 写进 `queryCache` 并 `refresh(router)`：loader 重跑是*新鲜缓存命中*，视图零请求、零骨架换新（手写本地 override `useState` 的时代结束——缓存写穿同时惠及后退导航命中，provider 的代次计数也保护它不被在飞的旧响应覆盖）：
 
 ```tsx
 // src/views/Article/index.tsx
-const [favOverride, setFavOverride] = useState<FavOverride | null>(null);
-const favorited = favOverride?.favorited ?? article.favorited;
+const key = articleCacheArgs(params.title!); // 正是 loader 寻址的那把 key
+const applyCache = (next: Article) => {
+  queryCache.set(key, next);
+  void refresh(router); // loader 重跑 = 新鲜命中 → 视图换新
+};
 
 const toggleFavorite = () => {
-  if (!requireAuth()) return;
-  const prev = {favorited, favoritesCount};
-  const next = {
-    favorited: !favorited,
-    favoritesCount: favorited ? favoritesCount - 1 : favoritesCount + 1
-  };
-  setFavOverride(next);
+  const snapshot = article; // 失败时的权威值
+  applyCache({
+    ...snapshot,
+    favorited: !snapshot.favorited,
+    favoritesCount: snapshot.favorited ? snapshot.favoritesCount - 1 : snapshot.favoritesCount + 1
+  });
   articleService
-    .favoriteArticle(article.slug, next.favorited)
-    .then((a) =>
-      setFavOverride({favorited: a.favorited, favoritesCount: a.favoritesCount})
-    )
-    .catch(() => setFavOverride(prev)); // 回滚 —— 服务端状态从未改变
+    .favoriteArticle(snapshot.slug, !snapshot.favorited)
+    .then((a) => applyCache(a)) // 服务端权威值校正
+    .catch(() => applyCache(snapshot)); // 回滚 —— 服务端状态从未改变
 };
 ```
+
+`Home` 不整体替换而是**补丁**页条目——`queryCache.set(homeCacheArgs({...}), updater(page))` 只换缓存列表里的目标文章（无条目可补丁时放弃，如登出 `clear()` 之后；下一次导航自然重拉）。follow 成功时用 `queryCache.peek(key)` 的**当前值**合并而非闭包快照，follow 在飞期间写穿的 favorite 不会被合并覆盖。
 
 发表评论后：`reset(commentForm, {body: ''})` 重置表单——评论 `Textarea` 经 haze-ui `FormItem` 的 control 桥全受控绑定，reset 直接同步显存文本、无需重挂子树——mutation 的 `invalidates` 再声明式驱动 `CommentList` 绕过缓存刷新。
 
@@ -315,7 +334,7 @@ export type Article = {
 - 路由加载器：`mockViewData(fn, schema, key)` 包装路由 `data` 函数。
 - 组件查询：`useQuery` 的 `mock: {schema, key}` 选项。
 
-两者都会在 **DevTool** 面板（仅开发环境）注册，每个数据集可在 `empty`（仅当 API 出错或返回为空时 mock）与 `always`（始终 mock）之间切换。
+两者都会在 **DevTool** 面板（仅开发环境）注册，每个数据集可在 `empty`（仅当 API 出错或返回为空时 mock）与 `always`（始终 mock）之间切换。任何 mock 配置写入（`setMockConfig`）都会清空共享 `queryCache`——mock 优先于缓存：切换模式或面板 Refresh 必须绕过 loader 侧 `withCache` 的新鲜命中，否则 mock 永远不生效（仅开发环境；生产无 `setMockConfig` 调用方）。
 
 ### 零运行时 CSS
 

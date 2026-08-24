@@ -2,6 +2,10 @@
 // 分页（含边界禁用）的行为验证。Home 目录此前无测试文件，故新建；路由与
 // UI 库均 mock，Tags 侧栏以 stub 隔离（真实 Tags 静态依赖 vite 插件的虚拟
 // 模块 '@/types/index.schema'，vitest 管线无法解析，其交互在浏览器中验证）。
+// 双通道缓存落地批：卡片 favorite 改为补丁共享缓存（patchPage = peek +
+// set + refresh），useData mock 直读 queryCache 的最新 settled 值、
+// refresh mock 广播重渲染，模拟「loader 重跑 → withCache 新鲜命中 →
+// 视图换新」链路。
 import type {ReactNode} from 'react';
 
 import {describe, it, expect, vi, beforeEach} from 'vitest';
@@ -10,7 +14,30 @@ import {render, screen, fireEvent} from '@testing-library/react';
 const state = vi.hoisted(() => ({
   data: {articles: [] as unknown[], articlesCount: 0},
   search: '',
-  router: {history: {}}
+  router: {history: {}},
+  // refresh mock 的重渲染广播：补丁缓存写穿后调 refresh(router)，真实
+  // 链路是「loader 重跑 → withCache 新鲜命中 → useData 换新」，这里用
+  // bump 回调近似——useData mock 每次渲染直读 queryCache 的最新 settled
+  // 值（loader 命中的就是它）
+  listeners: new Set<() => void>(),
+  emit: () => {
+    for (const l of state.listeners) l();
+  },
+  // 解析逻辑与 src/types/search.ts 的 schema 等价（coerce + 缺省），
+  // useSearch 与 useData 的缓存寻址共用，保证与视图侧 homeCacheArgs
+  // 同 key
+  parseSearch: (search: string) => {
+    const raw = Object.fromEntries(new URLSearchParams(search));
+    const num = (v: string | undefined) => {
+      const n = Number(v);
+      return v != null && Number.isFinite(n) && n > 0 ? Math.floor(n) : undefined;
+    };
+    return {
+      tag: raw.tag && raw.tag !== '' ? raw.tag : undefined,
+      offset: num(raw.offset) ?? 0,
+      limit: num(raw.limit) ?? 10
+    };
+  }
 }));
 
 // haze-ui 依赖 UMD 版 babel-runtime-jsx-plus，在 vitest 的 ESM 环境下无法
@@ -56,28 +83,40 @@ vi.mock('haze-ui', async () => {
   };
 });
 
-vi.mock('@native-router/react', () => ({
-  useData: () => state.data,
-  useSearch: () => {
-    // 解析逻辑与 src/types/search.ts 的 schema 等价（coerce + 缺省）
-    const raw = Object.fromEntries(new URLSearchParams(state.search));
-    const num = (v: string | undefined) => {
-      const n = Number(v);
-      return v != null && Number.isFinite(n) && n > 0 ? Math.floor(n) : undefined;
-    };
-    return {
-      tag: raw.tag && raw.tag !== '' ? raw.tag : undefined,
-      offset: num(raw.offset) ?? 0,
-      limit: num(raw.limit) ?? 10
-    };
-  },
-  useMatched: () => ({
-    location: {pathname: '/', search: state.search, hash: ''},
-    router: state.router
-  })
-}));
+vi.mock('@native-router/react', async () => {
+  const React = await import('react');
+  const {homeCacheArgs} = await import('@/util/loaderCache');
+  const {queryCache} = await import('@/util/useQuery');
+  return {
+    useData: () => {
+      const [, force] = React.useState(0);
+      React.useEffect(() => {
+        const listener = () => force((v) => v + 1);
+        state.listeners.add(listener);
+        return () => {
+          state.listeners.delete(listener);
+        };
+      }, []);
+      // 补丁后的视图换新：无缓存条目（loader 未跑过的冷启动态）回落到
+      // 初始 data
+      return (
+        queryCache.peek!(homeCacheArgs(state.parseSearch(state.search)))
+          ?.value ?? state.data
+      );
+    },
+    useSearch: () => state.parseSearch(state.search),
+    useMatched: () => ({
+      location: {pathname: '/', search: state.search, hash: ''},
+      params: {},
+      router: state.router
+    })
+  };
+});
 
-vi.mock('@native-router/core', () => ({navigate: vi.fn()}));
+vi.mock('@native-router/core', () => ({
+  navigate: vi.fn(),
+  refresh: vi.fn(async () => state.emit())
+}));
 vi.mock('@/components/PreviewLink', () => ({
   default: ({children}: {children?: ReactNode}) => children ?? null
 }));
@@ -92,14 +131,17 @@ vi.mock('@/services/article', () => ({
 }));
 vi.mock('@/services/auth', () => ({getCurrentUser: vi.fn()}));
 
-import {navigate} from '@native-router/core';
+import {navigate, refresh} from '@native-router/core';
 
 import * as articleService from '@/services/article';
 import {getCurrentUser} from '@/services/auth';
+import {homeCacheArgs} from '@/util/loaderCache';
+import {queryCache} from '@/util/useQuery';
 
 import Home from './index';
 
 const navigateMock = vi.mocked(navigate);
+const refreshMock = vi.mocked(refresh);
 const favoriteMock = vi.mocked(articleService.favoriteArticle);
 const getCurrentUserMock = vi.mocked(getCurrentUser);
 
@@ -136,6 +178,9 @@ function asButton(el: HTMLElement): HTMLButtonElement {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  // resetAllMocks 会清掉 vi.fn 的实现：refresh 的「重渲染广播」语义逐
+  // 用例重建（navigate 无实现需求，仅断言调用）
+  refreshMock.mockImplementation(async () => state.emit());
   state.data = {articles: makeArticles(10), articlesCount: 25};
   state.search = '';
   getCurrentUserMock.mockReturnValue({
@@ -143,6 +188,7 @@ beforeEach(() => {
     email: 'me@example.com',
     token: 'jwt'
   });
+  queryCache.clear();
 });
 
 describe('Home 视图', () => {
@@ -212,12 +258,15 @@ describe('Home 视图', () => {
   });
 });
 
-describe('Home 文章卡片 favorite（乐观更新）', () => {
+describe('Home 文章卡片 favorite（补丁缓存 + refresh）', () => {
   beforeEach(() => {
     state.data = {
       articles: [{...makeArticles(1)[0], favoritesCount: 5}],
       articlesCount: 1
     };
+    // 补丁缓存的基线：真实链路里 loader 已拉过本页（withCache 写入），
+    // 这里按 loader 同形 key 预置缓存条目
+    queryCache.set(homeCacheArgs(state.parseSearch(state.search)), state.data);
   });
 
   it('点击即时 +1 高亮，成功后以服务端值为准', async () => {
@@ -227,13 +276,14 @@ describe('Home 文章卡片 favorite（乐观更新）', () => {
 
     fireEvent.click(screen.getByRole('button', {name: '❤ 5'}));
 
-    // 乐观：请求未决时已 +1 且置高亮
+    // 乐观：请求未决时已补丁缓存并 refresh，视图换新 +1 且置高亮
     const optimistic = screen.getByRole('button', {name: '❤ 6'});
     expect(optimistic.getAttribute('aria-pressed')).toBe('true');
     expect(favoriteMock).toHaveBeenCalledWith('slug-0', true);
+    expect(refreshMock).toHaveBeenCalledWith(state.router);
 
-    // 服务端权威值校正本地乐观值
-    pending.resolve({favorited: true, favoritesCount: 9});
+    // 服务端权威值补丁校正（以完整 Article 为替换单位）
+    pending.resolve({...makeArticles(1)[0], favorited: true, favoritesCount: 9});
     expect(await screen.findByRole('button', {name: '❤ 9'})).toBeDefined();
   });
 
@@ -244,9 +294,23 @@ describe('Home 文章卡片 favorite（乐观更新）', () => {
     fireEvent.click(screen.getByRole('button', {name: '❤ 5'}));
     expect(screen.getByRole('button', {name: '❤ 6'})).toBeDefined();
 
+    // 回滚：补丁把点击前快照写回（请求失败即服务端状态未变）
     const rolledBack = await screen.findByRole('button', {name: '❤ 5'});
     expect(rolledBack.getAttribute('aria-pressed')).toBe('false');
     expect(favoriteMock).toHaveBeenCalledWith('slug-0', true);
+  });
+
+  it('缓存无基线（条目已被清理）：补丁放弃，不发 refresh 也不写缓存', async () => {
+    queryCache.clear(); // 模拟登出清缓存后的 POP 快照视图
+    const pending = deferred();
+    favoriteMock.mockReturnValueOnce(pending.promise);
+    render(<Home />);
+
+    fireEvent.click(screen.getByRole('button', {name: '❤ 5'}));
+
+    expect(screen.getByRole('button', {name: '❤ 5'})).toBeDefined();
+    expect(refreshMock).not.toHaveBeenCalled();
+    pending.resolve(undefined);
   });
 
   it('未登录点击：引导去 /login 且不发请求', () => {

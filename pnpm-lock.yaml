@@ -15,8 +15,8 @@ importers:
         specifier: ^8.2.0
         version: 8.2.0(supports-color@7.2.0)
       '@native-router/core':
-        specifier: ^1.5.0
-        version: 1.5.0
+        specifier: ^1.6.0
+        version: 1.6.0
       '@native-router/react':
         specifier: ^1.3.0
         version: 1.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -42,8 +42,8 @@ importers:
         specifier: ^0.5.0
         version: 0.5.0(react@19.2.8)(zod@4.4.3)
       react-toolroom:
-        specifier: ^0.7.0
-        version: 0.7.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        specifier: ^0.8.0
+        version: 0.8.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
     devDependencies:
       '@babel/core':
         specifier: ^8.0.1
@@ -994,8 +994,8 @@ packages:
       '@emnapi/core': ^1.7.1 || ^2.0.0-alpha.4
       '@emnapi/runtime': ^1.7.1 || ^2.0.0-alpha.4
 
-  '@native-router/core@1.5.0':
-    resolution: {integrity: sha512-aEbpLn5LKw8SaHvkK/8u5657t9KlT1tDN8VJysL9vsy9cYVZ7pXNFyKRqKRoAK93TBdNosEg4FaEZZJIleed/Q==}
+  '@native-router/core@1.6.0':
+    resolution: {integrity: sha512-ZkW6T+AHgOo3U6VPTb86o9BCdnKz6j6iPRoW40h5QCaQIxfG1fOeYtaDsYl6+XVvSBnArERNoeH4dPMsvgefVg==}
     engines: {node: '>=18'}
 
   '@native-router/react@1.3.0':
@@ -3600,8 +3600,8 @@ packages:
       react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
       react-dom: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
-  react-toolroom@0.7.0:
-    resolution: {integrity: sha512-pHlJvftRpYVs0x0h+2Yow2N1vkHM9gQWYttVoG6gxj9+WxQ+VVS+WNvW5m9fXlLNoAy1jqJhVev1hgI9h/34CQ==}
+  react-toolroom@0.8.0:
+    resolution: {integrity: sha512-7I8Ik+47Jf87FiBMO2xz8FNxF7vpQ6moh+JNq1hAu4EO42pBL2/7Vd4TdIE43jMAxgMabxZNgDuG9EYSrPrvtA==}
     peerDependencies:
       react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
       react-dom: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
@@ -5297,14 +5297,14 @@ snapshots:
       '@tybys/wasm-util': 0.10.3
     optional: true
 
-  '@native-router/core@1.5.0':
+  '@native-router/core@1.6.0':
     dependencies:
       history: 5.3.0
       path-to-regexp: 8.4.2
 
   '@native-router/react@1.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
     dependencies:
-      '@native-router/core': 1.5.0
+      '@native-router/core': 1.6.0
       history: 5.3.0
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
@@ -7894,7 +7894,7 @@ snapshots:
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
 
-  react-toolroom@0.7.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
+  react-toolroom@0.8.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
     dependencies:
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)

@@ -175,41 +175,48 @@ describe('useQuery', () => {
     expect(result.current.data).toEqual(['a']);
   });
 
-  it('并发去重：in-flight 期间连点 refetch，底层 fn 只执行一次', async () => {
-    const pending = deferred<string[]>();
-    const fn = vi.fn().mockReturnValue(pending.promise);
+  it('refetch 拆除在飞请求：单次点击重发一次（删除即被动重拉+显式调用共享）', async () => {
+    const first = deferred<string[]>();
+    const second = deferred<string[]>();
+    const fn = vi
+      .fn()
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
     const cache = createQueryCache();
 
     const {result} = renderHook(() =>
       useQuery(fn, [], {cache, initData: [] as string[]})
     );
+    await act(async () => {
+      first.resolve(['v1']);
+    });
+    await waitFor(() => expect(result.current.data).toEqual(['v1']));
+    expect(fn).toHaveBeenCalledTimes(1);
 
-    // 初载尚未 settle：两次 refetch 与 in-flight 请求同 key，共享同一
-    // promise（useDedup），底层 fn 不重发
+    // refetch = 删除缓存条目 + 重发。删除会连带拆掉 in-flight 注册并触发
+    // useCache 的被动重验证（delete 事件 → 已见 args 重跑），随后的显式
+    // injectable 调用则与被动重验证共享同一 in-flight——一次点击仍是
+    // 一次底层请求。注意：连续点击期间的在飞请求会被下一次 delete 拆除
+    // 重发（useDedup 时代的「连点合并」不再保留，provider 去重只在同一条
+    // in-flight 生命周期内生效）。
     await act(async () => {
       result.current.refetch();
-      result.current.refetch();
     });
-    expect(fn).toHaveBeenCalledTimes(1);
-    expect(result.current.fetching).toBe(true);
-
     await act(async () => {
-      pending.resolve(['v1']);
+      second.resolve(['v2']);
     });
-    expect(fn).toHaveBeenCalledTimes(1);
-    expect(result.current.data).toEqual(['v1']);
-    expect(result.current.fetching).toBe(false);
+    await waitFor(() => expect(result.current.data).toEqual(['v2']));
+    expect(fn).toHaveBeenCalledTimes(2);
   });
 
-  it('跨组件同时挂载：各自实例独立初载但数据一致，后挂载者命中缓存', async () => {
+  it('跨组件同时挂载：provider 层共享同一 in-flight，重挂载命中缓存', async () => {
     const pending = deferred<string[]>();
     const fn = vi.fn().mockReturnValue(pending.promise);
     const cache = createQueryCache();
 
-    // 0.7 官方形态：useInjectable 每组件实例独立，useDedup 只去重同一
-    // injectable 的并发调用——同时挂载各发一次首载请求（不再共享首个
-    // 实例的 injectable）；跨组件的数据复用由共享 cache 承担（下方
-    // 重挂载验证）。
+    // 0.8 形态：useCache 的 miss 走 provider.load——两个组件实例并发首载
+    // 同参数，共享同一条 in-flight（fn 只执行一次），双方各自广播拿到
+    // 一致数据；跨组件的数据复用由共享 cache 承担（下方重挂载验证）。
     const first = renderHook(() =>
       useQuery(fn, [], {cache, initData: [] as string[]})
     );
@@ -226,6 +233,7 @@ describe('useQuery', () => {
 
     expect(first.result.current.data).toEqual(['shared']);
     expect(second.result.current.data).toEqual(['shared']);
+    expect(fn).toHaveBeenCalledTimes(1);
     first.unmount();
     second.unmount();
 
@@ -234,7 +242,7 @@ describe('useQuery', () => {
       useQuery(fn, [], {cache, initData: [] as string[]})
     );
     await waitFor(() => expect(third.result.current.data).toEqual(['shared']));
-    expect(fn).toHaveBeenCalledTimes(2);
+    expect(fn).toHaveBeenCalledTimes(1);
     third.unmount();
   });
 

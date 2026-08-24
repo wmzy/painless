@@ -2,7 +2,7 @@ import type {Article} from '@/types';
 
 import {useState} from 'react';
 import {css} from '@linaria/core';
-import {navigate} from '@native-router/core';
+import {navigate, refresh} from '@native-router/core';
 import {useData, useMatched} from '@native-router/react';
 import {Form, useForm, reset, useIsSubmitting} from 'react-f0rm';
 import {useMutation} from 'react-toolroom/async';
@@ -22,12 +22,10 @@ import {FormItem} from 'haze-ui/form';
 
 import * as articleService from '@/services/article';
 import {getCurrentUser} from '@/services/auth';
+import {articleCacheArgs} from '@/util/loaderCache';
 import {queryCache} from '@/util/useQuery';
 
 import CommentList from './CommentList';
-
-// 乐观更新的本地覆盖值；null 表示跟随 useData 的服务端值
-type FavOverride = {favorited: boolean; favoritesCount: number};
 
 function errText(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -42,18 +40,23 @@ export default function ArticleView() {
   // useData 约定：本路由挂了 loader，进组件前数据必有值，用 ! 收窄；
   // 无 loader 的可选数据路由（如 Editor）则用 ?? undefined
   const article = useData<Article>()!;
-  const {router} = useMatched();
+  const {router, params} = useMatched();
   const commentForm = useForm();
   // 同 Editor：react-f0rm ≥0.4 的 onSubmit 被 await，isSubmitting 覆盖整个异步提交
   const commentSubmitting = useIsSubmitting(commentForm);
   const [error, setError] = useState<string | null>(null);
 
-  // favorite/follow 的乐观更新：article 数据来自路由 loader（非
-  // useQuery injectable），useOptimistic 的 patch 目标不存在，本地
-  // useState 覆盖即等价实现——点击先写，请求成功后以服务端返回校正，
-  // 失败回滚到点击前的值（请求失败即服务端状态未变，回滚即权威值）。
-  const [favOverride, setFavOverride] = useState<FavOverride | null>(null);
-  const [followOverride, setFollowOverride] = useState<boolean | null>(null);
+  // 写穿缓存：与路由 loader 同一 key（loader 侧 withCache(['article'])，
+  // 见 views/index.tsx）。applyCache 把最新值直接 set 进共享 queryCache 再
+  // refresh 当前视图——loader 重跑时新鲜命中缓存，纯本地更新（零请求、
+  // 零骨架、零 loading），useData 换新后整视图重渲染。手写 useState
+  // override 模式（0.7 前）作废：缓存写穿同时惠及 loader（回退/重进
+  // 命中）与并发在飞的请求（代次守卫防旧响应覆盖）。
+  const key = articleCacheArgs(params.title!);
+  const applyCache = (next: Article) => {
+    queryCache.set(key, next);
+    void refresh(router);
+  };
 
   // 发评论 → 声明式失效：useMutation 成功后对共享 queryCache 做 [slug]
   // 前缀失效（provider 的 deleteWhere），CommentList 这类挂载中的 useCache
@@ -64,11 +67,6 @@ export default function ArticleView() {
     invalidates: [[queryCache, article.slug]]
   });
 
-  const favorited = favOverride?.favorited ?? article.favorited;
-  const favoritesCount =
-    favOverride?.favoritesCount ?? article.favoritesCount;
-  const following = followOverride ?? article.author.following;
-
   // 未登录（无 token）时写操作一律引导去登录页
   const requireAuth = (): boolean => {
     if (getCurrentUser()) return true;
@@ -78,38 +76,43 @@ export default function ArticleView() {
 
   const toggleFavorite = () => {
     if (!requireAuth()) return;
-    const prev = {favorited, favoritesCount};
-    const next = {
-      favorited: !favorited,
-      favoritesCount: favorited ? favoritesCount - 1 : favoritesCount + 1
-    };
-    setFavOverride(next);
+    // 点击时快照：请求失败即服务端状态未变，回滚到它就是回到权威值
+    const snapshot = article;
     setError(null);
+    applyCache({
+      ...snapshot,
+      favorited: !snapshot.favorited,
+      favoritesCount: snapshot.favorited
+        ? snapshot.favoritesCount - 1
+        : snapshot.favoritesCount + 1
+    });
     articleService
-      .favoriteArticle(article.slug, next.favorited)
-      .then((a) =>
-        setFavOverride({
-          favorited: a.favorited,
-          favoritesCount: a.favoritesCount
-        })
-      )
+      .favoriteArticle(snapshot.slug, !snapshot.favorited)
+      .then((a) => applyCache(a))
       .catch((e: unknown) => {
-        setFavOverride(prev);
+        applyCache(snapshot);
         setError(errText(e));
       });
   };
 
   const toggleFollow = () => {
     if (!requireAuth()) return;
-    const prev = following;
-    const next = !following;
-    setFollowOverride(next);
+    const snapshot = article;
     setError(null);
+    applyCache({
+      ...snapshot,
+      author: {...snapshot.author, following: !snapshot.author.following}
+    });
     articleService
-      .followAuthor(article.author.username, next)
-      .then((p) => setFollowOverride(p.following))
+      .followAuthor(snapshot.author.username, !snapshot.author.following)
+      .then((p) => {
+        // 成功回调用 peek 取当前值合并：follow 在飞期间 favorite 可能已
+        // 写穿缓存，直接铺开闭包里的旧 snapshot 会把它覆盖掉
+        const cur = (queryCache.peek!(key)?.value as Article | undefined) ?? snapshot;
+        applyCache({...cur, author: p});
+      })
       .catch((e: unknown) => {
-        setFollowOverride(prev);
+        applyCache(snapshot);
         setError(errText(e));
       });
   };
@@ -134,18 +137,19 @@ export default function ArticleView() {
         <Avatar src={article.author.image} alt={article.author.username} />
         <Text>{article.author.username}</Text>
         <Button variant='outline' size='sm' onClick={toggleFollow}>
-          {following ? 'Unfollow' : 'Follow'} {article.author.username}
+          {article.author.following ? 'Unfollow' : 'Follow'}{' '}
+          {article.author.username}
         </Button>
         <Button
-          variant={favorited ? 'solid' : 'outline'}
+          variant={article.favorited ? 'solid' : 'outline'}
           size='sm'
-          aria-pressed={favorited}
+          aria-pressed={article.favorited}
           className={pushRight}
           onClick={toggleFavorite}
         >
           ❤{' '}
-          <Badge variant={favorited ? 'success' : 'default'}>
-            {favoritesCount}
+          <Badge variant={article.favorited ? 'success' : 'default'}>
+            {article.favoritesCount}
           </Badge>
         </Button>
       </Flex>

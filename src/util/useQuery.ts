@@ -1,16 +1,18 @@
 // 项目级数据获取 preset（模板示范：每个项目可按自身理念定制这一层）。
 // 把 react-toolroom/async 的 useInjectable / useCache / useRun / useResult /
-// useLoading / useInitialLoading / useError / useDedup / useRetry 组合为
-// 单一 hook useQuery(fn, args, opts)，统一：
+// useLoading / useInitialLoading / useError / useRetry / useFocusRevalidate
+// 组合为单一 hook useQuery(fn, args, opts)，统一：
 // - 模块级共享内存缓存（cacheTime 默认 10000ms）；
 // - 陈旧标记（staleTime 默认 2000ms）——均对齐迁移前 Tags / CommentList
 //   手写组合的取值；
-// - 并发去重（useDedup）：同一 injectable 上同参数的并发 in-flight 共享
-//     同一 promise，底层 fn 只执行一次（useRun 重跑与 refetch 连点都受益）；
-//     useInjectable 为每组件实例独立，跨组件复用由共享 cache 承担——
-//     后挂载者在新鲜期内直接命中缓存；
+// - 并发去重：0.8 起 useCache 的 miss/stale 重验证内部走 provider.load
+//   （原子 get-or-insert in-flight 槽位），同参数的并发调用共享同一
+//   promise，底层 fn 只执行一次——且是跨组件、跨通道（路由 loader 的
+//   withCache 用同一 queryCache）共享在飞请求，useDedup 已无必要；
+// - focus 重验证（useFocusRevalidate）：窗口重新聚焦/可见时对 miss/
+//   stale 条目后台重拉（新鲜期内经 useCache 直接命中，不发请求）；
 // - 取消（useRun 的 signal）：args 变化或卸载时 abort 上一次请求，经
-//     服务层尾参 signal 透传到 fetch；
+//   服务层尾参 signal 透传到 fetch；
 // - 可选重试（QueryOptions.retry，默认禁用：retries 0）；
 // - refetch：清掉当前参数的缓存条目后重发（绕过缓存），引用稳定；
 // - loading 仅指初载（useInitialLoading，SWR 语义）：已有结果后的后台
@@ -22,8 +24,8 @@ import {
   isAbortSignal,
   stableHash,
   useCache,
-  useDedup,
   useError,
+  useFocusRevalidate,
   useInject,
   useInjectable,
   useInitialLoading,
@@ -151,22 +153,30 @@ export function useQuery<F extends AsyncFunc>(
   }
 
   // 注册顺序即洋葱层次（先注册在内层）：mock 最内直接包住原始 fn，往上
-  // 依次 retry → dedup → cache。retry 在 dedup 内层，整个重试循环是
-  // 单次 in-flight，并发消费者共享同一循环；缓存/错误/加载状态只感知
-  // 最终结果（重试期间不闪 error/loading）。无条件调用以满足 hooks
-  // 规则——默认 {retries: 0} 即直通，失败原样上抛。
+  // 依次 retry → cache。retry 在 cache 内层，整个重试循环是单次 in-flight，
+  // 并发消费者共享同一循环；缓存/错误/加载状态只感知最终结果（重试期间
+  // 不闪 error/loading）。无条件调用以满足 hooks 规则——默认
+  // {retries: 0} 即直通，失败原样上抛。
   useRetry(injectable, retry ?? {retries: 0});
 
-  // 并发去重：同参数的并发 in-flight 共享同一 promise，底层 fn 只执行
-  // 一次（挂载竞态、stale 后台刷新都受益）。hash 与缓存同用 hashArgs，
-  // useRun 附加的 signal 不影响去重 key。
-  useDedup(injectable, {hash: hashArgs});
+  // （0.7 的 useDedup 已删）并发去重由 provider.load 内建：useCache 的
+  // miss/stale 重验证走 queryCache.load（原子 get-or-insert in-flight），
+  // 同参数并发调用共享同一 promise——跨组件、跨通道（路由 loader 的
+  // withCache 共用同一 queryCache）都只发一次请求。
 
   // useCache 对 provider 的期望形状随 AF 泛型延迟求值（R<AF>/Parameters<AF>），
   // 显式以 AsyncFunc 实例化后恰为 CacheProvider<any, any[]>——与模块级
   // QueryCache 完全一致，无需断言；cache 本就存任意值/任意参数（hashArgs
   // 归一），运行时安全。
   const stale = useCache(injectable as AsyncFunc, cache, staleTime);
+
+  // focus/可见性恢复时的后台重验证（react-query 的 refetchOnWindowFocus）：
+  // bfcache 恢复、路由 viewStack 快照回放后数据可能过时，回到页面即对
+  // miss/stale 条目重拉（新鲜期内 useCache 直接命中缓存，不发请求）。
+  // args 必须与 useRun 同 key：focus 重验证寻址 [..args] 而非 []，否则
+  // 是另一条请求线而非命中既有条目。
+  useFocusRevalidate(injectable as AsyncFunc, {args});
+
   const data = useResult(injectable, initData!);
   const fetching = useLoading(injectable);
   const loading = useInitialLoading(injectable);
