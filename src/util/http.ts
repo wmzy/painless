@@ -4,12 +4,10 @@ const BASE_URL: string =
   (import.meta.env.VITE_API_URL as string | undefined) ||
   'https://api.realworld.io/api/';
 
-// 基础客户端：统一 baseUrl 与 JSON 头、超时与重试；mapError 把非 2xx
-// 映射为 ApiError（保留 status 与字段级 errors，message 沿用既有可读
-// 文案拼接，调用方依赖 e.message 呈现错误文案的部分保持兼容）。
 // RealWorld 非 2xx 错误体是 {errors: {field: string[]}}（如 422
 // {"errors":{"email":["has already been taken"]}}}），也有 {message} 形状：
-// 优先取 message，否则把 errors 拼成可读文案。
+// 优先取 message，否则把 errors 拼成可读文案。调用方依赖 e.message 呈现
+// 这份文案，mapError 处据此换写 HTTPError 的 message。
 function errorText(data: unknown): string {
   const body = data as {message?: unknown; errors?: unknown} | undefined;
   if (typeof body?.message === 'string' && body.message) return body.message;
@@ -23,38 +21,6 @@ function errorText(data: unknown): string {
     if (parts.length) return parts.join('; ');
   }
   return '';
-}
-
-// 从错误体提取字段级 errors 并归一为 Record<string, string[]>：
-// 响应体是外部输入，非对象形状或非字符串条目一律丢弃，缺省 {}。
-function errorFields(data: unknown): Record<string, string[]> {
-  const errors = (data as {errors?: unknown} | undefined)?.errors;
-  if (!errors || typeof errors !== 'object') return {};
-  const result: Record<string, string[]> = {};
-  for (const [field, messages] of Object.entries(errors)) {
-    const list = Array.isArray(messages) ? messages : [messages];
-    const strings = list.filter((m): m is string => typeof m === 'string');
-    if (strings.length) result[field] = strings;
-  }
-  return result;
-}
-
-// 非 2xx 的结构化错误：保留 HTTP 状态码与字段级校验错误，message
-// 保持 errorText 的可读拼接（既有调用方按 e.message 展示文案）。
-export class ApiError extends Error {
-  readonly status: number;
-  readonly errors: Record<string, string[]>;
-
-  constructor(
-    status: number,
-    message: string,
-    errors: Record<string, string[]>
-  ) {
-    super(message);
-    this.name = 'ApiError';
-    this.status = status;
-    this.errors = errors;
-  }
 }
 
 // ---- 动态 token 注入 ------------------------------------------------------
@@ -71,8 +37,10 @@ export function setTokenGetter(getter: TokenGetter) {
 
 // ---- 401 未授权钩子 ------------------------------------------------------
 // token 过期/失效时后端返回 401，典型处置是清本地登录态；同样不能让
-// http 反向依赖 auth，沿用注册制。错误映射处同步触发，fire-and-forget：
-// handler 抛错被吞掉，绝不影响原错误照常抛给调用方。
+// http 反向依赖 auth，沿用注册制。触发条件在 mapError 处判：仅当
+// 401 且 tokenGetter() 非空——登录/注册自身的 401（密码错误）发生在
+// 未登录态，天然不触发。fire-and-forget：handler 抛错被吞掉，绝不影响
+// 原错误照常抛给调用方。
 export type UnauthorizedHandler = () => void;
 
 let unauthorizedHandler: UnauthorizedHandler = () => undefined;
@@ -89,63 +57,39 @@ function fireUnauthorized() {
   }
 }
 
-// fetch-fun 的 withAuth 每次请求都会无条件设置 Authorization（无凭据时
-// 会产生 "Token " 空头）。在其内侧剥掉无凭据的 Authorization，保证
-// 未登录的请求不带该头。经 withAuth 后该头必为 `${scheme} ${credentials}`
-// 形态，按「scheme 之后的凭据段」判空。
-const stripEmptyAuth: ff.MiddlewareConfig = {
-  name: 'painless:strip-empty-auth',
-  inner: 'builtin:auth',
-  middleware: (f) => (input, init) => {
-    const headers = new Headers(init?.headers);
-    const value = headers.get('authorization');
-    if (value !== null) {
-      const credentials = value.trim().split(/\s+/).slice(1).join(' ');
-      if (!credentials) {
-        headers.delete('authorization');
-        return f(input, {...init, headers});
-      }
-    }
-    return f(input, init);
-  }
+// 自定义 init：fetch-fun 的 Options 是 RequestInit 的超集，signal 等
+// 字段直通原生 fetch；headers 单独挑出做逐个合并（覆盖同名默认头）。
+export type RequestInitish = RequestInit & {
+  headers?: Record<string, string>;
 };
 
 const client = ff
   .create({baseUrl: BASE_URL})
   .pipe(ff.header, 'content-type', 'application/json')
   .pipe(ff.header, 'accept', 'application/json')
-  // 瞬态故障重试：RetryOptions.methods 支持按方法过滤，这里只放行
-  // GET/HEAD（读操作幂等，重放无副作用）；statuses/delay/respectRetryAfter
-  // 均沿用库默认（statuses = [408,425,429,500,502,503,504]，
-  // 指数退避 initial 1s / max 10s，尊重 Retry-After 头）。
-  .pipe(ff.use, ff.withRetry(2, {methods: ['GET', 'HEAD']}))
-  // 每次「尝试」10s 超时：withTimeout 自带 inner:'builtin:retry' 定位，
-  // 中间件排序后包在 retry 内层，重试的每一趟都拿到全新的时间预算。
+  // SPA 三件套（README「The SPA default」）：每次「尝试」10s 超时预算
+  // ——withTimeout 自带 inner:'builtin:retry' 定位，重试的每一趟都拿到
+  // 全新预算；重试只放行幂等方法 + 瞬态状态码（408/425/429/500/502/
+  // 503/504、网络错误、超时），POST 与 4xx 永不重放，退避/Retry-After
+  // 均用库默认。
   .pipe(ff.use, ff.withTimeout(10_000))
-  // RealWorld 规范用 `Token <token>` 前缀；供应商每次请求重新求值
+  .pipe(ff.use, ff.withRetry(2))
+  // RealWorld 规范用 `Token <token>` 前缀；供应商每次尝试重新求值（含
+  // 重试），凭据为空串/null/undefined/纯空白时自动跳过 Authorization
+  // 报头并删除继承值——未登录请求保持匿名，无需自研剥头中间件。
   .pipe(ff.use, ff.withAuth(() => tokenGetter() ?? '', 'Token'))
-  .pipe(ff.use, stripEmptyAuth)
+  // 官方 mapError 模式：withMessage 换写 message，保留 response/request/
+  // data/cause 与 HTTPError 身份——下游 `instanceof HTTPError`、`.status`、
+  // `.data`（字段级 errors）全部照常可用。错误体解析不出文案时（如 HTML
+  // 错误页）保留库默认的「GET <url> failed with status 401」句式兜底。
   .pipe(ff.mapError, (e: unknown) => {
     if (!(e instanceof ff.HTTPError)) return e;
-    // HTTPError 的状态码挂在 response.status（实例上无独立 status 字段）
-    const status = e.response.status;
-    const apiError = new ApiError(
-      status,
-      errorText(e.data),
-      errorFields(e.data)
-    );
-    // 已登录态遇 401 视为凭据失效，触发自动登出等处置；未登录态（如
-    // 登录失败 401）由注册方自行判空 no-op。
-    if (status === 401) fireUnauthorized();
-    return apiError;
+    if (e.status === 401 && tokenGetter()) fireUnauthorized();
+    return e.withMessage(errorText(e.data) || e.message);
   });
 
-// fetch-fun 的 Options 是 RequestInit 的超集，init 的其余字段直接合入，
-// 自定义 headers 逐个合并以覆盖同名默认头。
-function withInit(
-  o: ff.Options,
-  init?: RequestInit & {headers?: Record<Lowercase<string>, string>}
-) {
+// init 的其余字段直接合入 Options，自定义 headers 逐个合并以覆盖默认头。
+function withInit(o: ff.Options, init?: RequestInitish) {
   const {headers, ...rest} = init ?? {};
   let result = {...o, ...rest} as ff.Options;
   for (const [name, value] of Object.entries(headers ?? {})) {
@@ -156,19 +100,19 @@ function withInit(
 
 export function fetchJSON<T = unknown>(
   url: string,
-  init?: RequestInit & {headers?: Record<Lowercase<string>, string>}
+  init?: RequestInitish
 ): Promise<T> {
   return ff.fetchJSON<T>(ff.url(withInit(client, init), url)) as Promise<T>;
 }
 
-// signal 为只读查询的取消通道：fetch-fun 的 Options 是 RequestInit 的
-// 超集，经 withInit 合入后直接透传给 fetch；不传时行为与原先一致。
+// signal 为只读查询的取消通道：经 withInit 合入 Options 后直通 fetch；
+// 不传时行为与原先一致。
 export function get<T = unknown>(
   url: string,
   params?: Record<string, string | number | undefined>,
-  signal?: AbortSignal
+  init?: RequestInitish
 ) {
-  let o = ff.url(withInit(client, {method: 'get', signal}), url);
+  let o = ff.url(withInit(client, {method: 'get', ...init}), url);
   if (params) {
     // 与 qss 语义一致：undefined 值跳过序列化
     const defined = Object.fromEntries(
@@ -179,22 +123,38 @@ export function get<T = unknown>(
   return ff.fetchJSON<T>(o) as Promise<T>;
 }
 
-export function del<T = unknown>(url: string) {
+export function del<T = unknown>(url: string, init?: RequestInitish) {
   return ff.fetchJSON<T>(
-    ff.url(ff.method(client, 'delete'), url)
+    ff.url(ff.method(withInit(client, init), 'delete'), url)
   ) as Promise<T>;
 }
 
-export function post<T = unknown>(url: string, data: unknown) {
-  return sendJSON<T>('post', url, data);
+export function post<T = unknown>(
+  url: string,
+  data: unknown,
+  init?: RequestInitish
+) {
+  return sendJSON<T>('post', url, data, init);
 }
 
-export function put<T = unknown>(url: string, data: unknown) {
-  return sendJSON<T>('put', url, data);
+export function put<T = unknown>(
+  url: string,
+  data: unknown,
+  init?: RequestInitish
+) {
+  return sendJSON<T>('put', url, data, init);
 }
 
-function sendJSON<T>(m: string, url: string, data: unknown): Promise<T> {
+function sendJSON<T>(
+  m: string,
+  url: string,
+  data: unknown,
+  init?: RequestInitish
+): Promise<T> {
   return ff.fetchJSON<T>(
-    ff.body(ff.method(ff.url(client, url), m), JSON.stringify(data))
+    ff.body(
+      ff.method(ff.url(withInit(client, init), url), m),
+      JSON.stringify(data)
+    )
   ) as Promise<T>;
 }

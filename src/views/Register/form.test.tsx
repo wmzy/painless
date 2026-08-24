@@ -7,7 +7,8 @@ import {render, screen, fireEvent} from '@testing-library/react';
 
 const state = vi.hoisted(() => ({router: {pathname: '/register'}}));
 
-// Register 视图只调 auth.register，整体 mock 服务层；ApiError 用真实类构造
+// Register 视图只调 auth.register，整体 mock 服务层；422 拒绝值用鸭子
+// 形状普通对象（catch 侧按 {status, data.errors} 形状判断）
 vi.mock('@/services/auth', () => ({register: vi.fn()}));
 vi.mock('@native-router/react', () => ({
   useRouter: () => state.router,
@@ -18,7 +19,6 @@ vi.mock('@native-router/react', () => ({
 vi.mock('@native-router/core', () => ({navigate: vi.fn()}));
 
 import * as auth from '@/services/auth';
-import {ApiError} from '@/util/http';
 
 import Register from './index';
 
@@ -55,19 +55,29 @@ describe('Register 表单', () => {
   });
 
   // 合约必测：注册邮箱已占用 → 服务端 422 的 email 错误回填到
-  // email 字段下方（FieldError 渲染），顶部 Alert 不再显示整句
+  // email 字段下方（FormItem 的错误 span 渲染），顶部 Alert 不再显示整句
   it('注册邮箱已占用：422 的 email 错误回填到字段下方，顶部 Alert 隐藏', async () => {
-    registerMock.mockRejectedValueOnce(
-      new ApiError(422, 'email has already been taken', {
-        email: ['has already been taken']
-      })
-    );
+    // 鸭子形状（fetch-fun HTTPError 映射后：status + data.errors），
+    // 视图 catch 按形状判断，不依赖错误类身份
+    registerMock.mockRejectedValueOnce({
+      status: 422,
+      message: 'email has already been taken',
+      data: {errors: {email: ['has already been taken']}}
+    });
     render(<Register />);
 
     fill('alice', 'alice@example.com', 'password123');
     fireEvent.click(screen.getByRole('button', {name: 'Register'}));
 
     expect(await screen.findByText('has already been taken')).toBeDefined();
+    // 服务端错误同样走 FormItem 的 aria-invalid + aria-describedby 接线
+    const emailInput = screen.getByPlaceholderText('Email');
+    expect(emailInput.getAttribute('aria-invalid')).toBe('true');
+    const errorEl = document.getElementById(
+      emailInput.getAttribute('aria-describedby')!
+    );
+    expect(errorEl?.getAttribute('role')).toBe('alert');
+    expect(errorEl?.textContent).toBe('has already been taken');
     expect(screen.queryByText('email has already been taken')).toBeNull();
   });
 });

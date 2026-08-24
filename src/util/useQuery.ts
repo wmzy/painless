@@ -5,8 +5,10 @@
 // - 模块级共享内存缓存（cacheTime 默认 10000ms）；
 // - 陈旧标记（staleTime 默认 2000ms）——均对齐迁移前 Tags / CommentList
 //   手写组合的取值；
-// - 并发去重（useDedup）：同参数的并发 in-flight 共享同一 promise，
-//     底层 fn 只执行一次；
+// - 并发去重（useDedup）：同一 injectable 上同参数的并发 in-flight 共享
+//     同一 promise，底层 fn 只执行一次（useRun 重跑与 refetch 连点都受益）；
+//     useInjectable 为每组件实例独立，跨组件复用由共享 cache 承担——
+//     后挂载者在新鲜期内直接命中缓存；
 // - 取消（useRun 的 signal）：args 变化或卸载时 abort 上一次请求，经
 //     服务层尾参 signal 透传到 fetch；
 // - 可选重试（QueryOptions.retry，默认禁用：retries 0）；
@@ -58,40 +60,10 @@ export function createQueryCache(cacheTime = DEFAULT_CACHE_TIME): QueryCache {
   });
 }
 
-// 模块级共享缓存：同参数的请求在 cacheTime 内复用。
+// 模块级共享缓存：同参数的请求在 cacheTime 内复用。0.7 起失效按 cache
+// 寻址（invalidate([[cache, ...prefix]]) 直达 provider），各消费者各自
+// useInjectable 即可，不再需要跨组件稳定 injectable 的 WeakMap hack。
 export const queryCache: QueryCache = createQueryCache();
-
-// 跨组件共享的 injectable（react-toolroom 的跨组件模型：失效按 injectable
-// 身份寻址）。useQuery 的每个消费者仍各自调用 useInjectable（hook 必须无条件
-// 调用），但只有首个实例的 injectable 进缓存并被所有消费者复用——这样
-// invalidate(queryOf(fn)) 才能命中它们注册的缓存与订阅者。
-const sharedInjectables = new WeakMap<AsyncFunc, AsyncFunc>();
-
-function useSharedInjectable<F extends AsyncFunc>(fn: F): F {
-  const mine = useInjectable(fn);
-  const cached = sharedInjectables.get(fn);
-  if (cached) return cached as F;
-  sharedInjectables.set(fn, mine);
-  return mine;
-}
-
-/**
- * 预热并取 useQuery 为 fn 使用的共享 injectable，作为
- * `invalidate([...])` / `useMutation(..., {invalidates: [...]})` 的失效
- * 目标。
- *
- * 是 hook：在消费 mutation 的组件里调用（无条件、顶层）。内部建一个
- * injectable 并注册进共享表，保证即使目标查询组件尚未挂载，拿到的
- * 也是合法 injectable（useMutation 的 invalidates 运行时校验要求如此）；
- * 之后目标查询组件挂载时复用同一实例，失效即命中其缓存与订阅者。
- */
-export function useQueryOf<F extends AsyncFunc>(fn: F): F {
-  const mine = useInjectable(fn);
-  const cached = sharedInjectables.get(fn);
-  if (cached) return cached as F;
-  sharedInjectables.set(fn, mine);
-  return mine;
-}
 
 export type MockConfig = {
   schema: unknown;
@@ -167,7 +139,7 @@ export function useQuery<F extends AsyncFunc>(
     retry
   }: QueryOptions<R<F>> = {}
 ): QueryResult<R<F> | undefined> {
-  const injectable = useSharedInjectable(fn);
+  const injectable = useInjectable(fn);
 
   if (mock) {
     useMock(
@@ -190,7 +162,11 @@ export function useQuery<F extends AsyncFunc>(
   // useRun 附加的 signal 不影响去重 key。
   useDedup(injectable, {hash: hashArgs});
 
-  const stale = useCache(injectable, cache, staleTime);
+  // useCache 对 provider 的期望形状随 AF 泛型延迟求值（R<AF>/Parameters<AF>），
+  // 显式以 AsyncFunc 实例化后恰为 CacheProvider<any, any[]>——与模块级
+  // QueryCache 完全一致，无需断言；cache 本就存任意值/任意参数（hashArgs
+  // 归一），运行时安全。
+  const stale = useCache(injectable as AsyncFunc, cache, staleTime);
   const data = useResult(injectable, initData!);
   const fetching = useLoading(injectable);
   const loading = useInitialLoading(injectable);

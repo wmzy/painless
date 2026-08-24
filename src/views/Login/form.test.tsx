@@ -6,7 +6,8 @@ import {render, screen, fireEvent} from '@testing-library/react';
 
 const state = vi.hoisted(() => ({router: {pathname: '/login'}}));
 
-// Login 视图只调 auth.login，整体 mock 服务层；ApiError 用真实类构造
+// Login 视图只调 auth.login，整体 mock 服务层；422 拒绝值用鸭子形状
+// 普通对象（catch 侧按 {status, data.errors} 形状判断）
 vi.mock('@/services/auth', () => ({login: vi.fn()}));
 vi.mock('@native-router/react', () => ({
   useRouter: () => state.router,
@@ -18,7 +19,6 @@ vi.mock('@native-router/react', () => ({
 vi.mock('@native-router/core', () => ({navigate: vi.fn()}));
 
 import * as auth from '@/services/auth';
-import {ApiError} from '@/util/http';
 
 import Login from './index';
 
@@ -53,26 +53,38 @@ describe('Login 表单', () => {
   });
 
   it('422 字段错误可对应表单字段：落到字段下方，顶部 Alert 隐藏', async () => {
-    loginMock.mockRejectedValueOnce(
-      new ApiError(422, 'password is too short', {password: ['is too short']})
-    );
+    // 鸭子形状（fetch-fun HTTPError 映射后：status + data.errors），视图
+    // catch 按形状判断，不依赖错误类身份
+    loginMock.mockRejectedValueOnce({
+      status: 422,
+      message: 'password is too short',
+      data: {errors: {password: ['is too short']}}
+    });
     render(<Login />);
 
     fill('alice@example.com', 'secret');
     fireEvent.click(screen.getByRole('button', {name: 'Login'}));
 
-    // password 字段下方出现服务端文案（FieldError 渲染）
+    // password 字段下方出现服务端文案（FormItem 的错误 span 渲染），
+    // 且服务端错误同样走 aria-invalid + aria-describedby 接线
     expect(await screen.findByText('is too short')).toBeDefined();
+    const passwordInput = screen.getByPlaceholderText('Password');
+    expect(passwordInput.getAttribute('aria-invalid')).toBe('true');
+    const errorEl = document.getElementById(
+      passwordInput.getAttribute('aria-describedby')!
+    );
+    expect(errorEl?.getAttribute('role')).toBe('alert');
+    expect(errorEl?.textContent).toBe('is too short');
     // 全部错误已回填字段：顶部 Alert 不显示 e.message 整句
     expect(screen.queryByText('password is too short')).toBeNull();
   });
 
   it('422 字段键对不上表单字段（如 "email or password"）：保留在顶部 Alert', async () => {
-    loginMock.mockRejectedValueOnce(
-      new ApiError(422, 'email or password is invalid', {
-        'email or password': ['is invalid']
-      })
-    );
+    loginMock.mockRejectedValueOnce({
+      status: 422,
+      message: 'email or password is invalid',
+      data: {errors: {'email or password': ['is invalid']}}
+    });
     render(<Login />);
 
     fill('alice@example.com', 'wrong');
@@ -83,7 +95,7 @@ describe('Login 表单', () => {
     expect(await screen.findByText('email or password is invalid')).toBeDefined();
   });
 
-  it('非 ApiError：沿用整句 message 兜底到顶部 Alert', async () => {
+  it('非结构化错误（网络故障等）：沿用整句 message 兜底到顶部 Alert', async () => {
     loginMock.mockRejectedValueOnce(new Error('Network down'));
     render(<Login />);
 

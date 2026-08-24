@@ -66,15 +66,13 @@ describe('auth service', () => {
       expect(getter()).toBeUndefined();
     });
 
-    it('should register an unauthorized handler that logs out only when logged in', async () => {
+    it('should register an unauthorized handler that logs out unconditionally', async () => {
       expect(http.setUnauthorizedHandler).toHaveBeenCalledTimes(1);
       const handler = vi.mocked(http.setUnauthorizedHandler).mock.calls[0]![0];
 
-      // 未登录态（如登录失败的 401）：no-op，不触碰存储
-      handler();
-      expect(auth.getCurrentUser()).toBeNull();
-
-      // 已登录态（token 过期的 401）：触发登出并清存储
+      // 判空在 http 层完成：只有「401 且 token 非空」（已登录态凭据
+      // 失效）才会调到这里，handler 直接登出；未登录态（登录失败的 401）
+      // 不会触发，无义务自查。
       vi.mocked(http.post).mockResolvedValue({user});
       await auth.login('test@test.com', 'password');
       handler();

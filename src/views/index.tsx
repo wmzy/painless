@@ -1,3 +1,5 @@
+import type {HomeSearch} from '@/types/search';
+
 import {View, HistoryRouter as Router, Route} from '@native-router/react';
 
 import Loading from '@/components/Loading';
@@ -9,6 +11,7 @@ import {articlePageSchema} from '@/types/index.schema';
 import {homeSearchSchema} from '@/types/search';
 
 import NotFound from './Article/NotFound';
+import HomeSkeleton from './Home/Skeleton';
 
 // 路由守卫：@native-router ≥1.2 的 beforeLoad。返回路径即由路由器在
 // resolve 期重定向（导航提交前生效，URL 不落守卫路由）；返回 undefined
@@ -24,20 +27,27 @@ const routes = {
     {
       path: '/',
       // search 变化即重跑 data（native-router 的视图缓存 key 含 search）；
-      // schema 在 resolve 期解析+校验，loader 拿到的已是 coerce 后的值
+      // schema 在 resolve 期解析+校验，loader 拿到的已是 coerce 后的值。
+      // signal：导航被新导航取代/cancel/POP 取消时 abort，透传给 service
+      // 停掉被丢弃导航的请求（mockViewData 包装层原样传 ctx，信号不丢）
       search: homeSearchSchema,
       data: mockViewData(
-        ({search}: {search: import('@/types/search').HomeSearch}) =>
-          articleService.query(search),
+        ({search, signal}: {search: HomeSearch; signal: AbortSignal}) =>
+          articleService.query(search, signal),
         articlePageSchema,
         'articlePage'
       ),
+      // 冷启动/刷新（无前视图可保留）时渲染文章卡片骨架；应用内导航
+      // 保持旧视图 + 全局 Loading，不进这里
+      pendingComponent: HomeSkeleton,
       component: () => import('./Home')
     },
     {
       path: '/article/:title',
       component: () => import('./Article'),
-      data: ({params: {title}}) => articleService.findByTitle(title!),
+      // signal 同上：findByTitle 的请求随导航取消而取消
+      data: ({params: {title}, signal}) =>
+        articleService.findByTitle(title!, signal),
       // 路由级错误组件：文章不存在/加载失败渲染页面级提示（含返回首页），
       // 其它路由仍走全局 errorHandler → RouterError
       errorComponent: NotFound

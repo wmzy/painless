@@ -1,5 +1,8 @@
 // 来源：第 3 批评审任务——Editor 提交中状态（isSubmitting 防重复提交）与 tagList 事件适配。
 // Editor 视图此前无测试文件，故新建。
+// react-f0rm 0.5.0 + haze-ui 1.8.0 接入批：422 拒绝值改用鸭子形状普通对象
+// （http 层错误升级为 fetch-fun HTTPError 后不再有可构造的 ApiError 类），
+// 断言走 FormItem 渲染的字段错误 span 与 aria 接线。
 import type {Article} from '@/types';
 
 import {describe, it, expect, vi, beforeEach} from 'vitest';
@@ -11,7 +14,8 @@ const state = vi.hoisted(() => ({
   router: {pathname: '/editor'}
 }));
 
-// 保留真实模块（构造 422 拒绝值需要 ApiError 类），只覆写视图用到的 post/put
+// 保留真实模块，只覆写视图用到的 post/put；422 拒绝值直接用鸭子形状
+// 普通对象（catch 侧按 {status, data.errors} 判断，不依赖错误类身份）
 vi.mock('@/util/http', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/util/http')>()),
   post: vi.fn(),
@@ -150,12 +154,22 @@ describe('Editor', () => {
     );
   });
 
-  it('校验失败：展示 FieldError 且不发请求，按钮恢复可用', async () => {
+  it('校验失败：展示字段错误且不发请求，按钮恢复可用', async () => {
     render(<Editor />);
 
     fireEvent.click(screen.getByRole('button', {name: 'Publish Article'}));
 
     expect(await screen.findByText('Title is required')).toBeDefined();
+    // a11y：错误出现时 FormItem 接线生效——input 带 aria-invalid，且
+    // aria-describedby 指向承载错误文案的 role='alert' 元素（错误 span
+    // 不渲染时无悬空 id）
+    const titleInput = screen.getByPlaceholderText('Article Title');
+    expect(titleInput.getAttribute('aria-invalid')).toBe('true');
+    const describedBy = titleInput.getAttribute('aria-describedby');
+    expect(describedBy).toBeTruthy();
+    const errorEl = document.getElementById(describedBy!);
+    expect(errorEl?.getAttribute('role')).toBe('alert');
+    expect(errorEl?.textContent).toBe('Title is required');
     expect(postMock).not.toHaveBeenCalled();
     const button = asButton(await screen.findByRole('button', {name: 'Publish Article'}));
     expect(button.disabled).toBe(false);
@@ -164,18 +178,28 @@ describe('Editor', () => {
   // P1 表单层收敛：服务端 422 字段错误经共享回填落到对应字段下方，
   // 顶部 Alert 不再显示整句 e.message
   it('服务端 422 字段错误：回填到字段下方且顶部不显示整句 Alert', async () => {
-    postMock.mockRejectedValueOnce(
-      new http.ApiError(422, 'title has already been taken', {
-        title: ['has already been taken']
-      })
-    );
+    // 鸭子形状（fetch-fun HTTPError 映射后：status + data.errors），视图
+    // catch 不依赖错误类身份
+    postMock.mockRejectedValueOnce({
+      status: 422,
+      message: 'title has already been taken',
+      data: {errors: {title: ['has already been taken']}}
+    });
     render(<Editor />);
 
     fillRequired();
     fireEvent.click(screen.getByRole('button', {name: 'Publish Article'}));
 
-    // title 字段下方出现服务端文案（FieldError 渲染），按钮恢复可用
+    // title 字段下方出现服务端文案（FormItem 的错误 span 渲染），且
+    // 服务端错误同样走 aria-invalid + aria-describedby 接线
     expect(await screen.findByText('has already been taken')).toBeDefined();
+    const titleInput = screen.getByPlaceholderText('Article Title');
+    expect(titleInput.getAttribute('aria-invalid')).toBe('true');
+    const errorEl = document.getElementById(
+      titleInput.getAttribute('aria-describedby')!
+    );
+    expect(errorEl?.getAttribute('role')).toBe('alert');
+    expect(errorEl?.textContent).toBe('has already been taken');
     const button = asButton(await screen.findByRole('button', {name: 'Publish Article'}));
     expect(button.disabled).toBe(false);
     // 全部错误已回填字段：顶部 Alert 不显示 e.message 整句

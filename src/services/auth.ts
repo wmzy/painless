@@ -38,12 +38,11 @@ let currentUser: User | null = readStoredUser();
 http.setTokenGetter(() => currentUser?.token);
 
 // 401 自动登出：已登录态凭据过期时后端返回 401，http 层在错误映射处
-// 触发此回调；登录失败的 401 发生在未登录态，getCurrentUser() 为 null
-// 直接 no-op。logout/getCurrentUser 是函数声明，回调真正执行时模块早已
-// 初始化完成，不存在 TDZ 问题。
-http.setUnauthorizedHandler(() => {
-  if (getCurrentUser()) logout();
-});
+// 判「401 且 tokenGetter() 非空」后触发此回调。登录/注册失败的 401
+// （密码错误）发生在未登录态，token 为空，天然不触发，这里无需再判。
+// logout/getCurrentUser 是函数声明，回调真正执行时模块早已初始化完成，
+// 不存在 TDZ 问题。
+http.setUnauthorizedHandler(() => logout());
 
 const authEvents = create<['change', [User | null]]>();
 

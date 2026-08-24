@@ -22,7 +22,7 @@ import {FormItem} from 'haze-ui/form';
 
 import * as articleService from '@/services/article';
 import {getCurrentUser} from '@/services/auth';
-import {useQueryOf} from '@/util/useQuery';
+import {queryCache} from '@/util/useQuery';
 
 import CommentList from './CommentList';
 
@@ -55,14 +55,13 @@ export default function ArticleView() {
   const [favOverride, setFavOverride] = useState<FavOverride | null>(null);
   const [followOverride, setFollowOverride] = useState<boolean | null>(null);
 
-  // 发评论 → 声明式失效：useMutation 的 invalidates 在成功后删除
-  // fetchCommentsByTitle 的匹配缓存并重拉其活跃订阅者（CommentList）。
-  // useQueryOf 保证拿到合法 injectable（即使 CommentList 尚未挂载），
-  // 且与 CommentList 的 useQuery 复用同一实例；前缀 [fn, slug] 只清
-  // 当前文章的评论。失败自动不失效。
-  const commentsInjectable = useQueryOf(articleService.fetchCommentsByTitle);
+  // 发评论 → 声明式失效：useMutation 成功后对共享 queryCache 做 [slug]
+  // 前缀失效（provider 的 deleteWhere），CommentList 这类挂载中的 useCache
+  // 消费者经 provider 删除事件被动重拉。0.7 起失效按 cache 寻址——cache
+  // 是模块级常量，直接引用即可，不再需要跨组件稳定 injectable（useQueryOf）。
+  // 失败自动不失效。
   const [mutateAddComment] = useMutation(articleService.addComment, {
-    invalidates: [[commentsInjectable, article.slug]]
+    invalidates: [[queryCache, article.slug]]
   });
 
   const favorited = favOverride?.favorited ?? article.favorited;

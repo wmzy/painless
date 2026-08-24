@@ -3,7 +3,9 @@ import {describe, it, expect, vi, beforeEach} from 'vitest';
 import * as article from '@/services/article';
 
 vi.mock('@/util/http', () => ({
-  get: vi.fn()
+  get: vi.fn(),
+  post: vi.fn(),
+  del: vi.fn()
 }));
 
 import * as http from '@/util/http';
@@ -20,7 +22,9 @@ describe('article service', () => {
 
       const result = await article.query();
 
-      expect(http.get).toHaveBeenCalledWith('articles', undefined, undefined);
+      expect(http.get).toHaveBeenCalledWith('articles', undefined, {
+        signal: undefined
+      });
       expect(result).toEqual(mockData);
     });
 
@@ -31,7 +35,9 @@ describe('article service', () => {
       const params = {limit: 10, offset: 0, tag: 'react'};
       await article.query(params);
 
-      expect(http.get).toHaveBeenCalledWith('articles', params, undefined);
+      expect(http.get).toHaveBeenCalledWith('articles', params, {
+        signal: undefined
+      });
     });
 
     it('should forward abort signal to http.get', async () => {
@@ -40,11 +46,9 @@ describe('article service', () => {
 
       await article.query({limit: 10}, controller.signal);
 
-      expect(http.get).toHaveBeenCalledWith(
-        'articles',
-        {limit: 10},
-        controller.signal
-      );
+      expect(http.get).toHaveBeenCalledWith('articles', {limit: 10}, {
+        signal: controller.signal
+      });
     });
   });
 
@@ -58,9 +62,22 @@ describe('article service', () => {
       expect(http.get).toHaveBeenCalledWith(
         'articles/test-article',
         undefined,
-        undefined
+        {signal: undefined}
       );
       expect(result).toEqual(mockArticle);
+    });
+
+    it('should forward abort signal to http.get', async () => {
+      vi.mocked(http.get).mockResolvedValue({
+        article: {slug: 'a', title: 'A'}
+      });
+      const controller = new AbortController();
+
+      await article.findByTitle('a', controller.signal);
+
+      expect(http.get).toHaveBeenCalledWith('articles/a', undefined, {
+        signal: controller.signal
+      });
     });
   });
 
@@ -77,7 +94,7 @@ describe('article service', () => {
       expect(http.get).toHaveBeenCalledWith(
         'articles/test-article/comments',
         undefined,
-        undefined
+        {signal: undefined}
       );
       expect(result).toEqual(mockComments);
     });
@@ -90,8 +107,101 @@ describe('article service', () => {
 
       const result = await article.fetchTags();
 
-      expect(http.get).toHaveBeenCalledWith('tags', undefined, undefined);
+      expect(http.get).toHaveBeenCalledWith('tags', undefined, {
+        signal: undefined
+      });
       expect(result).toEqual(mockTags);
+    });
+
+    it('should forward abort signal to http.get', async () => {
+      vi.mocked(http.get).mockResolvedValue({tags: []});
+      const controller = new AbortController();
+
+      await article.fetchTags(controller.signal);
+
+      expect(http.get).toHaveBeenCalledWith('tags', undefined, {
+        signal: controller.signal
+      });
+    });
+  });
+
+  describe('mutations', () => {
+    const mockArticle = {slug: 'a', favorited: false};
+    const mockAuthor = {username: 'jake', following: false};
+
+    it('should POST favorite when favoriting', async () => {
+      vi.mocked(http.post).mockResolvedValue({article: mockArticle});
+
+      const result = await article.favoriteArticle('a', true);
+
+      expect(http.post).toHaveBeenCalledWith(
+        'articles/a/favorite',
+        {},
+        {signal: undefined}
+      );
+      expect(result).toEqual(mockArticle);
+    });
+
+    it('should DELETE favorite when unfavoriting', async () => {
+      vi.mocked(http.del).mockResolvedValue({article: mockArticle});
+
+      const result = await article.favoriteArticle('a', false);
+
+      expect(http.del).toHaveBeenCalledWith('articles/a/favorite', {
+        signal: undefined
+      });
+      expect(result).toEqual(mockArticle);
+    });
+
+    it('should POST follow when following', async () => {
+      vi.mocked(http.post).mockResolvedValue({profile: mockAuthor});
+
+      const result = await article.followAuthor('jake', true);
+
+      expect(http.post).toHaveBeenCalledWith(
+        'profiles/jake/follow',
+        {},
+        {signal: undefined}
+      );
+      expect(result).toEqual(mockAuthor);
+    });
+
+    it('should DELETE follow when unfollowing', async () => {
+      vi.mocked(http.del).mockResolvedValue({profile: mockAuthor});
+
+      const result = await article.followAuthor('jake', false);
+
+      expect(http.del).toHaveBeenCalledWith('profiles/jake/follow', {
+        signal: undefined
+      });
+      expect(result).toEqual(mockAuthor);
+    });
+
+    it('should POST comment with body', async () => {
+      const mockComment = {id: '1', body: 'Nice'};
+      vi.mocked(http.post).mockResolvedValue({comment: mockComment});
+
+      const result = await article.addComment('a', 'Nice');
+
+      expect(http.post).toHaveBeenCalledWith(
+        'articles/a/comments',
+        {comment: {body: 'Nice'}},
+        {signal: undefined}
+      );
+      expect(result).toEqual(mockComment);
+    });
+
+    it('should forward abort signal on mutations', async () => {
+      vi.mocked(http.post).mockResolvedValue({comment: {id: '1'}});
+      const controller = new AbortController();
+
+      await article.addComment('a', 'Nice', controller.signal);
+
+      expect(http.post).toHaveBeenCalledWith(
+        'articles/a/comments',
+        {comment: {body: 'Nice'}},
+        {signal: controller.signal}
+      );
     });
   });
 });

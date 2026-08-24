@@ -4,14 +4,9 @@
 import {describe, it, expect, vi} from 'vitest';
 import {renderHook, act, waitFor} from '@testing-library/react';
 
-// useQuery 经 DevTool.useMock 支持 mock 配置，而 DevTool 顶层引用了 haze-ui；
-// haze-ui 依赖 UMD 版 babel-runtime-jsx-plus，在 vitest 的 ESM 环境下无法
-// 提供命名导出（与 Article 视图测试失败同因），这里整体 mock 掉。
-vi.mock('haze-ui', () => ({
-  Button: () => null,
-  Card: () => null,
-  useControl: () => [undefined, () => undefined]
-}));
+// useQuery 的 mock 钩子已随 DevTool 拆分迁至 @/util/mock（无 haze-ui
+// 依赖），本测试无需再 mock haze-ui（早期 useQuery → DevTool → haze-ui
+// 链路在 vitest ESM 下无法提供 UMD 命名导出，故曾整体 mock）。
 
 import {createQueryCache, useQuery} from './useQuery';
 
@@ -180,11 +175,41 @@ describe('useQuery', () => {
     expect(result.current.data).toEqual(['a']);
   });
 
-  it('并发去重：同 fn 同 args 同时挂载，底层 fn 只执行一次', async () => {
+  it('并发去重：in-flight 期间连点 refetch，底层 fn 只执行一次', async () => {
     const pending = deferred<string[]>();
     const fn = vi.fn().mockReturnValue(pending.promise);
     const cache = createQueryCache();
 
+    const {result} = renderHook(() =>
+      useQuery(fn, [], {cache, initData: [] as string[]})
+    );
+
+    // 初载尚未 settle：两次 refetch 与 in-flight 请求同 key，共享同一
+    // promise（useDedup），底层 fn 不重发
+    await act(async () => {
+      result.current.refetch();
+      result.current.refetch();
+    });
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(result.current.fetching).toBe(true);
+
+    await act(async () => {
+      pending.resolve(['v1']);
+    });
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(result.current.data).toEqual(['v1']);
+    expect(result.current.fetching).toBe(false);
+  });
+
+  it('跨组件同时挂载：各自实例独立初载但数据一致，后挂载者命中缓存', async () => {
+    const pending = deferred<string[]>();
+    const fn = vi.fn().mockReturnValue(pending.promise);
+    const cache = createQueryCache();
+
+    // 0.7 官方形态：useInjectable 每组件实例独立，useDedup 只去重同一
+    // injectable 的并发调用——同时挂载各发一次首载请求（不再共享首个
+    // 实例的 injectable）；跨组件的数据复用由共享 cache 承担（下方
+    // 重挂载验证）。
     const first = renderHook(() =>
       useQuery(fn, [], {cache, initData: [] as string[]})
     );
@@ -192,7 +217,6 @@ describe('useQuery', () => {
       useQuery(fn, [], {cache, initData: [] as string[]})
     );
 
-    // 两者都处于 in-flight，但共享同一次底层调用
     expect(first.result.current.loading).toBe(true);
     expect(second.result.current.loading).toBe(true);
 
@@ -200,11 +224,18 @@ describe('useQuery', () => {
       pending.resolve(['shared']);
     });
 
-    expect(fn).toHaveBeenCalledTimes(1);
     expect(first.result.current.data).toEqual(['shared']);
     expect(second.result.current.data).toEqual(['shared']);
     first.unmount();
     second.unmount();
+
+    // 缓存新鲜期内重挂载：不再发请求，直接拿缓存值
+    const third = renderHook(() =>
+      useQuery(fn, [], {cache, initData: [] as string[]})
+    );
+    await waitFor(() => expect(third.result.current.data).toEqual(['shared']));
+    expect(fn).toHaveBeenCalledTimes(2);
+    third.unmount();
   });
 
   it('signal：args 变化触发重跑时，上一次调用收到的 signal 变 aborted', async () => {
@@ -234,7 +265,12 @@ describe('useQuery', () => {
   });
 
   it('hash 归一：对象参数键序不同视为同一 key，新鲜期内命中缓存不重发', async () => {
-    const fn = vi.fn(() => Promise.resolve(['v1']));
+    // fn 带一个对象参数：覆盖 args 为对象字面量时的 hash 归一。参数
+    // 签名经显式类型标注进入 Parameters<F>（vi.fn 本体无参，少参可赋
+    // 多参签名），避免 unused 参数。
+    const fn: (args: Record<string, unknown>) => Promise<string[]> = vi.fn(
+      () => Promise.resolve(['v1'])
+    );
     const cache = createQueryCache();
 
     const first = renderHook(
