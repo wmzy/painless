@@ -1,6 +1,6 @@
 import type {HomeSearch} from '@/types/search';
 
-import {View, HistoryRouter as Router, Route} from '@native-router/react';
+import {View, HistoryRouter as Router, createRoutes, type Route, type RoutePaths} from '@native-router/react';
 
 import Loading from '@/components/Loading';
 import RouterError from '@/components/RouterError';
@@ -22,7 +22,10 @@ const requireLogin: Route['beforeLoad'] = () => {
   if (!getCurrentUser()) return '/login';
 };
 
-const routes = {
+// createRoutes（satisfies 语义）：表按 Route 检查，同时每个 path 保留
+// 字面量类型——`as Route` 会把 path 拓宽成 string，TypedLink 的路径联合
+// （AppPaths）就提不出来了
+const routes = createRoutes({
   component: () => import('./Layout'),
   children: [
     {
@@ -95,7 +98,11 @@ const routes = {
       component: () => import('./Editor')
     }
   ]
-} as Route;
+});
+
+// 全部路由 path 的字面量联合：TypedLink<AppPaths> 的 to 以此收窄，
+// 路径拼写错误在编译期暴露（动态段路由同时要求 params 完整）
+export type AppPaths = RoutePaths<typeof routes>;
 
 export default function App() {
   return (

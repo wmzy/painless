@@ -1,3 +1,5 @@
+import type {AppPaths} from '@/views';
+
 import {useState} from 'react';
 import {Form, useForm} from 'react-f0rm';
 import {Card, Title, Input, Text, Alert} from 'haze-ui';
@@ -5,8 +7,9 @@ import {Card, Title, Input, Text, Alert} from 'haze-ui';
 // 错误渲染为 <span role='alert'>，control 桥直接驱动 haze-ui 控件，取代
 // Field + FieldError 的手工挂接（FieldError 组件随之删除）
 import {FormItem} from 'haze-ui/form';
-import {useRouter, Link} from '@native-router/react';
+import {useRouter, TypedLink} from '@native-router/react';
 import {navigate} from '@native-router/core';
+
 
 import * as auth from '@/services/auth';
 import {required, email, compose, applyApiFieldErrors} from '@/util/validators';
@@ -76,7 +79,7 @@ export default function Login() {
         <button type='submit'>Login</button>
       </Form>
       <Text>
-        Don't have an account? <Link to='/register'>Register</Link>
+        Don't have an account? <TypedLink<AppPaths> to='/register'>Register</TypedLink>
       </Text>
     </Card>
   );

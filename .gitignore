@@ -20,6 +20,10 @@ coverage
 
 tmp
 
+# Playwright E2E 产物
+playwright-report/
+test-results/
+
 *.zip
 *.tgz
 

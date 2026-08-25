@@ -5,7 +5,8 @@ export default defineConfig({
   test: {    environment: 'jsdom',
     globals: true,
     include: ['src/**/*.test.{ts,tsx}'],
-    exclude: ['node_modules', 'dist', 'mock', 'typings', 'fixtures'],
+    // e2e/ 是 Playwright 用例（自带 dev server），vitest 不得误捞
+    exclude: ['node_modules', 'dist', 'mock', 'typings', 'fixtures', 'e2e/**'],
     passWithNoTests: true,
     // haze-ui（type:module，原生导入会被外部化）内部具名导入 babel-runtime-jsx-plus
     // （仅 UMD main 的 CJS 包），Node 原生 ESM 链接解析不出具名导出；

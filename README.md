@@ -14,6 +14,7 @@ Modern frontend development is overly complex. Painless strips away the complexi
 - **Zero-runtime CSS** - Using Linaria, styles are extracted at build time
 - **Type-safe** - Full TypeScript support with zero configuration
 - **Instant feedback** - Hot Module Replacement for instant updates
+- **Feel the prefetch** - Hovering an article link (`PreviewLink`) renders a scaled-down live preview of the target view before you even click
 
 ## Design Philosophy
 
@@ -373,7 +374,7 @@ pnpm start
 ```
 painless/
 ├── src/
-│   ├── components/     # Reusable UI: FieldError, Loading, RouterError,
+│   ├── components/     # Reusable UI: Loading, RouterError,
 │   │                   # PreviewLink + Preview, Popover, DevTool (dev-only mock panel)
 │   ├── services/       # API layer over http: article.ts, auth.ts
 │   ├── types/          # Domain types; base.ts carries JSON Schema annotations

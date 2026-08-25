@@ -1,11 +1,10 @@
 import {css} from '@linaria/core';
 import {navigate, refresh} from '@native-router/core';
-import {useData, useMatched, useSearch} from '@native-router/react';
+import {useData, useMatched, useSearch, useSetSearch} from '@native-router/react';
 import {Card, Title, Text, Badge, Avatar, Flex, Chip, Button} from 'haze-ui';
-import {encode} from 'qss';
 
 import {Article, ArticlePage} from '@/types';
-import {homeSearchSchema} from '@/types/search';
+import {homeSearchSchema, homeSearchWriteSchema} from '@/types/search';
 import * as articleService from '@/services/article';
 import {getCurrentUser} from '@/services/auth';
 import {homeCacheArgs} from '@/util/loaderCache';
@@ -29,12 +28,17 @@ export default function Home() {
   // schema 里完成，组件拿到的 tag/offset/limit 直接可用
   const {tag: activeTag, offset, limit} = useSearch(homeSearchSchema);
 
-  // 筛选与分页都编码进 search：search 变化会触发 route loader 重新查询
-  // （见 views/index.tsx 的 data），返回后整棵视图以新数据重渲染；
-  // offset 为 0 时省略，保持 URL 干净
+  // 筛选与分页都写进 search：search 变化会触发 route loader 重新查询
+  // （见 views/index.tsx 的 data），返回后整棵视图以新数据重渲染。写侧经
+  // homeSearchWriteSchema：输入按 URL 侧的字符串形态给出（coerce 交给
+  // schema），等于缺省的字段被抹去——URL 保持 offset 为 0 / limit 为
+  // 缺省时不出现，写入口与读入口共用同一契约
+  const setSearch = useSetSearch(homeSearchWriteSchema);
   const go = (next: {tag?: string; offset?: number}) => {
-    const search = encode({tag: next.tag, offset: next.offset || undefined});
-    void navigate(router, search ? `/?${search}` : '/');
+    const input: Record<string, string> = {};
+    if (next.tag !== undefined) input.tag = next.tag;
+    if (next.offset) input.offset = String(next.offset);
+    void setSearch(input);
   };
 
   const page = Math.floor(offset / limit) + 1;

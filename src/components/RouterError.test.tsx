@@ -8,7 +8,7 @@ vi.mock('@native-router/core', () => ({
 }));
 
 vi.mock('@native-router/react', () => ({
-  Link: ({children, to, ...props}: any) => (
+  TypedLink: ({children, to, ...props}: any) => (
     <a href={to} {...props}>
       {children}
     </a>

@@ -15,6 +15,8 @@ const state = vi.hoisted(() => ({
   data: {articles: [] as unknown[], articlesCount: 0},
   search: '',
   router: {history: {}},
+  // go/toggleTag 的写入口（useSetSearch）：断言写入的 search 载荷
+  setSearch: vi.fn(),
   // refresh mock 的重渲染广播：补丁缓存写穿后调 refresh(router)，真实
   // 链路是「loader 重跑 → withCache 新鲜命中 → useData 换新」，这里用
   // bump 回调近似——useData mock 每次渲染直读 queryCache 的最新 settled
@@ -105,6 +107,7 @@ vi.mock('@native-router/react', async () => {
       );
     },
     useSearch: () => state.parseSearch(state.search),
+    useSetSearch: () => state.setSearch,
     useMatched: () => ({
       location: {pathname: '/', search: state.search, hash: ''},
       params: {},
@@ -181,6 +184,7 @@ beforeEach(() => {
   // resetAllMocks 会清掉 vi.fn 的实现：refresh 的「重渲染广播」语义逐
   // 用例重建（navigate 无实现需求，仅断言调用）
   refreshMock.mockImplementation(async () => state.emit());
+  state.setSearch.mockReset();
   state.data = {articles: makeArticles(10), articlesCount: 25};
   state.search = '';
   getCurrentUserMock.mockReturnValue({
@@ -207,7 +211,9 @@ describe('Home 视图', () => {
     render(<Home />);
 
     fireEvent.click(paginationButtons().next);
-    expect(navigateMock).toHaveBeenCalledWith(state.router, '/?offset=10');
+    // 写载荷按 URL 输入侧的字符串形态给出；经写 schema 抹缺省后
+    // URL 端为 /?offset=10
+    expect(state.setSearch).toHaveBeenCalledWith({offset: '10'});
   });
 
   it('search 含 tag：展示可取消 Chip，关闭即清空筛选', () => {
@@ -217,7 +223,8 @@ describe('Home 视图', () => {
     expect(screen.getByTestId('chip').textContent).toContain('react');
 
     fireEvent.click(screen.getByRole('button', {name: 'Remove tag'}));
-    expect(navigateMock).toHaveBeenCalledWith(state.router, '/');
+    // go({})：整段 search 清空（写 schema 抹缺省后为空），URL 端为 /
+    expect(state.setSearch).toHaveBeenCalledWith({});
   });
 
   it('第二页：Previous 可用且翻页保留 tag、回到首页时省略 offset', () => {
@@ -230,7 +237,8 @@ describe('Home 视图', () => {
     expect(prev.disabled).toBe(false);
 
     fireEvent.click(prev);
-    expect(navigateMock).toHaveBeenCalledWith(state.router, '/?tag=react');
+    // offset 回到 0 不进写入载荷（写 schema 同样抹缺省），URL 端为 /?tag=react
+    expect(state.setSearch).toHaveBeenCalledWith({tag: 'react'});
   });
 
   it('末页边界：Next 禁用，Previous 回退一页', () => {
@@ -244,7 +252,7 @@ describe('Home 视图', () => {
     expect(prev.disabled).toBe(false);
 
     fireEvent.click(prev);
-    expect(navigateMock).toHaveBeenCalledWith(state.router, '/?tag=react&offset=10');
+    expect(state.setSearch).toHaveBeenCalledWith({tag: 'react', offset: '10'});
   });
 
   it('单页数据：两个方向均禁用', () => {

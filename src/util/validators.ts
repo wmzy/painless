@@ -39,7 +39,7 @@ export function compose(...validators: Validator[]): Validator {
 }
 
 // 服务端 422 字段错误回填：能对应到表单字段（fields）的错误写到该字段
-// 的 error 槽位（由页面上的 FieldError 组件渲染在字段下方），顶部 Alert
+// 的 error 槽位（由 FormItem 渲染的字段错误 span，role='alert'），顶部 Alert
 // 只保留对不上字段的部分；返回值即 Alert 应显示的文案，null 表示不显示。
 //
 // 写入用 setServerErrors(form, matched)：命中字段以 type:'server' 落到

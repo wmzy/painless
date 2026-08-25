@@ -1,5 +1,5 @@
 import {describe, it, expect, vi, beforeEach} from 'vitest';
-import {render, screen, fireEvent} from '@testing-library/react';
+import {render, screen, fireEvent, act} from '@testing-library/react';
 import {useState} from 'react';
 
 import {stableHash} from 'react-toolroom/async';
@@ -15,6 +15,7 @@ vi.mock('haze-ui', () => ({
     <button onClick={onClick}>{children}</button>
   ),
   Card: ({children}: any) => <div>{children}</div>,
+  Badge: ({children}: any) => <span>{children}</span>,
   useControl: <T,>(_control: unknown, initial: T) =>
     useState<T>(typeof initial === 'function' ? (initial as () => T)() : initial)
 }));
@@ -90,5 +91,73 @@ describe('DevTool CacheView', () => {
     fireEvent.click(screen.getByText('Clear'));
     expect(screen.getByText('Cache: 0')).toBeDefined();
     expect(queryCache.snapshot?.()).toEqual([]);
+  });
+
+  it('marks entries that have a request in flight', () => {
+    queryCache.set(['tag'], {items: []});
+    // 已有 settled 数据再 load：0.8.0 的 snapshot 对该条目附加 pending
+    //（纯在飞不进 snapshot，三态——stale 值 + 重验证中——才可见）；
+    // 永不 settle 的 promise 把条目钉在在飞态，不产生后续事件
+    void queryCache.load?.(['tag'], () => new Promise(() => undefined));
+    openPanel();
+    // 三态行：stale 值的 key/age 仍在，同一行上多出 in-flight 标记
+    expect(screen.getByTitle(stableHash(['tag'])).textContent).toContain(
+      '⏳ in-flight'
+    );
+  });
+
+  it('lists set and delete events as they fire', () => {
+    openPanel();
+    // 面板已订阅：缓存变更经事件流驱动渲染，须包在 act 里结算更新
+    act(() => {
+      queryCache.set(['tag'], {items: []});
+    });
+    // set 事件不带 key，面板用事件前后 snapshot 差集反推被写 key
+    expect(
+      screen.getByText(`set ${truncateKey(stableHash(['tag']))}`)
+    ).toBeDefined();
+    act(() => {
+      queryCache.delete(['tag']);
+    });
+    expect(screen.getByText('delete 1 条')).toBeDefined();
+  });
+
+  it('lists clear when a multi-entry wipe empties the cache', () => {
+    openPanel();
+    act(() => {
+      queryCache.set(['a'], 1);
+      queryCache.set(['b'], 2);
+    });
+    fireEvent.click(screen.getByText('Clear'));
+    expect(screen.getByText('clear')).toBeDefined();
+    expect(screen.getByText('Cache: 0')).toBeDefined();
+  });
+
+  it('unsubscribes the cache listener on unmount', () => {
+    // 桩掉 subscribe 以拿到退订函数：CacheView 卸载必须退订，否则面板
+    // 关闭后事件仍往已卸载组件的 setState 打（内存泄漏 + 幽灵状态）
+    const unsub = vi.fn();
+    const listeners = new Set<unknown>();
+    const subscribeSpy = vi
+      .spyOn(queryCache, 'subscribe')
+      .mockImplementation((listener) => {
+        listeners.add(listener);
+        return unsub;
+      });
+    try {
+      const {unmount} = render(
+        <DevTool>
+          <div>content</div>
+        </DevTool>
+      );
+      // 面板未开：CacheView 未挂载，不应有订阅
+      expect(listeners.size).toBe(0);
+      fireEvent.click(screen.getByText('DEV'));
+      expect(listeners.size).toBe(1);
+      unmount();
+      expect(unsub).toHaveBeenCalledTimes(1);
+    } finally {
+      subscribeSpy.mockRestore();
+    }
   });
 });

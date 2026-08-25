@@ -1,6 +1,9 @@
+import type {AppPaths} from '@/views';
+
 import {refresh} from '@native-router/core';
-import {Link, useRouter} from '@native-router/react';
+import {TypedLink, useRouter} from '@native-router/react';
 import {Card, Title, Text, Button} from 'haze-ui';
+
 
 type Props = {
   error: Error;
@@ -14,7 +17,7 @@ export default function RouterError({error}: Props) {
       <Text>{error.message}</Text>
       <pre>{error.stack}</pre>
       <Button onClick={() => void refresh(router)}>Refresh</Button>
-      <Link to='/'>Home</Link>
+      <TypedLink<AppPaths> to='/'>Home</TypedLink>
     </Card>
   );
 }

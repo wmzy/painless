@@ -1,5 +1,8 @@
-import {Link} from '@native-router/react';
+import type {AppPaths} from '@/views';
+
+import {TypedLink} from '@native-router/react';
 import {Card, Title, Text} from 'haze-ui';
+
 
 // /article/:title 的路由级 errorComponent：data（findByTitle）失败时由
 // native-router 在出错路由层级渲染，不再落到全局 errorHandler。props
@@ -26,7 +29,7 @@ export default function NotFound({error}: Props) {
           ? 'The article does not exist or has been removed.'
           : `Failed to load the article: ${error.message}`}
       </Text>
-      <Link to='/'>Back to home</Link>
+      <TypedLink<AppPaths> to='/'>Back to home</TypedLink>
     </Card>
   );
 }

@@ -11,8 +11,8 @@ const state = vi.hoisted(() => ({router: {pathname: '/login'}}));
 vi.mock('@/services/auth', () => ({login: vi.fn()}));
 vi.mock('@native-router/react', () => ({
   useRouter: () => state.router,
-  // 视图里的 <Link> 在 mock 中退化为普通锚点即可
-  Link: ({to, children}: {to: string; children: React.ReactNode}) => (
+  // 视图里的 <TypedLink> 在 mock 中退化为普通锚点即可
+  TypedLink: ({to, children}: {to: string; children: React.ReactNode}) => (
     <a href={to}>{children}</a>
   )
 }));

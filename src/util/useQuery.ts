@@ -11,6 +11,8 @@
 //   withCache 用同一 queryCache）共享在飞请求，useDedup 已无必要；
 // - focus 重验证（useFocusRevalidate）：窗口重新聚焦/可见时对 miss/
 //   stale 条目后台重拉（新鲜期内经 useCache 直接命中，不发请求）；
+// - 断网恢复重验证（useReconnectRevalidate）：window online 事件时对
+//   miss/stale 条目后台重拉——与 focus 重验证同一门槛，新鲜期内零请求；
 // - 取消（useRun 的 signal）：args 变化或卸载时 abort 上一次请求，经
 //   服务层尾参 signal 透传到 fetch；
 // - 可选重试（QueryOptions.retry，默认禁用：retries 0）；
@@ -36,6 +38,7 @@ import {
   useInjectable,
   useInitialLoading,
   useLoading,
+  useReconnectRevalidate,
   useResultSelect,
   useRetry,
   useRun
@@ -212,6 +215,15 @@ export function useQuery<F extends AsyncFunc>(
   // args 必须与 useRun 同 key：focus 重验证寻址 [..args] 而非 []，否则
   // 是另一条请求线而非命中既有条目。
   useFocusRevalidate(injectable as AsyncFunc, {args});
+
+  // 断网恢复时的后台重验证（react-query 的 refetchOnReconnect）：离线
+  // 期间的请求多半失败，连接一恢复（window online 事件）就对 miss/stale
+  // 条目重拉——与上面 focus 重验证同一 miss/stale 门槛（新鲜期内
+  // useCache 直接命中，不发请求）；args 同样必须与 useRun 同 key，
+  // 否则 reconnect 寻址 [..args] 之外是另一条请求线而非命中既有条目。
+  // 不传 interval：与 focus 侧保持一致的节流语义（staleTime 已是天然
+  // 门槛，fresh 条目零请求，无需额外节流窗口）。
+  useReconnectRevalidate(injectable as AsyncFunc, {args});
 
   // initData 是 select 之前的原始数据：注入 useResultSelect 的 init 槽，
   // 首帧同样经 select 投影——有 select 的消费者拿到的 data 始终是切片，

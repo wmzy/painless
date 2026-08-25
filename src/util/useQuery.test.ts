@@ -386,4 +386,63 @@ describe('useQuery', () => {
     expect(screen.getByTestId('slice').textContent).toBe('9');
     expect(childRenders).toBe(1);
   });
+
+  // 断网恢复重验证（useReconnectRevalidate）：toolroom 监听 window 的
+  // 'online' 事件（内部再经 navigator.onLine 守卫，jsdom 默认 true 不
+  // 拦截），触发时对 miss/stale 条目后台重拉，新鲜期内零请求。
+  it('断网恢复：stale 条目在 online 事件后后台重拉', async () => {
+    const fn = vi
+      .fn()
+      .mockResolvedValueOnce(['v1'])
+      .mockResolvedValueOnce(['v2']);
+    const cache = createQueryCache();
+
+    const {result} = renderHook(() =>
+      useQuery(fn, [], {cache, initData: [] as string[], staleTime: 20})
+    );
+    await waitFor(() => expect(result.current.data).toEqual(['v1']));
+
+    await sleep(30); // 跨过 staleTime=20，条目转为 stale
+
+    await act(async () => {
+      window.dispatchEvent(new Event('online'));
+    });
+    expect(fn).toHaveBeenCalledTimes(2); // stale 条目后台重发
+    await waitFor(() => expect(result.current.data).toEqual(['v2']));
+    expect(result.current.stale).toBe(false);
+  });
+
+  it('断网恢复：新鲜期内 online 事件不重发请求', async () => {
+    const fn = vi.fn().mockResolvedValue(['v1']);
+    const cache = createQueryCache();
+
+    const {result} = renderHook(() =>
+      // staleTime 给宽（waitFor 的轮询本身要耗 ~10ms/次，20ms 会把
+      // dispatch 拖出新鲜窗口——这里只验新鲜语义，不卡毫秒）
+      useQuery(fn, [], {cache, initData: [] as string[], staleTime: 1000})
+    );
+    await waitFor(() => expect(result.current.data).toEqual(['v1']));
+
+    await act(async () => {
+      window.dispatchEvent(new Event('online')); // 仍在 staleTime 内
+    });
+    expect(fn).toHaveBeenCalledTimes(1); // 新鲜条目零请求
+  });
+
+  it('断网恢复：卸载后 online 事件不再触发重拉（监听已清理）', async () => {
+    const fn = vi.fn().mockResolvedValue(['v1']);
+    const cache = createQueryCache();
+
+    const {unmount} = renderHook(() =>
+      useQuery(fn, [], {cache, initData: [] as string[], staleTime: 20})
+    );
+    await waitFor(() => expect(fn).toHaveBeenCalledTimes(1));
+    unmount();
+
+    await sleep(30); // 跨过 staleTime，但监听已随卸载移除
+    await act(async () => {
+      window.dispatchEvent(new Event('online'));
+    });
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
 });

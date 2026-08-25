@@ -14,6 +14,7 @@ Painless 是一个以 [RealWorld](https://github.com/gothinkster/realworld) cond
 - **零运行时 CSS** —— 使用 Linaria，样式在构建期提取
 - **类型安全** —— TypeScript 全覆盖，零配置
 - **即时反馈** —— HMR 热更新，即改即见
+- **预取可感知** —— 悬停文章链接（`PreviewLink`）即在点击前看到目标视图的等比缩小实时预览
 
 ## 设计哲学
 
@@ -373,7 +374,7 @@ pnpm start
 ```
 painless/
 ├── src/
-│   ├── components/     # 可复用 UI：FieldError、Loading、RouterError、
+│   ├── components/     # 可复用 UI：Loading、RouterError、
 │   │                   # PreviewLink + Preview、Popover、DevTool（开发期 mock 面板）
 │   ├── services/       # 基于 http 的 API 层：article.ts、auth.ts
 │   ├── types/          # 领域类型；base.ts 携带 JSON Schema 注解

@@ -1,12 +1,10 @@
 import {css} from '@linaria/core';
-import {navigate} from '@native-router/core';
-import {useMatched, useSearch} from '@native-router/react';
-import {encode} from 'qss';
+import {useSearch, useSetSearch} from '@native-router/react';
 import {TagGroup, TagGroupItem, Spinner, Alert, Title} from 'haze-ui';
 
 import {useQuery} from '@/util/useQuery';
 import * as articleService from '@/services/article';
-import {homeSearchSchema} from '@/types/search';
+import {homeSearchSchema, homeSearchWriteSchema} from '@/types/search';
 import {tagListSchema} from '@/types/index.schema';
 
 const tagButton = css`
@@ -27,12 +25,13 @@ export default function Tags() {
     mock: {schema: tagListSchema, key: 'tagList'}
   });
 
-  const {router} = useMatched();
   const {tag: activeTag} = useSearch(homeSearchSchema);
+  const setSearch = useSetSearch(homeSearchWriteSchema);
 
-  // 点 tag 写入 search（由 Home 的 route loader 重新查询），再点同一个则清除
+  // 点 tag 写入 search（由 Home 的 route loader 重新查询），再点同一个则
+  // 清空；undefined 值不是合法的 URL 输入，条件构造而非传 undefined
   const toggleTag = (t: string) => {
-    void navigate(router, activeTag === t ? '/' : `/?${encode({tag: t})}`);
+    void setSearch(activeTag === t ? {} : {tag: t});
   };
 
   if (loading) {
