@@ -8,12 +8,13 @@ Painless is a lightweight React SPA template/demo (RealWorld conduit app) that e
 
 ## Design Principles
 
-These are intentional design decisions, not missing features. Do not suggest adding SSR, server actions, nested routes, state management libraries, or platform-specific optimizations.
+These are intentional design decisions, not missing features. Do not suggest adding SSR, server actions, nested routes, state management libraries, structural sharing in the query layer, or platform-specific optimizations.
 
 - **Pure client-side SPA** — No SSR/SSG. SEO can be handled by serving pre-rendered HTML to bot traffic via headless browser, not by contaminating the app architecture.
 - **Frontend is not the backend** — API Routes/Server Actions belong in dedicated backend frameworks. The web frontend is one of many clients; coupling it with the backend serves only one client.
 - **Flat routing** — The route is the page. Nested/parallel routes decompose page state into URL fragments, adding unnecessary complexity. Independent UI sections are components, not routes.
 - **No state management libraries** — Proper page/component decomposition keeps state local. Use React primitives (`useState`, `useContext`, `useRef`) and `useControl` from haze-ui for controlled/uncontrolled component state.
+- **No structural sharing in the query layer** — Refetches settle new references; content-identical background revalidations re-render subscribers. Deep equality is O(payload) on every fetch; a hot component takes scalar props behind `React.memo` instead (object props are always new references after settle, so memo boundaries must compare scalars).
 - **No built-in image optimization** — Image optimization is a service concern, not a framework concern. A dedicated service serves all clients, not just the frontend.
 - **Platform-agnostic deployment** — Produces standard static assets. No vendor lock-in to any deployment platform.
 

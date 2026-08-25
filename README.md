@@ -35,6 +35,10 @@ The route is the page, and the page is the state. Nested and parallel routes att
 
 If your application is properly decomposed into pages and components, each with clear responsibilities, state lives where it's used. State management libraries encourage centralizing state that should be local, creating coupling between unrelated parts of the application. Use React's built-in primitives (`useState`, `useContext`, `useRef`) and lift state only when genuinely shared.
 
+### No Structural Sharing — Re-renders Are Cheaper Than Deep Equality
+
+Some data libraries keep old object references when a refetch returns identical content (structural sharing), letting subscribers skip re-renders. We deliberately don't: deep equality costs O(payload) on every successful fetch, while the re-render it prevents is a cheap page-level reconcile that usually produces no DOM changes at all. Refetches are low-frequency — `staleTime` gates background revalidation, and fresh hits fire no request. If a specific component must skip updates, give it scalar props behind `React.memo`; don't tax every fetch of every query to save one component's render.
+
 ### No Built-In Image Optimization
 
 Image optimization is a service concern, not a framework concern. A dedicated image service (CDN-based or self-hosted) can serve optimized images to all clients — web, mobile, desktop — not just the frontend framework. Coupling this into the framework creates vendor lock-in and serves only one client.

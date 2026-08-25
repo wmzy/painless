@@ -18,6 +18,12 @@
 // - loading 仅指初载（useInitialLoading，SWR 语义）：已有结果后的后台
 //   重拉不再置 true，已渲染内容不闪整屏 Spinner；任意 in-flight（含
 //   后台刷新）见 fetching（useLoading）。
+// - 结构共享（structural sharing）刻意不做：后台重验证 settle 的新引用
+//   即使内容不变也会重渲染消费者——重验证低频（staleTime 门槛拦截，
+//   新鲜期内连请求都不发）、页级重渲染廉价（reconcile 后通常无 DOM
+//   变更），而 deep-equal 要在每次成功 fetch 付 O(payload)。热点组件
+//   用标量 props + React.memo 局部解决（注意：settle 后对象 prop 恒为
+//   新引用，memo 边界上比较标量才有效，比较对象等于手写 deep-equal）。
 import {useCallback, useRef, type DependencyList} from 'react';
 import {
   createMemoryCacheProvider,
