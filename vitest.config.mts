@@ -13,6 +13,9 @@ export default defineConfig({
     // 两者 inline 后经 vite 互操作转换即可在测试中正常渲染 haze-ui 组件。
     server: {
       deps: {
+        // haze-ui（type:module，原生导入会被外部化）内部具名导入 babel-runtime-jsx-plus
+        // （仅 UMD main 的 CJS 包），Node 原生 ESM 链接解析不出具名导出；
+        // 两者 inline 后经 vite 互操作转换即可在测试中正常渲染 haze-ui 组件。
         inline: ['babel-runtime-jsx-plus', 'haze-ui']
       }
     }

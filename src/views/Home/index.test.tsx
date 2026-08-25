@@ -2,14 +2,16 @@
 // 分页（含边界禁用）的行为验证。Home 目录此前无测试文件，故新建；路由与
 // UI 库均 mock，Tags 侧栏以 stub 隔离（真实 Tags 静态依赖 vite 插件的虚拟
 // 模块 '@/types/index.schema'，vitest 管线无法解析，其交互在浏览器中验证）。
-// 双通道缓存落地批：卡片 favorite 改为补丁共享缓存（patchPage = peek +
-// set + refresh），useData mock 直读 queryCache 的最新 settled 值、
+// 双通道缓存落地批：卡片 favorite 走 cache.mutation 组合管道（乐观 +
+// 服务调用 + apply + 失败回滚），useData mock 直读 homeCache 的最新
+// settled 值、
 // refresh mock 广播重渲染，模拟「loader 重跑 → withCache 新鲜命中 →
 // 视图换新」链路。
 import type {ReactNode} from 'react';
+import type {ArticlePage} from '@/types';
 
 import {describe, it, expect, vi, beforeEach} from 'vitest';
-import {render, screen, fireEvent} from '@testing-library/react';
+import {render, screen, fireEvent, waitFor} from '@testing-library/react';
 
 const state = vi.hoisted(() => ({
   data: {articles: [] as unknown[], articlesCount: 0},
@@ -87,8 +89,7 @@ vi.mock('haze-ui', async () => {
 
 vi.mock('@native-router/react', async () => {
   const React = await import('react');
-  const {homeCacheArgs} = await import('@/util/loaderCache');
-  const {queryCache} = await import('@/util/useQuery');
+  const {homeCache} = await import('@/util/useQuery');
   return {
     useData: () => {
       const [, force] = React.useState(0);
@@ -101,10 +102,7 @@ vi.mock('@native-router/react', async () => {
       }, []);
       // 补丁后的视图换新：无缓存条目（loader 未跑过的冷启动态）回落到
       // 初始 data
-      return (
-        queryCache.peek!(homeCacheArgs(state.parseSearch(state.search)))
-          ?.value ?? state.data
-      );
+      return homeCache.peek!([state.parseSearch(state.search)])?.value ?? state.data;
     },
     useSearch: () => state.parseSearch(state.search),
     useSetSearch: () => state.setSearch,
@@ -138,8 +136,8 @@ import {navigate, refresh} from '@native-router/core';
 
 import * as articleService from '@/services/article';
 import {getCurrentUser} from '@/services/auth';
-import {homeCacheArgs} from '@/util/loaderCache';
-import {queryCache} from '@/util/useQuery';
+import {bindCacheRefresh} from '@/util/loaderCache';
+import {clearAllCaches, homeCache} from '@/util/useQuery';
 
 import Home from './index';
 
@@ -192,7 +190,12 @@ beforeEach(() => {
     email: 'me@example.com',
     token: 'jwt'
   });
-  queryCache.clear();
+  clearAllCaches();
+  // 模拟生产链路的 loader 首跑副作用：绑定「cache set → refresh」订阅
+  // （真实路由里 loader 先于组件运行；favorite 的乐观写穿经此通道自动
+  // refresh 回写视图）。直接绑定而非跑真 loader——避免其异步 settle
+  // 写入的条目污染各用例自设的缓存基线
+  bindCacheRefresh(homeCache, state.router);
 });
 
 describe('Home 视图', () => {
@@ -274,7 +277,7 @@ describe('Home 文章卡片 favorite（补丁缓存 + refresh）', () => {
     };
     // 补丁缓存的基线：真实链路里 loader 已拉过本页（withCache 写入），
     // 这里按 loader 同形 key 预置缓存条目
-    queryCache.set(homeCacheArgs(state.parseSearch(state.search)), state.data);
+    homeCache.set([state.parseSearch(state.search)], state.data as ArticlePage);
   });
 
   it('点击即时 +1 高亮，成功后以服务端值为准', async () => {
@@ -284,11 +287,12 @@ describe('Home 文章卡片 favorite（补丁缓存 + refresh）', () => {
 
     fireEvent.click(screen.getByRole('button', {name: '❤ 5'}));
 
-    // 乐观：请求未决时已补丁缓存并 refresh，视图换新 +1 且置高亮
+    // 乐观：请求未决时已补丁缓存，视图换新 +1 且置高亮（refresh 经
+    // loaderCache 的 set 事件订阅微任务扇出——不再是视图直调）
     const optimistic = screen.getByRole('button', {name: '❤ 6'});
     expect(optimistic.getAttribute('aria-pressed')).toBe('true');
     expect(favoriteMock).toHaveBeenCalledWith('slug-0', true);
-    expect(refreshMock).toHaveBeenCalledWith(state.router);
+    await waitFor(() => expect(refreshMock).toHaveBeenCalledWith(state.router));
 
     // 服务端权威值补丁校正（以完整 Article 为替换单位）
     pending.resolve({...makeArticles(1)[0], favorited: true, favoritesCount: 9});
@@ -309,7 +313,7 @@ describe('Home 文章卡片 favorite（补丁缓存 + refresh）', () => {
   });
 
   it('缓存无基线（条目已被清理）：补丁放弃，不发 refresh 也不写缓存', async () => {
-    queryCache.clear(); // 模拟登出清缓存后的 POP 快照视图
+    clearAllCaches(); // 模拟登出清缓存后的 POP 快照视图
     const pending = deferred();
     favoriteMock.mockReturnValueOnce(pending.promise);
     render(<Home />);

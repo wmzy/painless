@@ -2,9 +2,9 @@
 // 第 4 批扩展：favorite/follow 乐观更新与失败回滚、未登录引导去 /login、
 // 发评论后 CommentList 刷新。第 4 批起评论提交走 services/article.addComment，
 // mock 收敛到 service 层；CommentList 用真实实现（数据源同被 mock），
-// 模块级 queryCache 在用例间清空以防缓存串场。双通道缓存落地批改为
-// 写穿共享缓存（applyCache = queryCache.set + refresh）：useData mock 直读
-// queryCache 的最新 settled 值、refresh mock 广播重渲染，模拟「loader 重跑
+// 模块级 articleCache 在用例间清空以防缓存串场。乐观写穿管道（cache.mutation
+// 组合，见 services/mutations.ts）：useData mock 直读
+// articleCache 的最新 settled 值、refresh mock 广播重渲染，模拟「loader 重跑
 // → withCache 新鲜命中 → 视图换新」链路。
 import type {Comment} from '@/types';
 
@@ -28,7 +28,7 @@ const state = vi.hoisted(() => ({
   router: {history: {}},
   // refresh mock 的重渲染广播：视图写穿缓存后调 refresh(router)，真实
   // 链路是「loader 重跑 → withCache 新鲜命中 → useData 换新」，这里用
-  // bump 回调近似——useData mock 每次渲染直读 queryCache 的最新 settled
+  // bump 回调近似——useData mock 每次渲染直读 articleCache 的最新 settled
   // 值（loader 命中的就是它）
   listeners: new Set<() => void>(),
   emit: () => {
@@ -38,8 +38,7 @@ const state = vi.hoisted(() => ({
 
 vi.mock('@native-router/react', async () => {
   const React = await import('react');
-  const {articleCacheArgs} = await import('@/util/loaderCache');
-  const {queryCache} = await import('@/util/useQuery');
+  const {articleCache} = await import('@/util/useQuery');
   return {
     useData: () => {
       const [, force] = React.useState(0);
@@ -52,10 +51,7 @@ vi.mock('@native-router/react', async () => {
       }, []);
       // 写穿后的视图换新：无缓存条目（loader 未跑过的冷启动态）回落到
       // 初始 article
-      return (
-        queryCache.peek!(articleCacheArgs('some-title-1'))?.value ??
-        state.article
-      );
+      return articleCache.peek!(['some-title-1'])?.value ?? state.article;
     },
     useMatched: () => ({
       location: {pathname: '/article/some-title-1', search: '', hash: ''},
@@ -83,8 +79,8 @@ import {navigate, refresh} from '@native-router/core';
 
 import {getCurrentUser} from '@/services/auth';
 import * as articleService from '@/services/article';
-import {articleCacheArgs} from '@/util/loaderCache';
-import {queryCache} from '@/util/useQuery';
+import {withCache} from '@/util/loaderCache';
+import {articleCache, clearAllCaches} from '@/util/useQuery';
 
 import ArticleView from './index';
 
@@ -125,7 +121,19 @@ beforeEach(() => {
     token: 'jwt'
   });
   fetchCommentsMock.mockResolvedValue([]);
-  queryCache.clear();
+  // 逐用例清全部实体缓存（旧单 cache 时代的一条 clear 等价物）：否则
+  // 前序用例写入的 commentsCache 条目被新鲜命中，Once 队列不被消费
+  clearAllCaches();
+  // 模拟生产链路的 loader 首跑：withCache 绑定「cache set → refresh」
+  // 订阅并写入首份缓存（真实路由里视图数据必来自 loader 写入的缓存
+  // 条目——乐观写穿因此恒为「已见 key 换值」，必触发 refresh 回写）。
+  // 返回 state.article：与 useData mock 的 fallback 同源同引用，后续
+  // 写穿以它为基线。
+  void withCache(
+    articleCache,
+    ({params}: {params?: {title?: string}}): [string] => [params?.title ?? 'some-title-1'],
+    async (_ctx: unknown) => state.article
+  )({params: {title: 'some-title-1'}, router: state.router});
 });
 
 describe('Article 评论表单', () => {
@@ -169,17 +177,18 @@ describe('Article favorite / follow（写穿缓存 + refresh）', () => {
 
     fireEvent.click(screen.getByRole('button', {name: '❤ 0'}));
 
-    // 乐观：请求未决时已写穿缓存并 refresh，视图换新 +1 且置高亮
+    // 乐观：请求未决时已写穿缓存，视图换新 +1 且置高亮（refresh 经
+    // loaderCache 的 set 事件订阅微任务扇出——不再是视图直调）
     const optimistic = screen.getByRole('button', {name: '❤ 1'});
     expect(optimistic.getAttribute('aria-pressed')).toBe('true');
     expect(favoriteMock).toHaveBeenCalledWith('some-title-1', true);
-    expect(refreshMock).toHaveBeenCalledWith(state.router);
+    await waitFor(() => expect(refreshMock).toHaveBeenCalledWith(state.router));
 
     // 服务端权威值写穿校正（写穿以整个 Article 为单位，返回须是完整对象）
     pending.resolve({...state.article, favorited: true, favoritesCount: 42});
     expect(await screen.findByRole('button', {name: '❤ 42'})).toBeDefined();
     // 校正后的值已在缓存里：loader 若重跑将新鲜命中该值
-    expect(queryCache.peek!(articleCacheArgs('some-title-1'))?.value).toEqual({
+    expect(articleCache.peek!(['some-title-1'])?.value).toEqual({
       ...state.article,
       favorited: true,
       favoritesCount: 42
@@ -211,7 +220,7 @@ describe('Article favorite / follow（写穿缓存 + refresh）', () => {
     // 成功回调经 peek 取缓存当前值合并——而非闭包快照
     pending.resolve({username: 'alice', image: '', following: true});
     expect(await screen.findByRole('button', {name: 'Unfollow alice'})).toBeDefined();
-    expect(queryCache.peek!(articleCacheArgs('some-title-1'))?.value).toMatchObject({
+    expect(articleCache.peek!(['some-title-1'])?.value).toMatchObject({
       author: {username: 'alice', following: true}
     });
   });
@@ -262,7 +271,7 @@ describe('Article favorite / follow（写穿缓存 + refresh）', () => {
     expect(screen.getByRole('button', {name: 'Unfollow alice'})).toBeDefined();
     // 缓存终值：follow 与 favorite 的并发写都保留
     expect(
-      queryCache.peek!(articleCacheArgs('some-title-1'))?.value
+      articleCache.peek!(['some-title-1'])?.value
     ).toMatchObject({
       favorited: true,
       favoritesCount: 5,

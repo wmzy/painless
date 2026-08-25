@@ -8,7 +8,7 @@ import {
   setMockConfig,
   type MockConfigValue
 } from '@/util/mock';
-import {queryCache} from '@/util/useQuery';
+import {allCaches, clearAllCaches} from '@/util/useQuery';
 
 import Popover from './Popover';
 
@@ -16,7 +16,7 @@ type Props = {
   children: ReactNode;
 };
 
-// queryCache.snapshot() 的条目形状（react-toolroom CacheProvider 契约：
+// cache.snapshot() 的条目形状（react-toolroom CacheProvider 契约：
 // key 为 hash 后的字符串——createQueryCache 现用结构化 stableHash 并剥离
 // AbortSignal（见 src/util/useQuery.ts 的 hashArgs），形如 [s:tag]——
 // cachedAt 为写入时的毫秒时间戳。key 具体格式归 useQuery 层所有，此处
@@ -29,9 +29,20 @@ type CacheEntry = {
   value: unknown;
   cachedAt: number;
   pending?: boolean;
+  /** 面板侧附加：条目所属的实体 cache 名（allCaches 顺序） */
+  cacheName: string;
 };
 
-// queryCache.subscribe() 的事件形状（同一 d.ts 的 CacheEvent）：set 不带
+// 多实体聚合：allCaches 与展示名配对（cacheEntries 名与 useQuery 的
+// 导出一致），CacheView 遍历 snapshot/subscribe
+const cacheEntries: [string, (typeof allCaches)[number]][] = [
+  ['article', allCaches[0]],
+  ['home', allCaches[1]],
+  ['comments', allCaches[2]],
+  ['tags', allCaches[3]]
+];
+
+// cache.subscribe() 的事件形状（CacheProvider 契约的 CacheEvent）：set 不带
 // key；delete 是「一切移除」的合流形状（单删/clear/deleteWhere/
 // deletePrefix/过期），携带被删条目的原始 args 元组（无法还原元组的
 // 条目——如 SSR hydrate 写入——被省略）。set 侧因此只能靠事件前后的
@@ -77,10 +88,10 @@ function DevToolInner() {
               value={val}
               onChange={(when) => {
                 setMockConfig(key, {...val, when});
-                // 用户切换 mock 模式即清共享缓存：避免上一模式的缓存
+                // 用户切换 mock 模式即清全部实体缓存：避免上一模式的缓存
                 // 值（如 'always' 经 useMock 链写进缓存的假数据）新鲜
                 // 命中，挡住新模式生效
-                queryCache.clear();
+                clearAllCaches();
               }}
             />
           ))}
@@ -114,16 +125,18 @@ export function ageSeconds(cachedAt: number, now: number = Date.now()): number {
   return Math.max(0, Math.floor((now - cachedAt) / 1000));
 }
 
-// 事件文案：set 事件不带 key，以事件前后 snapshot 的差集（新增 key 或
-// cachedAt 变化）反推被写的 key；反推不出（在飞槽位注册、同毫秒覆写等
-// snapshot 无差异的场合）退化为裸 'set'。delete 侧无法从事件形状区分
-// clear 与单删（clear 也携带全部被删元组），按「删空且多于一条」识别
-// clear 语义，其余展示被删条数——仅剩一条时的 clear 会显示成
+// 事件文案：set 事件不带 key，以事件前后聚合 snapshot 的差集（新增 key
+// 或 cachedAt 变化）反推被写的 key；反推不出（在飞槽位注册、同毫秒覆写
+// 等 snapshot 无差异的场合）退化为裸 'set'。delete 侧无法从事件形状区分
+// clear 与单删（clear 也携带全部被删元组），按「事发 cache 已删空且多于
+// 一条」识别 clear 语义（聚合视图下 next 含其它实体条目，判空只能看事发
+// cache 自身），其余展示被删条数——仅剩一条时的 clear 会显示成
 // 'delete 1 条'，对检查器而言无害
 function formatEvent(
   e: CacheEvent,
   prev: CacheEntry[],
-  next: CacheEntry[]
+  next: CacheEntry[],
+  sourceEmpty: boolean
 ): string {
   if (e.type === 'set') {
     const prevAt = new Map(prev.map((entry) => [entry.key, entry.cachedAt]));
@@ -133,18 +146,25 @@ function formatEvent(
     const [only] = changed;
     return changed.length === 1 && only ? `set ${truncateKey(only.key)}` : 'set';
   }
-  return next.length === 0 && e.deleted.length > 1
+  return sourceEmpty && e.deleted.length > 1
     ? 'clear'
     : `delete ${e.deleted.length} 条`;
 }
 
-// 共享缓存检查器：snapshot() 拉取条目（含 pending 三态标记），subscribe()
-// 在任意条目变更（含 clear）时刷新并追加事件流；面板关闭即卸载取消订阅，
-// 重开时重新挂载拉取一次即可。
+// 缓存检查器（多实体聚合）：allCaches 遍历 snapshot()，订阅每个 cache
+// 的变更事件（含 clear）刷新并追加事件流；面板关闭即卸载取消全部订阅。
+// 条目带 cache 名前缀（article/home/…），Clear 按钮清空全部实体。
 function CacheView() {
-  const [entries, setEntries] = useState<CacheEntry[]>(
-    () => queryCache.snapshot?.() ?? []
-  );
+  const collect = useCallback(() => {
+    const rows: CacheEntry[] = [];
+    for (const [name, cache] of cacheEntries) {
+      for (const entry of cache.snapshot?.() ?? []) {
+        rows.push({...entry, cacheName: name});
+      }
+    }
+    return rows;
+  }, []);
+  const [entries, setEntries] = useState<CacheEntry[]>(collect);
   const [events, setEvents] = useState<{id: number; label: string}[]>([]);
   const [now, setNow] = useState(() => Date.now());
   // set 事件不带 key：反推被写 key 需要「事件前」的条目，用 ref 跟住
@@ -154,28 +174,36 @@ function CacheView() {
   const nextEventId = useRef(0);
 
   const refresh = useCallback(() => {
-    const next = queryCache.snapshot?.() ?? [];
+    const next = collect();
     prevEntries.current = next;
     setEntries(next);
     setNow(Date.now());
-  }, []);
+  }, [collect]);
 
   // 监听器只碰 ref 与 setter（身份稳定），effect 空依赖只订阅一次，
-  // 卸载走 subscribe 返回的退订函数——与 refresh 分开，避免重复订阅
-  useEffect(
-    () =>
-      queryCache.subscribe?.((e) => {
-        const next = queryCache.snapshot?.() ?? [];
-        const label = formatEvent(e, prevEntries.current, next);
+  // 卸载退订全部——与 refresh 分开，避免重复订阅
+  useEffect(() => {
+    const unsubs: (() => void)[] = [];
+    for (const [, cache] of cacheEntries) {
+      const unsub = cache.subscribe?.((e) => {
+        const next = collect();
+        const label = formatEvent(
+          e,
+          prevEntries.current,
+          next,
+          (cache.snapshot?.() ?? []).length === 0
+        );
         prevEntries.current = next;
         setEntries(next);
         setNow(Date.now());
         setEvents((list) =>
           [{id: nextEventId.current++, label}, ...list].slice(0, MAX_EVENTS)
         );
-      }),
-    []
-  );
+      });
+      if (unsub) unsubs.push(unsub);
+    }
+    return () => unsubs.forEach((unsub) => unsub());
+  }, [collect]);
 
   return (
     <div>
@@ -189,7 +217,7 @@ function CacheView() {
         <b>Cache: {entries.length}</b>
         <Button
           onClick={() => {
-            queryCache.clear();
+            clearAllCaches();
             refresh();
           }}
         >
@@ -197,8 +225,8 @@ function CacheView() {
         </Button>
       </div>
       {entries.map((entry) => (
-        <div key={entry.key} title={entry.key}>
-          {truncateKey(entry.key)} · {ageSeconds(entry.cachedAt, now)}s
+        <div key={`${entry.cacheName}:${entry.key}`} title={entry.key}>
+          {entry.cacheName}·{truncateKey(entry.key)} · {ageSeconds(entry.cachedAt, now)}s
           {entry.pending && (
             <Badge size='sm' variant='warning'>
               ⏳ in-flight

@@ -12,7 +12,7 @@ import {navigate} from '@native-router/core';
 import {useMutation} from 'react-toolroom/async';
 
 import * as articleService from '@/services/article';
-import {queryCache} from '@/util/useQuery';
+import {articleCache, homeCache} from '@/util/useQuery';
 import {required, applyApiFieldErrors} from '@/util/validators';
 
 // 表单值形状：validate 回调与 handleSubmit 的 values 都由此约束
@@ -49,12 +49,12 @@ export default function Editor() {
   });
   const isSubmitting = useIsSubmitting(form);
 
-  // 发布/编辑 → 声明式失效：提交成功后对共享 queryCache 做 ['home'] /
-  // ['article'] 前缀失效（provider 的 deleteWhere）。否则 navigate('/') 后
+  // 发布/编辑 → 声明式失效：提交成功后整实体失效 homeCache / articleCache
+  // （0.9 起每实体一 cache，前缀即全部条目）。否则 navigate('/') 后
   // Home / Article 的 loader 在 staleTime 内新鲜命中旧缓存，新发布/编辑
   // 的文章 2 秒内不出现。失败自动不失效。同 Article 视图的 addComment。
   const [save] = useMutation(articleService.saveArticle, {
-    invalidates: [[queryCache, 'home'], [queryCache, 'article']]
+    invalidates: [homeCache, articleCache]
   });
 
   const handleSubmit = async (values: {title: string; description: string; body: string; tagList: string[]}) => {

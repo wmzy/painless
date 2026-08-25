@@ -8,6 +8,7 @@ import * as articleService from '@/services/article';
 import {getCurrentUser} from '@/services/auth';
 import {mockViewData} from '@/util/mock';
 import {withCache} from '@/util/loaderCache';
+import {articleCache, homeCache} from '@/util/useQuery';
 import {articlePageSchema} from '@/types/index.schema';
 import {homeSearchSchema} from '@/types/search';
 
@@ -34,7 +35,7 @@ const routes = createRoutes({
       // schema 在 resolve 期解析+校验，loader 拿到的已是 coerce 后的值。
       // signal：导航被新导航取代/cancel/POP 取消时 abort，透传给 service
       // 停掉被丢弃导航的请求（mockViewData 包装层原样传 ctx，信号不丢）。
-      // withCache(['home'])：与 useQuery 共享模块级 queryCache（双通道，
+      // withCache(homeCache)：与 useQuery 共享实体 cache（双通道，
       // 见 src/util/loaderCache.ts）——新鲜命中零请求，stale 旧值先行+
       // 后台重验证后 refresh 回写，miss 照旧走 pendingComponent 骨架；
       // PrefetchLink 预取与正式导航经 provider.load 共享同一 in-flight，
@@ -43,9 +44,12 @@ const routes = createRoutes({
       search: homeSearchSchema,
       data: mockViewData(
         withCache(
+          homeCache,
+          // key 只此一处定义：[search]（schema coerce 后的形状，hash 侧
+          // 剥 undefined 键归一），mutation 侧经 homeCache 寻址同一批条目
+          ({search}: {search: HomeSearch}): [HomeSearch] => [search],
           ({search, signal}: {search: HomeSearch; signal: AbortSignal}) =>
-            articleService.query(search, signal),
-          ['home']
+            articleService.query(search, signal)
         ),
         articlePageSchema,
         'articlePage'
@@ -59,13 +63,15 @@ const routes = createRoutes({
       path: '/article/:title',
       component: () => import('./Article'),
       // signal 同上：findByTitle 的请求随导航取消而取消。withCache
-      // (['article'])：Article 视图的写穿（favorite/follow）与 loader 共
-      // 用同一 key（articleCacheArgs），mutation 写缓存后 refresh 使
-      // loader 纯本地更新（见 src/views/Article/index.tsx）
+      // (articleCache)：Article 视图的乐观写穿（favorite/follow 经
+      // cache.mutation）与 loader 共用同一 key（[title]），写穿后
+      // set 事件订阅自动 refresh，loader 纯本地更新（见
+      // services/mutations.ts 与 src/views/Article/index.tsx）
       data: withCache(
+        articleCache,
+        ({params}: {params: {title?: string}}): [string] => [params.title!],
         ({params: {title}, signal}: {params: {title?: string}; signal: AbortSignal}) =>
-          articleService.findByTitle(title!, signal),
-        ['article']
+          articleService.findByTitle(title!, signal)
       ),
       // 路由级错误组件：文章不存在/加载失败渲染页面级提示（含返回首页），
       // 其它路由仍走全局 errorHandler → RouterError

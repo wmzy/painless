@@ -34,8 +34,7 @@ vi.mock('@native-router/core', () => ({navigate: vi.fn()}));
 import {navigate} from '@native-router/core';
 
 import * as http from '@/util/http';
-import {homeCacheArgs, articleCacheArgs} from '@/util/loaderCache';
-import {queryCache} from '@/util/useQuery';
+import {articleCache, clearAllCaches, homeCache} from '@/util/useQuery';
 
 import Editor from './index';
 
@@ -86,7 +85,7 @@ beforeEach(() => {
   navigateMock.mockReset();
   state.article = undefined;
   // 模块级共享缓存逐用例清空，防止 invalidates 断言被上一用例残留串场
-  queryCache.clear();
+  clearAllCaches();
 });
 
 describe('Editor', () => {
@@ -222,9 +221,9 @@ describe('Editor', () => {
   it('发布成功：navigate 前失效 home/article 前缀缓存条目', async () => {
     // 预置与 loader 同 key 的缓存条目（homeCacheArgs / articleCacheArgs
     // 与 views/index.tsx 的 withCache(['home'])/['article'] 寻址同形）
-    queryCache.set(homeCacheArgs({offset: 0, limit: 10}), {articles: [], articlesCount: 0});
-    queryCache.set(homeCacheArgs({tag: 'react', offset: 0, limit: 10}), {articles: [], articlesCount: 0});
-    queryCache.set(articleCacheArgs('old-title-1'), makeArticle());
+    homeCache.set([{offset: 0, limit: 10}], {articles: [], articlesCount: 0});
+    homeCache.set([{tag: 'react', offset: 0, limit: 10}], {articles: [], articlesCount: 0});
+    articleCache.set(['old-title-1'], makeArticle());
     postMock.mockResolvedValueOnce({article: makeArticle({slug: 'new-title-1'})});
     render(<Editor />);
 
@@ -233,31 +232,31 @@ describe('Editor', () => {
 
     // await mutate → invalidates 已在其成功分支执行 → 才 navigate
     await screen.findByRole('button', {name: 'Publish Article'});
-    expect(queryCache.peek!(homeCacheArgs({offset: 0, limit: 10}))).toBeUndefined();
-    expect(queryCache.peek!(homeCacheArgs({tag: 'react', offset: 0, limit: 10}))).toBeUndefined();
-    expect(queryCache.peek!(articleCacheArgs('old-title-1'))).toBeUndefined();
+    expect(homeCache.peek!([{offset: 0, limit: 10}])).toBeUndefined();
+    expect(homeCache.peek!([{tag: 'react', offset: 0, limit: 10}])).toBeUndefined();
+    expect(articleCache.peek!(['old-title-1'])).toBeUndefined();
     expect(navigateMock).toHaveBeenCalledWith(state.router, '/');
   });
 
   it('编辑成功：同样失效 home/article 前缀缓存条目', async () => {
     state.article = makeArticle();
-    queryCache.set(homeCacheArgs({offset: 0, limit: 10}), {articles: [], articlesCount: 0});
-    queryCache.set(articleCacheArgs('old-title-1'), makeArticle());
+    homeCache.set([{offset: 0, limit: 10}], {articles: [], articlesCount: 0});
+    articleCache.set(['old-title-1'], makeArticle());
     putMock.mockResolvedValueOnce({article: makeArticle({title: 'New title'})});
     render(<Editor />);
 
     fireEvent.click(screen.getByRole('button', {name: 'Update Article'}));
 
     await screen.findByRole('button', {name: 'Update Article'});
-    expect(queryCache.peek!(homeCacheArgs({offset: 0, limit: 10}))).toBeUndefined();
-    expect(queryCache.peek!(articleCacheArgs('old-title-1'))).toBeUndefined();
+    expect(homeCache.peek!([{offset: 0, limit: 10}])).toBeUndefined();
+    expect(articleCache.peek!(['old-title-1'])).toBeUndefined();
     expect(navigateMock).toHaveBeenCalled();
   });
 
   // 失败自动不失效（useMutation 契约）：422 被拒时缓存条目保留，错误仍
   // 走 applyApiFieldErrors 回填字段下方
   it('提交失败：不失效缓存条目，错误回填字段下方', async () => {
-    queryCache.set(homeCacheArgs({offset: 0, limit: 10}), {articles: [], articlesCount: 0});
+    homeCache.set([{offset: 0, limit: 10}], {articles: [], articlesCount: 0});
     postMock.mockRejectedValueOnce({
       status: 422,
       message: 'title has already been taken',
@@ -269,7 +268,7 @@ describe('Editor', () => {
     fireEvent.click(screen.getByRole('button', {name: 'Publish Article'}));
 
     expect(await screen.findByText('has already been taken')).toBeDefined();
-    expect(queryCache.peek!(homeCacheArgs({offset: 0, limit: 10}))).toBeDefined();
+    expect(homeCache.peek!([{offset: 0, limit: 10}])).toBeDefined();
     expect(navigateMock).not.toHaveBeenCalled();
   });
 });

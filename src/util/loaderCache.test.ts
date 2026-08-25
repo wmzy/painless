@@ -1,9 +1,9 @@
-// withCache（双通道共享缓存的 loader 侧）四态行为验证：新鲜命中零请求、
-// stale 旧值先行+后台重验证成功后 refresh 回写、miss 走 load（并发共享
-// in-flight）、后台失败保旧且不 refresh。queryCache 用真模块级实例
-// （withCache 寻址的就是它），@native-router/core 只 mock refresh——
-// 断言「成功才回写视图」这一关键语义；router 用裸对象即可（类型断言
-// 已在 withCache 内完成）。
+// withCache（双通道缓存的 loader 侧）行为验证：新鲜命中零请求、stale
+// 旧值先行+后台重验证成功后（经 set 事件订阅）refresh 回写、miss 走
+// load（并发共享 in-flight）、后台失败保旧且不 refresh。用真实每实体
+// cache（articleCache/homeCache，withCache 寻址的就是它们），
+// @native-router/core 只 mock refresh——断言「值变了才回写视图」这一
+// 关键语义；router 用裸对象即可（类型断言已在 withCache 内完成）。
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import {waitFor} from '@testing-library/react';
 
@@ -12,8 +12,12 @@ vi.mock('@native-router/core', () => ({refresh: vi.fn()}));
 import {refresh} from '@native-router/core';
 
 import {getMockConfigs, mockViewData, setMockConfig} from './mock';
-import {articleCacheArgs, homeCacheArgs, withCache} from './loaderCache';
-import {queryCache} from './useQuery';
+import {withCache} from './loaderCache';
+
+import type {ArticlePage} from '@/types';
+import type {HomeSearch} from '@/types/search';
+
+import {clearAllCaches, createQueryCache, homeCache} from './useQuery';
 
 const refreshMock = vi.mocked(refresh);
 
@@ -28,21 +32,32 @@ function deferred<T>() {
 }
 
 const fakeRouter = {history: {}};
+// withCache 机制用本地类型化 cache（与 Article 实体解耦）：值形状即本
+// 文件的 {article: string} 假数据
+const entryCache = createQueryCache<{article: string}, [string]>();
 // Article 形态的 ctx：路由无 search schema → 寻址落到 params
 const ctx = {params: {title: 'some-title'}, router: fakeRouter};
-const args = articleCacheArgs('some-title');
+// key 由 withCache 的 keyOf 定义——测试侧与 loader 同源（同一表达式）
+const args = ['some-title'] as [string];
+
+// 与路由表同形的 loader 包装：keyOf 从 params 提取 [title]（路由 ctx
+// 异构，keyOf 参数收 any——同实现签名）
+const articleLoader = (fn: (ctx: any) => Promise<any>, opts?: {staleTime?: number}) =>
+  withCache(entryCache, ({params}: any): [string] => [params.title!], fn, opts);
 
 beforeEach(() => {
   vi.resetAllMocks();
-  queryCache.clear();
+  clearAllCaches();
+  // 本地机制 cache 不在注册表内，自行清（防跨用例的绑定 seen 污染）
+  entryCache.clear();
 });
 
 describe('withCache', () => {
   it('新鲜命中：直接返回缓存值，不发请求也不 refresh', async () => {
     const fn = vi.fn();
     const cached = {article: 'cached'};
-    queryCache.set(args, cached);
-    const loader = withCache(fn, ['article']);
+    entryCache.set(args, cached);
+    const loader = articleLoader(fn);
 
     // 同步落定：结果就是缓存值本身（无 in-flight 等待）
     await expect(loader(ctx)).resolves.toBe(cached);
@@ -60,15 +75,15 @@ describe('withCache', () => {
       const pending = deferred<{article: string}>();
       const fn = vi.fn().mockReturnValue(pending.promise);
       const old = {article: 'old'};
-      const loader = withCache(fn, ['article'], {staleTime: 10});
-      queryCache.set(args, old); // cachedAt = 1000
+      const loader = articleLoader(fn, {staleTime: 10});
+      entryCache.set(args, old); // cachedAt = 1000
       vi.setSystemTime(2000); // 跨过 staleTime=10
 
       // 旧值先行：fn 未决时 loader 已同步拿到旧值
       await expect(loader(ctx)).resolves.toBe(old);
       expect(fn).toHaveBeenCalledTimes(1);
 
-      // 后台重验证落定 → refresh 以 ctx.router 回写当前视图
+      // 后台重验证落定 → 值引用变化 → refresh 以 ctx.router 回写当前视图
       pending.resolve({article: 'new'});
       await waitFor(() => expect(refreshMock).toHaveBeenCalledTimes(1));
       expect(refreshMock).toHaveBeenCalledWith(fakeRouter);
@@ -85,34 +100,54 @@ describe('withCache', () => {
     const pending = deferred<{article: string}>();
     const fn = vi.fn().mockReturnValue(pending.promise);
     const old = {article: 'old'};
-    const loader = withCache(fn, ['article'], {staleTime: 10});
-    queryCache.set(args, old);
+    const loader = articleLoader(fn, {staleTime: 10});
+    entryCache.set(args, old);
     await new Promise((r) => setTimeout(r, 20));
 
     await expect(loader(ctx)).resolves.toBe(old);
     pending.reject(new Error('network down'));
-    // rejection 被静默吞掉（无悬空 unhandled rejection）
+    // rejection 被静默吞掉（无悬空 unhandled rejection）；失败 settle 的
+    // set 事件经快照 diff（值未变）不触发 refresh
     await new Promise((r) => setTimeout(r, 0));
     expect(refreshMock).not.toHaveBeenCalled();
     // 旧值仍在缓存里（load 拒绝保留旧 settled 条目）
-    expect(queryCache.peek!(args)?.value).toBe(old);
+    expect(entryCache.peek!(args)?.value).toBe(old);
+  });
+
+  it('值引用不变的重验证 settle：不 refresh（结构共享等价物）', async () => {
+    vi.useFakeTimers({toFake: ['Date']});
+    vi.setSystemTime(1000);
+    try {
+      const same = {article: 'same'};
+      // factory resolve 同一引用：diff 前后值相等
+      const fn = vi.fn().mockResolvedValue(same);
+      const loader = articleLoader(fn, {staleTime: 10});
+      entryCache.set(args, same);
+      vi.setSystemTime(2000);
+
+      await expect(loader(ctx)).resolves.toBe(same);
+      await new Promise((r) => setTimeout(r, 0));
+      expect(refreshMock).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('miss：走 load 并把结果写回缓存，失败原样上抛', async () => {
     const pending = deferred<{article: string}>();
     const fn = vi.fn().mockReturnValue(pending.promise);
-    const loader = withCache(fn, ['article']);
+    const loader = articleLoader(fn);
 
     const promise = loader(ctx);
     expect(fn).toHaveBeenCalledTimes(1);
     pending.resolve({article: 'fresh'});
     await expect(promise).resolves.toEqual({article: 'fresh'});
-    expect(queryCache.peek!(args)?.value).toEqual({article: 'fresh'});
+    expect(entryCache.peek!(args)?.value).toEqual({article: 'fresh'});
   });
 
   it('miss 失败：promise 拒绝上抛（路由 errorComponent 接管）', async () => {
     const fn = vi.fn().mockRejectedValue(new Error('404'));
-    const loader = withCache(fn, ['article']);
+    const loader = articleLoader(fn);
 
     await expect(loader(ctx)).rejects.toThrow('404');
   });
@@ -120,7 +155,7 @@ describe('withCache', () => {
   it('并发 miss：同参数两次调用共享同一 in-flight，fn 只执行一次', async () => {
     const pending = deferred<{article: string}>();
     const fn = vi.fn().mockReturnValue(pending.promise);
-    const loader = withCache(fn, ['article']);
+    const loader = articleLoader(fn);
 
     const first = loader(ctx);
     const second = loader(ctx);
@@ -134,7 +169,15 @@ describe('withCache', () => {
 });
 
 describe('mock 面板与 loader 缓存的交互（DevTool Refresh 语义）', () => {
+  // 本组必须用注册表内的 homeCache：mock 的 refresh 闭包清的是
+  // clearAllCaches（注册表），本地 cache 清不到——语义即生产链路
   const homeCtx = {search: {offset: 0, limit: 10}, router: fakeRouter};
+  const homeLoader = (fn: (ctx: any) => Promise<any>) =>
+    mockViewData(
+      withCache(homeCache, ({search}: any): [HomeSearch] => [search as HomeSearch], fn),
+      {},
+      'articlePage'
+    );
 
   it('mockViewData 透传连跑不清缓存：新鲜命中挡在重复请求之前', async () => {
     // 'disabled' = 透传分支（不走 faker 动态导入），隔离出
@@ -143,8 +186,8 @@ describe('mock 面板与 loader 缓存的交互（DevTool Refresh 语义）', ()
     // 但不得因此清缓存——否则 dev 下凡带 mock 的 loader 永远 miss，
     // 共享缓存形同虚设。
     setMockConfig('articlePage', {when: 'disabled'});
-    const fn = vi.fn(async (_ctx: unknown) => ({articles: [], articlesCount: 0}));
-    const loader = mockViewData(withCache(fn, ['home']), {}, 'articlePage');
+    const fn = vi.fn(async (_ctx: unknown): Promise<ArticlePage> => ({articles: [], articlesCount: 0}));
+    const loader = homeLoader(fn);
 
     await loader(homeCtx);
     expect(fn).toHaveBeenCalledTimes(1);
@@ -156,8 +199,8 @@ describe('mock 面板与 loader 缓存的交互（DevTool Refresh 语义）', ()
 
   it('DevTool 用户交互清缓存（Refresh/切换 when）后，loader miss 重跑真实 fn', async () => {
     setMockConfig('articlePage', {when: 'disabled'});
-    const fn = vi.fn(async (_ctx: unknown) => ({articles: [], articlesCount: 0}));
-    const loader = mockViewData(withCache(fn, ['home']), {}, 'articlePage');
+    const fn = vi.fn(async (_ctx: unknown): Promise<ArticlePage> => ({articles: [], articlesCount: 0}));
+    const loader = homeLoader(fn);
 
     await loader(homeCtx);
     expect(fn).toHaveBeenCalledTimes(1);
@@ -168,32 +211,35 @@ describe('mock 面板与 loader 缓存的交互（DevTool Refresh 语义）', ()
     const refresh = config.refresh as (() => void) | undefined;
     expect(typeof refresh).toBe('function');
     refresh!();
-    expect(queryCache.peek!(['home', {offset: 0, limit: 10}])).toBeUndefined();
+    expect(homeCache.peek!([{offset: 0, limit: 10}])).toBeUndefined();
 
     await loader(homeCtx);
     expect(fn).toHaveBeenCalledTimes(2);
   });
 });
 
-describe('视图侧 key 构造（与 loader 寻址同形）', () => {
-  it('homeCacheArgs：tag 缺省时键不存在，与 schema 输出形状一致', () => {
+describe('key 归一（hash 剥 undefined 键）', () => {
+  it('{tag: undefined} 与 {} 同 key：schema 输出与视图状态永不擦肩', () => {
     // 真实 loader 的 ctx.search 来自 homeSearchSchema 输出：无 tag 时
     // 对象上没有 tag 键；视图侧 useSearch 解构得到 undefined 后回填
-    // {tag: undefined} 不得拆成另一条 key（stableHash 视 {tag: undefined}
-    // 与 {} 为不同 key）
-    const loaderSide = homeCacheArgs({offset: 0, limit: 10});
-    const viewSide = homeCacheArgs({tag: undefined, offset: 0, limit: 10});
-    expect(viewSide).toEqual(loaderSide);
-
-    const withTag = homeCacheArgs({tag: 'react', offset: 20, limit: 10});
-    expect(withTag).toEqual(['home', {tag: 'react', offset: 20, limit: 10}]);
+    // {tag: undefined} 不得拆成另一条 key
+    homeCache.set([{tag: undefined, offset: 0, limit: 10}], {articles: [], articlesCount: 0});
+    expect(homeCache.peek!([{offset: 0, limit: 10}])?.value).toEqual({
+      articles: [],
+      articlesCount: 0
+    });
+    // 反向同样成立：loader 先写，视图侧带 undefined 补丁同 key 命中
+    homeCache.set([{offset: 20, limit: 10}], {articles: [], articlesCount: 0});
+    expect(
+      homeCache.peek!([{tag: undefined, offset: 20, limit: 10}])?.value
+    ).toBeDefined();
   });
 
-  it('articleCacheArgs：与 Article loader 的 params 寻址一致命中', () => {
-    queryCache.set(articleCacheArgs('t1'), {article: 'cached'});
-    const loader = withCache(vi.fn(), ['article']);
-    // loader 侧 ctx.params = {title: 't1'} → [...prefix, {title}] 与
-    // articleCacheArgs('t1') 同 hash：新鲜命中零请求
+  it('keyOf 与 mutation 侧寻址同实体：params 提取一致命中', () => {
+    entryCache.set(['t1'], {article: 'cached'});
+    const loader = articleLoader(vi.fn());
+    // loader 侧 ctx.params = {title: 't1'} → ['t1'] 与 mutation 的
+    // key: [slug] 同一寻址空间：新鲜命中零请求
     return expect(
       loader({params: {title: 't1'}, router: fakeRouter})
     ).resolves.toEqual({article: 'cached'});

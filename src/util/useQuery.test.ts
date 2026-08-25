@@ -23,7 +23,7 @@ describe('useQuery', () => {
   it('loading → data：初始给 initData，请求完成后 data/loading/stale 就位', async () => {
     const pending = deferred<string[]>();
     const fetchTags = () => pending.promise;
-    const cache = createQueryCache();
+    const cache = createQueryCache<any, any>();
 
     const {result} = renderHook(() =>
       useQuery(fetchTags, [], {cache, initData: ['init']})
@@ -44,7 +44,7 @@ describe('useQuery', () => {
 
   it('同参数重新挂载：新鲜期内命中缓存，不再发请求', async () => {
     const fn = vi.fn().mockResolvedValue(['v1']);
-    const cache = createQueryCache();
+    const cache = createQueryCache<any, any>();
 
     const first = renderHook(() =>
       useQuery(fn, [], {cache, initData: [] as string[]})
@@ -66,7 +66,7 @@ describe('useQuery', () => {
       .fn()
       .mockResolvedValueOnce(['old'])
       .mockReturnValueOnce(pending.promise);
-    const cache = createQueryCache();
+    const cache = createQueryCache<any, any>();
     const staleTime = 20;
 
     const first = renderHook(() =>
@@ -95,7 +95,7 @@ describe('useQuery', () => {
 
   it('refetch：绕过新鲜缓存强制重发，且引用稳定', async () => {
     const fn = vi.fn().mockResolvedValueOnce(['v1']).mockResolvedValueOnce(['v2']);
-    const cache = createQueryCache();
+    const cache = createQueryCache<any, any>();
 
     const {result, rerender} = renderHook(() =>
       useQuery(fn, [], {cache, initData: [] as string[]})
@@ -115,7 +115,7 @@ describe('useQuery', () => {
 
   it('请求失败：错误进入 error 状态，loading 复位', async () => {
     const fn = vi.fn().mockRejectedValue(new Error('boom'));
-    const cache = createQueryCache();
+    const cache = createQueryCache<any, any>();
 
     const {result} = renderHook(() => useQuery(fn, [], {cache}));
 
@@ -128,7 +128,7 @@ describe('useQuery', () => {
   it('已有结果后的重拉：loading 保持 false，fetching 如实为 true', async () => {
     const pending = deferred<string[]>();
     const fn = vi.fn().mockResolvedValueOnce(['v1']).mockReturnValueOnce(pending.promise);
-    const cache = createQueryCache();
+    const cache = createQueryCache<any, any>();
 
     const {result} = renderHook(() =>
       useQuery(fn, [], {cache, initData: [] as string[]})
@@ -156,7 +156,7 @@ describe('useQuery', () => {
   it('初次加载：loading 与 fetching 均 true，直到首个结果 settle', async () => {
     const pending = deferred<string[]>();
     const fn = vi.fn().mockReturnValue(pending.promise);
-    const cache = createQueryCache();
+    const cache = createQueryCache<any, any>();
 
     const {result} = renderHook(() =>
       useQuery(fn, [], {cache, initData: [] as string[]})
@@ -183,7 +183,7 @@ describe('useQuery', () => {
       .fn()
       .mockReturnValueOnce(first.promise)
       .mockReturnValueOnce(second.promise);
-    const cache = createQueryCache();
+    const cache = createQueryCache<any, any>();
 
     const {result} = renderHook(() =>
       useQuery(fn, [], {cache, initData: [] as string[]})
@@ -213,7 +213,7 @@ describe('useQuery', () => {
   it('跨组件同时挂载：provider 层共享同一 in-flight，重挂载命中缓存', async () => {
     const pending = deferred<string[]>();
     const fn = vi.fn().mockReturnValue(pending.promise);
-    const cache = createQueryCache();
+    const cache = createQueryCache<any, any>();
 
     // 0.8 形态：useCache 的 miss 走 provider.load——两个组件实例并发首载
     // 同参数，共享同一条 in-flight（fn 只执行一次），双方各自广播拿到
@@ -253,7 +253,7 @@ describe('useQuery', () => {
       calls.push({id, signal});
       return Promise.resolve([id]);
     });
-    const cache = createQueryCache();
+    const cache = createQueryCache<any, any>();
 
     const {rerender} = renderHook(
       ({id}) => useQuery(fn, [id], {cache}),
@@ -280,7 +280,7 @@ describe('useQuery', () => {
     const fn: (args: Record<string, unknown>) => Promise<string[]> = vi.fn(
       () => Promise.resolve(['v1'])
     );
-    const cache = createQueryCache();
+    const cache = createQueryCache<any, any>();
 
     const first = renderHook(
       ({args}) => useQuery(fn, [args], {cache, initData: [] as string[]}),
@@ -305,7 +305,7 @@ describe('useQuery', () => {
   it('select：data 为投影切片，initData 以原始数据注入经投影返回', async () => {
     const pending = deferred<{articlesCount: number; title: string}>();
     const fn = () => pending.promise;
-    const cache = createQueryCache();
+    const cache = createQueryCache<any, any>();
 
     const {result} = renderHook(() =>
       useQuery(fn, [], {
@@ -339,7 +339,7 @@ describe('useQuery', () => {
       .mockReturnValueOnce(p1.promise)
       .mockReturnValueOnce(p2.promise)
       .mockReturnValueOnce(p3.promise);
-    const cache = createQueryCache();
+    const cache = createQueryCache<any, any>();
 
     let childRenders = 0;
     const Slice = memo(({count}: {count: number}) => {
@@ -395,7 +395,7 @@ describe('useQuery', () => {
       .fn()
       .mockResolvedValueOnce(['v1'])
       .mockResolvedValueOnce(['v2']);
-    const cache = createQueryCache();
+    const cache = createQueryCache<any, any>();
 
     const {result} = renderHook(() =>
       useQuery(fn, [], {cache, initData: [] as string[], staleTime: 20})
@@ -414,7 +414,7 @@ describe('useQuery', () => {
 
   it('断网恢复：新鲜期内 online 事件不重发请求', async () => {
     const fn = vi.fn().mockResolvedValue(['v1']);
-    const cache = createQueryCache();
+    const cache = createQueryCache<any, any>();
 
     const {result} = renderHook(() =>
       // staleTime 给宽（waitFor 的轮询本身要耗 ~10ms/次，20ms 会把
@@ -431,7 +431,7 @@ describe('useQuery', () => {
 
   it('断网恢复：卸载后 online 事件不再触发重拉（监听已清理）', async () => {
     const fn = vi.fn().mockResolvedValue(['v1']);
-    const cache = createQueryCache();
+    const cache = createQueryCache<any, any>();
 
     const {unmount} = renderHook(() =>
       useQuery(fn, [], {cache, initData: [] as string[], staleTime: 20})

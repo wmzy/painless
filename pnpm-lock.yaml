@@ -42,8 +42,8 @@ importers:
         specifier: ^0.5.1
         version: 0.5.1(react@19.2.8)(zod@4.4.3)
       react-toolroom:
-        specifier: ^0.9.0
-        version: 0.9.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        specifier: ^0.10.0
+        version: 0.10.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
     devDependencies:
       '@babel/core':
         specifier: ^8.0.1
@@ -3677,14 +3677,14 @@ packages:
   react-is@17.0.2:
     resolution: {integrity: sha512-w2GsyukL62IJnlaff/nRegPQR94C/XXamvMWmSHRJ4y7Ts/4ocGRmTHvOs8PSE6pB3dWOrD/nueuU5sduBsQ4w==}
 
-  react-toolroom@0.7.0:
-    resolution: {integrity: sha512-pHlJvftRpYVs0x0h+2Yow2N1vkHM9gQWYttVoG6gxj9+WxQ+VVS+WNvW5m9fXlLNoAy1jqJhVev1hgI9h/34CQ==}
+  react-toolroom@0.10.0:
+    resolution: {integrity: sha512-R1RfUp/PAkxPG2i0OWdX7SKPmnalc304elBebSo2QO0rfvzR6NMPNOSQAZs1shD0mQU4aysuQnC2MdR+XmgzvQ==}
     peerDependencies:
       react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
       react-dom: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
-  react-toolroom@0.9.0:
-    resolution: {integrity: sha512-qvupn5VkCGo3SdYLdi+95OZZ3Zl/7HJ4D+1kmUZqllr0GTXXCiCWDOsukaVo1Ybei1YkNg/YZMXzboKI7+tzAQ==}
+  react-toolroom@0.7.0:
+    resolution: {integrity: sha512-pHlJvftRpYVs0x0h+2Yow2N1vkHM9gQWYttVoG6gxj9+WxQ+VVS+WNvW5m9fXlLNoAy1jqJhVev1hgI9h/34CQ==}
     peerDependencies:
       react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
       react-dom: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
@@ -8083,12 +8083,12 @@ snapshots:
 
   react-is@17.0.2: {}
 
-  react-toolroom@0.7.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
+  react-toolroom@0.10.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
     dependencies:
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
 
-  react-toolroom@0.9.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
+  react-toolroom@0.7.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
     dependencies:
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)

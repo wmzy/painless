@@ -2,7 +2,7 @@ import type {Article} from '@/types';
 
 import {useState} from 'react';
 import {css} from '@linaria/core';
-import {navigate, refresh} from '@native-router/core';
+import {navigate} from '@native-router/core';
 import {useData, useMatched} from '@native-router/react';
 import {Form, useForm, reset, useIsSubmitting} from 'react-f0rm';
 import {useMutation} from 'react-toolroom/async';
@@ -21,9 +21,9 @@ import {
 import {FormItem} from 'haze-ui/form';
 
 import * as articleService from '@/services/article';
+import {favoriteOnArticle, followOnArticle} from '@/services/mutations';
 import {getCurrentUser} from '@/services/auth';
-import {articleCacheArgs} from '@/util/loaderCache';
-import {queryCache} from '@/util/useQuery';
+import {articleCache, commentsCache} from '@/util/useQuery';
 
 import CommentList from './CommentList';
 
@@ -46,25 +46,19 @@ export default function ArticleView() {
   const commentSubmitting = useIsSubmitting(commentForm);
   const [error, setError] = useState<string | null>(null);
 
-  // 写穿缓存：与路由 loader 同一 key（loader 侧 withCache(['article'])，
-  // 见 views/index.tsx）。applyCache 把最新值直接 set 进共享 queryCache 再
-  // refresh 当前视图——loader 重跑时新鲜命中缓存，纯本地更新（零请求、
-  // 零骨架、零 loading），useData 换新后整视图重渲染。手写 useState
-  // override 模式（0.7 前）作废：缓存写穿同时惠及 loader（回退/重进
-  // 命中）与并发在飞的请求（代次守卫防旧响应覆盖）。
-  const key = articleCacheArgs(params.title!);
-  const applyCache = (next: Article) => {
-    queryCache.set(key, next);
-    void refresh(router);
-  };
+  // 乐观写穿管道全在 services/mutations.ts（cache.mutation 组合）：
+  // 乐观首步 → 服务调用 → 字段选择式 apply → 失败自动回滚（并发写
+  // 保护）。本视图只保留调用与错误提示——peek 合并/set/refresh 全部
+  // 消失（refresh 由 loaderCache 的 set 事件订阅自动扇出），favorite
+  // 同时写穿 home 投影缓存，返回列表页立即看到新计数。
+  const [favorite] = useMutation(favoriteOnArticle);
+  const [follow] = useMutation(followOnArticle);
 
-  // 发评论 → 声明式失效：useMutation 成功后对共享 queryCache 做 [slug]
-  // 前缀失效（provider 的 deleteWhere），CommentList 这类挂载中的 useCache
-  // 消费者经 provider 删除事件被动重拉。0.7 起失效按 cache 寻址——cache
-  // 是模块级常量，直接引用即可，不再需要跨组件稳定 injectable（useQueryOf）。
-  // 失败自动不失效。
+  // 发评论 → 声明式失效：useMutation 成功后对 commentsCache 整实体失效
+  //（前缀即全部条目），CommentList 挂载中的 useCache 消费者经 provider
+  // 删除事件被动重拉。失败自动不失效。
   const [mutateAddComment] = useMutation(articleService.addComment, {
-    invalidates: [[queryCache, article.slug]]
+    invalidates: [commentsCache]
   });
 
   // 未登录（无 token）时写操作一律引导去登录页
@@ -76,56 +70,18 @@ export default function ArticleView() {
 
   const toggleFavorite = () => {
     if (!requireAuth()) return;
-    // 点击时快照：请求失败即服务端状态未变，回滚到它就是回到权威值
-    const snapshot = article;
     setError(null);
-    applyCache({
-      ...snapshot,
-      favorited: !snapshot.favorited,
-      favoritesCount: snapshot.favorited
-        ? snapshot.favoritesCount - 1
-        : snapshot.favoritesCount + 1
-    });
-    articleService
-      .favoriteArticle(snapshot.slug, !snapshot.favorited)
-      .then((a) => {
-        // 对称于 toggleFollow 的防御：favorite 在飞期间 follow 可能已写穿
-        // following，响应里的 author 是发出请求那一刻的旧值，直接铺开会
-        // 把它回滚——peek 取当前值合并，只从响应取 favorite 域的两个
-        // 权威字段
-        const cur = (queryCache.peek!(key)?.value as Article | undefined) ?? snapshot;
-        applyCache({
-          ...cur,
-          favorited: a.favorited,
-          favoritesCount: a.favoritesCount
-        });
-      })
-      .catch((e: unknown) => {
-        applyCache(snapshot);
-        setError(errText(e));
-      });
+    void favorite(article.slug, !article.favorited).catch((e: unknown) =>
+      setError(errText(e))
+    );
   };
 
   const toggleFollow = () => {
     if (!requireAuth()) return;
-    const snapshot = article;
     setError(null);
-    applyCache({
-      ...snapshot,
-      author: {...snapshot.author, following: !snapshot.author.following}
-    });
-    articleService
-      .followAuthor(snapshot.author.username, !snapshot.author.following)
-      .then((p) => {
-        // 成功回调用 peek 取当前值合并：follow 在飞期间 favorite 可能已
-        // 写穿缓存，直接铺开闭包里的旧 snapshot 会把它覆盖掉
-        const cur = (queryCache.peek!(key)?.value as Article | undefined) ?? snapshot;
-        applyCache({...cur, author: p});
-      })
-      .catch((e: unknown) => {
-        applyCache(snapshot);
-        setError(errText(e));
-      });
+    void follow(article.slug, article.author.username, !article.author.following).catch(
+      (e: unknown) => setError(errText(e))
+    );
   };
 
   const handleCommentSubmit = async (values: {body: string}) => {

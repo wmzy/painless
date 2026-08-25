@@ -1,3 +1,5 @@
+import type {Article, ArticlePage} from '@/types';
+
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 
 // auth 模块有模块级状态（当前用户、localStorage 恢复、token 注册），
@@ -119,26 +121,31 @@ describe('auth service', () => {
       expect(auth.getCurrentUser()).toBeNull();
     });
 
-    it('should clear the shared query cache on logout', async () => {
+    it('should clear all entity caches on logout', async () => {
       // beforeEach 的 resetModules 后首次 import：与 auth 实际持有的是
-      // 同一个 queryCache 实例（本用例内不再 reset）
-      const {queryCache} = await import('@/util/useQuery');
+      // 同一批实体 cache 实例（本用例内不再 reset）
+      const {articleCache, homeCache, clearAllCaches} = await import(
+        '@/util/useQuery'
+      );
 
-      // 预置两条“已缓存数据”：一条登录前、一条登录后写入
-      queryCache.set(['articles', 'test-feed'], [{slug: 'a'}]);
+      // 预置两条“已缓存数据”：一条登录前、一条登录后写入（跨两个实体）
+      articleCache.set(['test-feed-slug'], {slug: 'a'} as Article);
       vi.mocked(http.post).mockResolvedValue({user});
       await auth.login('test@test.com', 'password');
-      queryCache.set(['articles', 'favorited'], [{slug: 'b'}]);
-      expect(queryCache.get(['articles', 'test-feed'])).toBeDefined();
+      homeCache.set([{offset: 0, limit: 10}], {
+        articles: [{slug: 'b'}] as ArticlePage['articles'],
+        articlesCount: 1
+      });
+      expect(articleCache.get(['test-feed-slug'])).toBeDefined();
 
       auth.logout();
 
       // 上一账号拉过的缓存一律取不到，防止下一账号命中渲染
-      expect(queryCache.get(['articles', 'test-feed'])).toBeUndefined();
-      expect(queryCache.get(['articles', 'favorited'])).toBeUndefined();
+      expect(articleCache.get(['test-feed-slug'])).toBeUndefined();
+      expect(homeCache.get([{offset: 0, limit: 10}])).toBeUndefined();
 
-      // queryCache 是模块级共享实例，收尾清理避免污染其它用例
-      queryCache.clear();
+      // 实体 cache 是模块级共享实例，收尾清理避免污染其它用例
+      clearAllCaches();
     });
 
     it('should notify subscribers on login and logout', async () => {

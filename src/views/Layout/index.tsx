@@ -47,7 +47,7 @@ export default function Layout() {
             <NavLink href='/editor'>New Article</NavLink>
             <NavLink
               onClick={() => {
-                // logout 已清 queryCache；viewStack 里还留着本会话旧账号
+                // logout 已清全部实体缓存；viewStack 里还留着本会话旧账号
                 // 的视图快照——不清则 POP 回退会直接渲染旧账号数据、绕过
                 // 会话内已执行过的守卫。invalidate 丢弃全部快照，后续
                 // POP 落入重解析路径（守卫+loader 重跑）；当前视图不受

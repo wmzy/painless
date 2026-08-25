@@ -9,7 +9,7 @@ import * as ee from '@for-fun/event-emitter';
 import {refresh} from '@native-router/core';
 import {useInject, createMemoryCacheProvider} from 'react-toolroom/async';
 
-import {queryCache} from './useQuery';
+import {clearAllCaches} from './useQuery';
 
 type CacheProvider = ReturnType<typeof createMemoryCacheProvider>;
 
@@ -62,7 +62,7 @@ export function mockViewData<F extends (ctx: any) => Promise<any>>(
       // 面板 Refresh 语义：清共享缓存再重解析当前路由——绕过 withCache
       // 的新鲜命中，mock 分支（含 'always' 重新生成）才会真正执行
       refresh: () => {
-        queryCache.clear();
+        clearAllCaches();
         void refresh(router as Parameters<typeof refresh>[0]);
       }
     };

@@ -2,7 +2,7 @@ import {css} from '@linaria/core';
 import {useSearch, useSetSearch} from '@native-router/react';
 import {TagGroup, TagGroupItem, Spinner, Alert, Title} from 'haze-ui';
 
-import {useQuery} from '@/util/useQuery';
+import {tagsCache, useQuery} from '@/util/useQuery';
 import * as articleService from '@/services/article';
 import {homeSearchSchema, homeSearchWriteSchema} from '@/types/search';
 import {tagListSchema} from '@/types/index.schema';
@@ -21,6 +21,7 @@ const staleAside = css`
 
 export default function Tags() {
   const {data: tags, loading, error, stale} = useQuery(articleService.fetchTags, [], {
+    cache: tagsCache,
     initData: [],
     mock: {schema: tagListSchema, key: 'tagList'}
   });

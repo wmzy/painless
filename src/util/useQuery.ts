@@ -8,7 +8,7 @@
 // - 并发去重：0.8 起 useCache 的 miss/stale 重验证内部走 provider.load
 //   （原子 get-or-insert in-flight 槽位），同参数的并发调用共享同一
 //   promise，底层 fn 只执行一次——且是跨组件、跨通道（路由 loader 的
-//   withCache 用同一 queryCache）共享在飞请求，useDedup 已无必要；
+//   withCache 用同一实体 cache）共享在飞请求，useDedup 已无必要；
 // - focus 重验证（useFocusRevalidate）：窗口重新聚焦/可见时对 miss/
 //   stale 条目后台重拉（新鲜期内经 useCache 直接命中，不发请求）；
 // - 断网恢复重验证（useReconnectRevalidate）：window online 事件时对
@@ -26,6 +26,9 @@
 //   变更），而 deep-equal 要在每次成功 fetch 付 O(payload)。热点组件
 //   用标量 props + React.memo 局部解决（注意：settle 后对象 prop 恒为
 //   新引用，memo 边界上比较标量才有效，比较对象等于手写 deep-equal）。
+import type {Article, ArticlePage, Comment} from '@/types';
+import type {HomeSearch} from '@/types/search';
+
 import {useCallback, useRef, type DependencyList} from 'react';
 import {
   createMemoryCacheProvider,
@@ -41,7 +44,10 @@ import {
   useReconnectRevalidate,
   useResultSelect,
   useRetry,
-  useRun
+  useRun,
+  type BoundMutation,
+  type CacheProvider,
+  type MutationSpec
 } from 'react-toolroom/async';
 
 import {useMock} from '@/util/mock';
@@ -58,28 +64,73 @@ const DEFAULT_STALE_TIME = 2000;
 // 常量保证身份稳定，恒等投影下输出即输入——与原 useResult 语义等价。
 const identity = <T,>(r: T) => r;
 
-// 统一 hash：结构化 stableHash（对象键序无关），并把参数中混入的
-// AbortSignal 剥掉。useRun({signal: true}) 每次 run 都在尾部附加一个
-// 新 signal，若让它进 key，同一参数的缓存/去重条目会被拆散——['x', sig]
-// 与 ['x']（如 refetch 的 cache.delete(args) 对 useRun 存下的带 signal
-// 条目）必须归一为同一 key。
+// 统一 hash：结构化 stableHash（对象键序无关）+ 两层归一——
+// 1. 把参数中混入的 AbortSignal 剥掉。useRun({signal: true}) 每次 run
+//   都在尾部附加一个新 signal，若让它进 key，同一参数的缓存/去重条目
+//   会被拆散——['x', sig] 与 ['x']（如 refetch 的 cache.delete(args) 对
+//   useRun 存下的带 signal 条目）必须归一为同一 key。
+// 2. 递归剥掉对象里值为 undefined 的键：{tag: undefined} 与 {} 同 hash。
+//   这是「key 形状耦合」的结构性修复——loader 侧拿 schema 输出（缺省
+//   字段无键），视图侧拿组件状态（缺省字段常是 undefined 属性），归一
+//   后两侧永远同 key，不再依赖调用方手工保持「形状完全一致」。
+const stripUndefined = (v: unknown): unknown => {
+  if (Array.isArray(v)) return v.map(stripUndefined);
+  if (v !== null && typeof v === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, val] of Object.entries(v)) {
+      if (val !== undefined) out[k] = stripUndefined(val);
+    }
+    return out;
+  }
+  return v;
+};
 const hashArgs = (args: unknown[]) =>
-  stableHash(args.filter((a) => !isAbortSignal(a)));
+  stableHash(stripUndefined(args.filter((a) => !isAbortSignal(a))));
 
-// 显式以 any 实例化值类型，保证与任意 F 的 R<F> 双向兼容
-export type QueryCache = ReturnType<typeof createMemoryCacheProvider<any, any[]>>;
+// 每实体一 cache：值类型与 key 元组类型都在 cache 上收紧（peek 不再需要
+// as 断言，key 写错形状编译期暴露），'article' 这类魔法字符串前缀随之
+// 消失——身份就是 cache 绑定本身。cacheTime 仍全实体统一 10s。
+// EntityCache 把 mutation/patchWhere 从可选收成必有：createQueryCache
+// 恒由 createMemoryCacheProvider 创建（运行时必然携带），调用方零断言。
+export type EntityCache<T, K extends unknown[]> = CacheProvider<T, K> & {
+  mutation: <Args extends any[], Resp>(
+    spec: (...args: Args) => MutationSpec<T, K, Args, Resp>
+  ) => BoundMutation<Args, Resp>;
+};
 
-export function createQueryCache(cacheTime = DEFAULT_CACHE_TIME): QueryCache {
-  return createMemoryCacheProvider<any, any[]>({
+export function createQueryCache<T, K extends unknown[]>(
+  cacheTime = DEFAULT_CACHE_TIME
+): EntityCache<T, K> {
+  // 运行时成员齐全（memory provider 挂载 mutation/patchWhere），类型上
+  // 经 unknown 收拢可选成员——见 EntityCache 注释
+  return createMemoryCacheProvider<T, K>({
     cacheTime,
     hash: hashArgs
-  });
+  }) as unknown as EntityCache<T, K>;
 }
 
-// 模块级共享缓存：同参数的请求在 cacheTime 内复用。0.7 起失效按 cache
-// 寻址（invalidate([[cache, ...prefix]]) 直达 provider），各消费者各自
-// useInjectable 即可，不再需要跨组件稳定 injectable 的 WeakMap hack。
-export const queryCache: QueryCache = createQueryCache();
+// ---- 每实体缓存注册表 ------------------------------------------------------
+
+/** 文章实体：key = [slug]，Article 视图与编辑写穿共用 */
+export const articleCache = createQueryCache<Article, [string]>();
+/** 首页信息流投影：key = [homeSearch]（hash 归一剥 undefined tag） */
+export const homeCache = createQueryCache<ArticlePage, [HomeSearch]>();
+/** 文章评论：key = [slug]，发评论后按 slug 失效重拉 */
+export const commentsCache = createQueryCache<Comment[], [string]>();
+/** 全局标签：key = []（单例条目） */
+export const tagsCache = createQueryCache<string[], []>();
+
+// 登出清场用：逐实体清空 + DevTool 面板遍历。新的实体 cache 记得登记。
+export const allCaches = [
+  articleCache,
+  homeCache,
+  commentsCache,
+  tagsCache
+] as const;
+
+export const clearAllCaches = () => {
+  for (const cache of allCaches) cache.clear();
+};
 
 export type MockConfig = {
   schema: unknown;
@@ -87,8 +138,8 @@ export type MockConfig = {
 };
 
 export type QueryOptions<T> = {
-  /** 结果缓存提供者，默认模块级共享 queryCache */
-  cache?: QueryCache;
+  /** 结果缓存提供者：必传——按实体选择 cache（见 allCaches 注册表） */
+  cache: EntityCache<T, any>;
   /** 缓存多久后标记为 stale（ms），默认 2000 */
   staleTime?: number;
   /** 初始数据，避免首屏取到 undefined */
@@ -150,35 +201,35 @@ export type QueryResult<T> = {
 //（initData 语义仍是「select 之前的原始数据」，见实现注释）
 export function useQuery<F extends AsyncFunc, S = R<F>>(
   fn: F,
-  args?: Parameters<F>,
-  opts?: QueryOptions<R<F>> & {select: (data: R<F>) => S; initData: R<F>}
+  args: Parameters<F>,
+  opts: QueryOptions<R<F>> & {select: (data: R<F>) => S; initData: R<F>}
 ): QueryResult<S>;
 export function useQuery<F extends AsyncFunc, S = R<F>>(
   fn: F,
-  args?: Parameters<F>,
-  opts?: QueryOptions<R<F>> & {select: (data: R<F>) => S}
+  args: Parameters<F>,
+  opts: QueryOptions<R<F>> & {select: (data: R<F>) => S}
 ): QueryResult<S | undefined>;
 export function useQuery<F extends AsyncFunc>(
   fn: F,
-  args?: Parameters<F>,
-  opts?: QueryOptions<R<F>> & {initData: R<F>}
+  args: Parameters<F>,
+  opts: QueryOptions<R<F>> & {initData: R<F>}
 ): QueryResult<R<F>>;
 export function useQuery<F extends AsyncFunc>(
   fn: F,
-  args?: Parameters<F>,
-  opts?: QueryOptions<R<F>>
+  args: Parameters<F>,
+  opts: QueryOptions<R<F>>
 ): QueryResult<R<F> | undefined>;
 export function useQuery<F extends AsyncFunc>(
   fn: F,
-  args: Parameters<F> = [] as unknown as Parameters<F>,
+  args: Parameters<F>,
   {
-    cache = queryCache,
+    cache,
     staleTime = DEFAULT_STALE_TIME,
     initData,
     select,
     mock,
     retry
-  }: QueryOptions<R<F>> = {}
+  }: QueryOptions<R<F>>
 ): QueryResult<R<F> | undefined> {
   const injectable = useInjectable(fn);
 
@@ -199,15 +250,19 @@ export function useQuery<F extends AsyncFunc>(
   useRetry(injectable, retry ?? {retries: 0});
 
   // （0.7 的 useDedup 已删）并发去重由 provider.load 内建：useCache 的
-  // miss/stale 重验证走 queryCache.load（原子 get-or-insert in-flight），
+  // miss/stale 重验证走实体 cache.load（原子 get-or-insert in-flight），
   // 同参数并发调用共享同一 promise——跨组件、跨通道（路由 loader 的
-  // withCache 共用同一 queryCache）都只发一次请求。
+  // withCache 共用同一实体 cache）都只发一次请求。
 
   // useCache 对 provider 的期望形状随 AF 泛型延迟求值（R<AF>/Parameters<AF>），
   // 显式以 AsyncFunc 实例化后恰为 CacheProvider<any, any[]>——与模块级
   // QueryCache 完全一致，无需断言；cache 本就存任意值/任意参数（hashArgs
   // 归一），运行时安全。
-  const stale = useCache(injectable as AsyncFunc, cache, staleTime);
+  // useCache 的 F 泛型随 cache 参数延迟求值（R<F>/Parameters<F> 实例化
+  // 分歧）：tsc 需要此断言收拢；eslint 的类型程序对同表达式解析不同，
+  // 认为多余——按 tsc 为准，精确禁用该行
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+  const stale = useCache(injectable as AsyncFunc, cache as Parameters<typeof useCache>[1], staleTime);
 
   // focus/可见性恢复时的后台重验证（react-query 的 refetchOnWindowFocus）：
   // bfcache 恢复、路由 viewStack 快照回放后数据可能过时，回到页面即对

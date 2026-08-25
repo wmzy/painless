@@ -1,7 +1,7 @@
 import {create, on, emit} from '@for-fun/event-emitter';
 
 import * as http from '@/util/http';
-import {queryCache} from '@/util/useQuery';
+import {clearAllCaches} from '@/util/useQuery';
 
 export type User = {
   username: string;
@@ -71,7 +71,7 @@ export function onAuthChange(handler: (user: User | null) => void) {
 // Layout 导航）可能随即发起新请求；先清缓存可保证这些登出后的新请求
 // 写回的是匿名数据，而不是被本次 clear 误删。
 export function logout() {
-  queryCache.clear();
+  clearAllCaches();
   setUser(null);
 }
 

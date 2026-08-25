@@ -1,14 +1,13 @@
 import {css} from '@linaria/core';
-import {navigate, refresh} from '@native-router/core';
+import {navigate} from '@native-router/core';
 import {useData, useMatched, useSearch, useSetSearch} from '@native-router/react';
 import {Card, Title, Text, Badge, Avatar, Flex, Chip, Button} from 'haze-ui';
+import {useMutation} from 'react-toolroom/async';
 
 import {Article, ArticlePage} from '@/types';
 import {homeSearchSchema, homeSearchWriteSchema} from '@/types/search';
-import * as articleService from '@/services/article';
+import {favoriteOnHome} from '@/services/mutations';
 import {getCurrentUser} from '@/services/auth';
-import {homeCacheArgs} from '@/util/loaderCache';
-import {queryCache} from '@/util/useQuery';
 import PreviewLink from '@/components/PreviewLink';
 
 import Tags from './Tags';
@@ -44,42 +43,19 @@ export default function Home() {
   const page = Math.floor(offset / limit) + 1;
   const totalPages = Math.max(1, Math.ceil(articlesCount / limit));
 
-  // 卡片级乐观收藏 → 补丁缓存（与 Article 视图的写穿同源）：列表数据
-  // 来自路由 loader，loader 侧 withCache(['home']) 与本处 homeCacheArgs
-  // 是同一 key。patchPage 只改当前页缓存里的目标项再 refresh——loader
-  // 新鲜命中缓存，纯本地更新（零请求零骨架），useData 换新后整视图以
-  // 新数据重渲染。手写 useState 覆盖（0.7 前）作废。
-  const key = homeCacheArgs({tag: activeTag, offset, limit});
-  const patchPage = (updater: (page: ArticlePage) => ArticlePage) => {
-    const cur = queryCache.peek!(key)?.value as ArticlePage | undefined;
-    // 条目不在（过期淘汰/被 clear，如登出）：无基线可补丁，放弃——
-    // 下一次导航 loader 会 miss 重拉，服务端值自然回来
-    if (!cur) return;
-    queryCache.set(key, updater(cur));
-    void refresh(router);
-  };
+  // 卡片级乐观收藏：cache.mutation 组合管道（services/mutations.ts）——
+  // 乐观 +1 → 服务调用 → 响应字段选择式 apply（打到全部含该 slug 的
+  // 页缓存）→ 失败自动回滚。视图侧只剩调用，peek/set/refresh/手写回滚
+  // 全部消失（refresh 由 loaderCache 的 set 事件订阅自动扇出；Article
+  // 页与 Home 页的多投影联动由两层组合一次写齐）。
+  const [favorite] = useMutation(favoriteOnHome);
 
   const toggleFavorite = (a: Article) => {
     if (!getCurrentUser()) {
       void navigate(router, '/login');
       return;
     }
-    const next = {
-      ...a,
-      favorited: !a.favorited,
-      favoritesCount: a.favorited ? a.favoritesCount - 1 : a.favoritesCount + 1
-    };
-    const replaceWith = (target: Article) => (page: ArticlePage) => ({
-      ...page,
-      articles: page.articles.map((x) => (x.slug === a.slug ? target : x))
-    });
-    // 乐观：点击先本地 +1；成功以服务端返回校正；失败还原（请求失败即
-    // 服务端状态未变，还原即权威值）
-    patchPage(replaceWith(next));
-    articleService
-      .favoriteArticle(a.slug, next.favorited)
-      .then((updated) => patchPage(replaceWith(updated)))
-      .catch(() => patchPage(replaceWith(a)));
+    void favorite(a.slug, !a.favorited).catch(() => undefined);
   };
 
   return (

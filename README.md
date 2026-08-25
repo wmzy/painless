@@ -170,19 +170,19 @@ Instead of adopting a data-fetching library, the template composes `react-toolro
 // src/util/useQuery.ts (signature)
 function useQuery<F extends AsyncFunc>(
   fn: F,
-  args?: Parameters<F>,
-  opts?: QueryOptions<R<F>>
+  args: Parameters<F>,
+  opts: QueryOptions<R<F>>
 ): QueryResult<R<F> | undefined>;
 
 type QueryOptions<T> = {
-  cache?: QueryCache;   // defaults to the shared module-level queryCache (cacheTime 10s)
-  staleTime?: number;   // defaults to 2000ms
-  initData?: T;         // initial data to avoid undefined on first render
-  retry?: {             // feeds useRetry; disabled by default
+  cache: EntityCache<T, any>;  // required — pick the per-entity cache (see allCaches)
+  staleTime?: number;          // defaults to 2000ms
+  initData?: T;                // initial data to avoid undefined on first render
+  retry?: {                    // feeds useRetry; disabled by default
     retries?: number;
     backoff?: 'exponential' | 'linear' | ((attempt: number) => number);
   };
-  mock?: MockConfig;    // {schema, key} — hooks the DevTool mock panel
+  mock?: MockConfig;           // {schema, key} — hooks the DevTool mock panel
 };
 
 type QueryResult<T> = {
@@ -195,6 +195,8 @@ type QueryResult<T> = {
 };
 ```
 
+The cache is **per-entity** (`articleCache` / `homeCache` / `commentsCache` / `tagsCache`): the value type and the key-tuple type are pinned on the cache itself, so `peek` results are narrowed without `as` casts and a wrong-shaped key is a compile error — the `'article'`-style magic string prefix disappears because identity *is* the cache binding. The hash normalizes two ways (signals stripped; object keys with `undefined` values dropped recursively), so `{tag: undefined}` and `{}` are one key — a loader key from a schema output and a view-side key from component state can never drift apart. `allCaches` registers every entity cache for logout-time clears and the DevTool panel.
+
 Out of the box the preset wires the behaviors projects usually hand-roll: concurrent same-args calls are **deduplicated at the provider level** — since react-toolroom 0.8, `useCache`'s miss/stale revalidation routes through `queryCache.load` (an atomic get-or-insert of the in-flight slot), so every consumer *and every channel* (another component, a route loader — see below) asking for the same key while a request is pending shares that one promise; dependency changes **abort** the previous request via a trailing `AbortSignal` threaded through the service layer to `fetch` (`useRun({signal: true})`); cache/load/refetch keys are all one **structural hash** (`stableHash` with signals stripped — key-order-insensitive); and window focus / visibility regain **revalidates in the background** (`useFocusRevalidate`) — fresh entries hit the cache without a request, stale ones swap in silently.
 
 Real usage, from the tag sidebar and the comment list:
@@ -202,22 +204,24 @@ Real usage, from the tag sidebar and the comment list:
 ```tsx
 // src/views/Home/Tags.tsx
 const {data: tags, loading, error, stale} = useQuery(articleService.fetchTags, [], {
+  cache: tagsCache,
   initData: [],
   mock: {schema: tagListSchema, key: 'tagList'}
 });
 
 // src/views/Article/CommentList.tsx
-const {data: comments, loading, error, refetch} = useQuery(
+const {data: comments, loading, error} = useQuery(
   articleService.fetchCommentsByTitle,
-  [title]
+  [title],
+  {cache: commentsCache, initData: []}
 );
 ```
 
-### Route Loaders Share the `useQuery` Cache (`withCache`)
+### Route Loaders Share the Entity Caches (`withCache`)
 
-The two data channels — route `data` loaders and `useQuery` — deliberately share the one module-level `queryCache`. They differ in *when* they trigger and whether they block (loader: navigation resolve, `pendingComponent` skeleton; query: post-mount, loading/error states), but cache and invalidation are one. `withCache(fn, prefix)` (`src/util/loaderCache.ts`) wraps a loader and addresses the cache as `[...prefix, ctx.search ?? ctx.params ?? {}]`; views compute the identical key via `homeCacheArgs(search)` / `articleCacheArgs(title)` (Home's payload must match `homeSearchSchema`'s output *shape* — no `tag` key when absent). That shared key is what lets mutations write through the cache (next section).
+The two data channels — route `data` loaders and `useQuery` — deliberately share the **entity caches**. They differ in *when* they trigger and whether they block (loader: navigation resolve, `pendingComponent` skeleton; query: post-mount, loading/error states), but cache and invalidation are one. `withCache(cache, keyOf, fn)` (`src/util/loaderCache.ts`) wraps a loader; `keyOf(ctx)` is the **single place** the entity's key is defined — the loader addresses `articleCache` as `[title]` / `homeCache` as `[search]`, and mutations address the same tuples through the cache binding, so views never hand-assemble keys at all (the old `homeCacheArgs` "payload must match the schema output shape" footgun is structurally gone — the hash drops `undefined` keys).
 
-`withCache` gives the loader SWR semantics — fresh hits return the cached value with zero requests, stale hits return the old value immediately and revalidate in the background (`refresh(router)` only on success), misses fall through to the skeleton/error paths. Combined with the router's view stack, a navigation lands in one of four states:
+`withCache` gives the loader SWR semantics — fresh hits return the cached value with zero requests, stale hits return the old value immediately and revalidate in the background, misses fall through to the skeleton/error paths. Combined with the router's view stack, a navigation lands in one of four states:
 
 | Navigation lands on | Loader runs? | What the user sees |
 | --- | --- | --- |
@@ -230,35 +234,53 @@ In-flight requests are shared across channels at the provider level: a `Prefetch
 
 Two session-level freshness edges are covered: on `logout()` the Layout also calls `invalidate(router)` (native-router ≥1.6) — view-stack snapshots of the previous account are dropped, so a later back POP re-resolves through guards and loaders instead of replaying the old account's views; and `pageshow` with `persisted: true` (bfcache restore — the SPA gets no navigation event) triggers `refresh(router)`: loaders re-run against the cache, fresh hits cost nothing, stale ones swap in silently.
 
-### Write-Through Favorite / Follow
+### Composable Optimistic Mutations (`cache.mutation`)
 
-Mutations update the shared cache first, then reconcile with the server — the same pattern powers favorite buttons in `Home` and favorite/follow in `Article`. `applyCache(next)` writes the value into `queryCache` under the loader's key and calls `refresh(router)`: the loader re-run is a *fresh cache hit*, so the view updates with zero requests, zero skeletons (the hand-rolled local-override `useState` era is over — a cache write also benefits back-navigation hits, and the provider's generation counter protects it from being clobbered by responses that were already in flight):
+Write-through favorite / follow used to be ~30 hand-rolled lines per call site (peek baseline → set → `refresh(router)` → success merge → failure rollback). Since react-toolroom 0.10, that pipeline is a **cache-bound declarative API** — the recipe lives in the service layer (`src/services/mutations.ts`), composed per cache projection:
+
+```ts
+// src/services/mutations.ts
+// article 层：单实体原语，可被任何视图/其它层复用
+export const favoriteOnArticle = articleCache.mutation(
+  (slug: string, on: boolean) => ({
+    mutate: () => api.favoriteArticle(slug, on),
+    key: [slug],
+    update: (old) => ({...old, favorited: on,
+      favoritesCount: old.favoritesCount + (on ? 1 : -1)}),
+    // field-selecting merge: the response was captured when the request
+    // started — only the favorite fields are authoritative, a `following`
+    // written while this was in flight survives
+    apply: (old, resp) => ({...old, favorited: resp.favorited,
+      favoritesCount: resp.favoritesCount})
+  })
+);
+
+// home 层：信息流投影，组合在上一层之上（key 省略 = patch every entry）
+export const favoriteOnHome = homeCache.mutation((slug: string, on: boolean) => ({
+  mutate: () => favoriteOnArticle(slug, on),   // composition point
+  update: (page, slug, on) => patchArticleIn(page, slug, {...}),
+  apply: (page, resp) => patchArticleIn(page, resp.slug, {...})
+}));
+```
+
+The pipeline journals every write, and on failure rolls back with an identity guard — an entry is restored only if it still holds exactly the optimistic value, so a concurrent writer's newer state survives our rollback. Views reduce to a call plus error surfacing:
 
 ```tsx
-// src/views/Article/index.tsx
-const key = articleCacheArgs(params.title!); // the very key the loader addresses
-const applyCache = (next: Article) => {
-  queryCache.set(key, next);
-  void refresh(router); // loader re-run = fresh cache hit → view swaps in
-};
-
-const toggleFavorite = () => {
-  const snapshot = article; // authoritative on failure
-  applyCache({
-    ...snapshot,
-    favorited: !snapshot.favorited,
-    favoritesCount: snapshot.favorited ? snapshot.favoritesCount - 1 : snapshot.favoritesCount + 1
-  });
-  articleService
-    .favoriteArticle(snapshot.slug, !snapshot.favorited)
-    .then((a) => applyCache(a)) // server truth wins
-    .catch(() => applyCache(snapshot)); // rollback — server state never changed
+// src/views/Home/index.tsx
+const [favorite] = useMutation(favoriteOnHome);
+const toggleFavorite = (a: Article) => {
+  if (!getCurrentUser()) return void navigate(router, '/login');
+  void favorite(a.slug, !a.favorited).catch(() => undefined);
 };
 ```
 
-`Home` patches the page entry instead of replacing it — `queryCache.set(homeCacheArgs({...}), updater(page))` swaps one article inside the cached list (bailing out when there is no entry to patch, e.g. after a logout `clear()`; the next navigation re-fetches). A follow success merges with `queryCache.peek(key)`'s *current* value rather than the closure snapshot, so a favorite written while the follow was in flight survives the merge.
+Three properties fall out of the composition for free:
 
-After posting a comment, the form resets with `reset(commentForm, {body: ''})` — the comment `Textarea` is bound through haze-ui's `FormItem` control bridge (fully controlled), so the reset syncs the displayed text with no remounting — and the mutation's `invalidates` declaratively refreshes `CommentList` past the cache.
+- **Multi-projection consistency** — favoriting from `Home` writes both the `articleCache` entry and every `homeCache` page containing the slug in one call; the "back to the list shows the stale count" gap is gone.
+- **Refresh is automatic** — `withCache` subscribes each cache's `set` events on first loader run and refreshes the router when an already-seen key's value reference changes (microtask-debounced). Write-through, rollback, `patchWhere` batches and background revalidation settles all flow through it; views contain zero `refresh` calls. The reference-change check doubles as a structural-sharing substitute: a revalidation that settles with the same reference triggers nothing.
+- **Failure isolation** — each layer miss-bails independently (nothing is fabricated for absent entries, so an optimistic write can never resurrect an entry a logout just cleared), and a rejection unwinds every composed layer.
+
+Comment posting stays with declarative invalidation (`invalidates: [commentsCache]`) — list shape after an append is not locally computable, a hard refetch is the right tool; `Editor` saving likewise invalidates `homeCache`/`articleCache` wholesale.
 
 ### A Typed HTTP Client on `fetch-fun`
 
