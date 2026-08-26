@@ -52,6 +52,20 @@ describe('Login 表单', () => {
     expect(loginMock).not.toHaveBeenCalled();
   });
 
+  it('字段级 mode=onBlur：email 失焦即校验，password 仍提交时校验', async () => {
+    render(<Login />);
+
+    // 输入非法邮箱后失焦：email 字段立即报错（不等提交）
+    fireEvent.change(screen.getByPlaceholderText('Email'), {target: {value: 'a@b'}});
+    fireEvent.blur(screen.getByPlaceholderText('Email'));
+
+    expect(await screen.findByText('Invalid email')).toBeDefined();
+
+    // password 无字段级 mode：既未失焦出错误也无提交，保持安静
+    expect(screen.queryByText('Password is required')).toBeNull();
+    expect(loginMock).not.toHaveBeenCalled();
+  });
+
   it('422 字段错误可对应表单字段：落到字段下方，顶部 Alert 隐藏', async () => {
     // 鸭子形状（fetch-fun HTTPError 映射后：status + data.errors），视图
     // catch 按形状判断，不依赖错误类身份

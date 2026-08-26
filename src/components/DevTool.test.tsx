@@ -8,6 +8,7 @@ import {stableHash} from 'react-toolroom/async';
 
 
 import {articleCache, clearAllCaches, commentsCache} from '@/util/useQuery';
+import {clearRequestLogs, pushRequestLog} from '@/util/requestLog';
 
 import DevTool, {truncateKey, ageSeconds} from './DevTool';
 
@@ -54,6 +55,35 @@ describe('DevTool ageSeconds', () => {
 
   it('clamps clock-skew negatives to 0', () => {
     expect(ageSeconds(5000, 1000)).toBe(0);
+  });
+});
+
+describe('DevTool RequestLogView', () => {
+  beforeEach(() => {
+    clearRequestLogs();
+  });
+
+  it('lists request log entries newest-first with status labels', () => {
+    // 模拟 http.ts dev 管道 withLogging 推入的三类事件
+    pushRequestLog('Request', {url: '/api/articles', method: 'GET'});
+    pushRequestLog('Response', {url: '/api/articles', status: 200});
+    pushRequestLog('Error', {url: '/api/tags', error: new Error('boom')});
+
+    openPanel();
+
+    expect(screen.getByText('Requests: 3')).toBeDefined();
+    expect(screen.getByText('→ GET /api/articles')).toBeDefined();
+    expect(screen.getByText('← 200 /api/articles')).toBeDefined();
+    expect(screen.getByText('✗ /api/tags')).toBeDefined();
+  });
+
+  it('Clear Logs empties the buffer', () => {
+    pushRequestLog('Request', {url: '/x', method: 'GET'});
+    openPanel();
+
+    fireEvent.click(screen.getByText('Clear Logs'));
+
+    expect(screen.getByText('Requests: 0')).toBeDefined();
   });
 });
 

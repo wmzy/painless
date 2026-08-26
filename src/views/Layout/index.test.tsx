@@ -5,7 +5,8 @@
 import type {ReactNode} from 'react';
 
 import {describe, it, expect, vi, beforeEach} from 'vitest';
-import {render, screen, fireEvent} from '@testing-library/react';
+import {screen, fireEvent} from '@testing-library/react';
+
 
 const state = vi.hoisted(() => ({
   router: {history: {}},
@@ -36,7 +37,18 @@ vi.mock('haze-ui', async () => {
         children
       ),
     Container: box('div'),
-    Title: box('h1')
+    Title: box('h1'),
+    // renderView 包装用的 provider：透传 children 即可
+    ToastContainer: ({children}: {children?: ReactNode}) =>
+      React.createElement(React.Fragment, null, children),
+    // ThemeToggle 的开关：替身渲染为 button（role/aria 断言可用）
+    Switch: ({checked, ...rest}: {checked?: unknown} & Record<string, unknown>) =>
+      React.createElement('button', {
+        type: 'button',
+        role: 'switch',
+        'aria-checked': String(!!checked),
+        ...rest
+      })
   };
 });
 
@@ -60,6 +72,7 @@ vi.mock('@/services/auth', () => ({
 
 import {navigate, invalidate, refresh} from '@native-router/core';
 
+import {renderView} from '@/test-utils';
 import {logout} from '@/services/auth';
 
 import Layout from './index';
@@ -76,7 +89,7 @@ beforeEach(() => {
 
 describe('Layout 登出', () => {
   it('Logout：logout → invalidate(viewStack) → navigate("/")，invalidate 先于 navigate', () => {
-    render(<Layout />);
+    renderView(<Layout />);
 
     fireEvent.click(screen.getByText('Logout'));
 
@@ -93,7 +106,7 @@ describe('Layout 登出', () => {
 
   it('未登录：导航只渲染 Login/Register，无 Logout 入口', () => {
     state.user = null;
-    render(<Layout />);
+    renderView(<Layout />);
 
     expect(screen.queryByText('Logout')).toBeNull();
     expect(screen.getByText('Login')).toBeDefined();
@@ -102,7 +115,7 @@ describe('Layout 登出', () => {
 
 describe('Layout bfcache 恢复补偿', () => {
   it('pageshow(persisted)：refresh(router) 重跑 loader 换新鲜度', () => {
-    render(<Layout />);
+    renderView(<Layout />);
 
     fireEvent(window, new PageTransitionEvent('pageshow', {persisted: true}));
 
@@ -110,7 +123,7 @@ describe('Layout bfcache 恢复补偿', () => {
   });
 
   it('普通 pageshow（非 bfcache 恢复）：不 refresh', () => {
-    render(<Layout />);
+    renderView(<Layout />);
 
     fireEvent(window, new PageTransitionEvent('pageshow', {persisted: false}));
 
@@ -118,11 +131,23 @@ describe('Layout bfcache 恢复补偿', () => {
   });
 
   it('卸载后不再监听 pageshow', () => {
-    const {unmount} = render(<Layout />);
+    const {unmount} = renderView(<Layout />);
     unmount();
 
     fireEvent(window, new PageTransitionEvent('pageshow', {persisted: true}));
 
     expect(refreshMock).not.toHaveBeenCalled();
+  });
+
+  it('ThemeToggle：点击切换 aria 状态（dark mode 接线）', () => {
+    renderView(<Layout />);
+
+    const toggle = screen.getByRole('switch');
+    expect(toggle.getAttribute('aria-checked')).toBe('false');
+
+    fireEvent.click(toggle);
+    // 根部 lightTheme/darkTheme 切换由 ThemeControlCtx 驱动；Layout 单
+    // 视图测试验证开关本身的状态翻转接线
+    expect(toggle.getAttribute('aria-checked')).toBe('true');
   });
 });

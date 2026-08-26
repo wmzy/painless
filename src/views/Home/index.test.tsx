@@ -11,12 +11,21 @@ import type {ReactNode} from 'react';
 import type {ArticlePage} from '@/types';
 
 import {describe, it, expect, vi, beforeEach} from 'vitest';
-import {render, screen, fireEvent, waitFor} from '@testing-library/react';
+import {screen, fireEvent, waitFor} from '@testing-library/react';
+
+import {navigate, refresh} from '@native-router/core';
+
+import {renderView} from '@/test-utils';
+
+
+
 
 const state = vi.hoisted(() => ({
   data: {articles: [] as unknown[], articlesCount: 0},
   search: '',
   router: {history: {}},
+  // useToast 替身的调用记录（favorite 失败提示断言用）
+  toastMessages: [] as string[],
   // go/toggleTag 的写入口（useSetSearch）：断言写入的 search 载荷
   setSearch: vi.fn(),
   // refresh mock 的重渲染广播：补丁缓存写穿后调 refresh(router)，真实
@@ -83,7 +92,15 @@ vi.mock('haze-ui', async () => {
       disabled?: boolean;
       onClick?: () => void;
     } & Record<string, unknown>) =>
-      React.createElement('button', {type: 'button', disabled, onClick, ...rest}, children)
+      React.createElement('button', {type: 'button', disabled, onClick, ...rest}, children),
+    // Home 视图经 useToast 呈现收藏失败提示：替身只记录调用，断言侧
+    // 覆盖「失败不吞」即可（toast 渲染本身是 haze-ui 的职责）。
+    useToast: () => (message: string) => {
+      state.toastMessages.push(message);
+    },
+    // renderView 包装用的 provider：透传 children 即可
+    ToastContainer: ({children}: {children?: ReactNode}) =>
+      React.createElement(React.Fragment, null, children)
   };
 });
 
@@ -132,7 +149,6 @@ vi.mock('@/services/article', () => ({
 }));
 vi.mock('@/services/auth', () => ({getCurrentUser: vi.fn()}));
 
-import {navigate, refresh} from '@native-router/core';
 
 import * as articleService from '@/services/article';
 import {getCurrentUser} from '@/services/auth';
@@ -183,6 +199,7 @@ beforeEach(() => {
   // 用例重建（navigate 无实现需求，仅断言调用）
   refreshMock.mockImplementation(async () => state.emit());
   state.setSearch.mockReset();
+  state.toastMessages = [];
   state.data = {articles: makeArticles(10), articlesCount: 25};
   state.search = '';
   getCurrentUserMock.mockReturnValue({
@@ -200,7 +217,7 @@ beforeEach(() => {
 
 describe('Home 视图', () => {
   it('默认视图：无筛选 Chip，Previous 禁用、Next 可用，页码 1 / 3', () => {
-    render(<Home />);
+    renderView(<Home />);
 
     expect(screen.queryByTestId('chip')).toBeNull();
     expect(screen.getByText('title-0')).toBeDefined();
@@ -211,7 +228,7 @@ describe('Home 视图', () => {
   });
 
   it('点击 Next 把 offset 写进 search', () => {
-    render(<Home />);
+    renderView(<Home />);
 
     fireEvent.click(paginationButtons().next);
     // 写载荷按 URL 输入侧的字符串形态给出；经写 schema 抹缺省后
@@ -221,7 +238,7 @@ describe('Home 视图', () => {
 
   it('search 含 tag：展示可取消 Chip，关闭即清空筛选', () => {
     state.search = '?tag=react';
-    render(<Home />);
+    renderView(<Home />);
 
     expect(screen.getByTestId('chip').textContent).toContain('react');
 
@@ -233,7 +250,7 @@ describe('Home 视图', () => {
   it('第二页：Previous 可用且翻页保留 tag、回到首页时省略 offset', () => {
     state.search = '?tag=react&offset=10';
     state.data = {articles: makeArticles(10), articlesCount: 25};
-    render(<Home />);
+    renderView(<Home />);
 
     expect(screen.getByText('2 / 3')).toBeDefined();
     const {prev} = paginationButtons();
@@ -247,7 +264,7 @@ describe('Home 视图', () => {
   it('末页边界：Next 禁用，Previous 回退一页', () => {
     state.search = '?tag=react&offset=20';
     state.data = {articles: makeArticles(5), articlesCount: 25};
-    render(<Home />);
+    renderView(<Home />);
 
     expect(screen.getByText('3 / 3')).toBeDefined();
     const {prev, next} = paginationButtons();
@@ -260,7 +277,7 @@ describe('Home 视图', () => {
 
   it('单页数据：两个方向均禁用', () => {
     state.data = {articles: makeArticles(3), articlesCount: 3};
-    render(<Home />);
+    renderView(<Home />);
 
     expect(screen.getByText('1 / 1')).toBeDefined();
     const {prev, next} = paginationButtons();
@@ -283,13 +300,15 @@ describe('Home 文章卡片 favorite（补丁缓存 + refresh）', () => {
   it('点击即时 +1 高亮，成功后以服务端值为准', async () => {
     const pending = deferred();
     favoriteMock.mockReturnValueOnce(pending.promise);
-    render(<Home />);
+    renderView(<Home />);
 
     fireEvent.click(screen.getByRole('button', {name: '❤ 5'}));
 
     // 乐观：请求未决时已补丁缓存，视图换新 +1 且置高亮（refresh 经
-    // loaderCache 的 set 事件订阅微任务扇出——不再是视图直调）
-    const optimistic = screen.getByRole('button', {name: '❤ 6'});
+    // loaderCache 的 set 事件订阅微任务扇出——不再是视图直调）。
+    // scope 队列（react-toolroom 0.11）把 mutate 执行推迟一个微任务，
+    // 乐观断言异步等待
+    const optimistic = await screen.findByRole('button', {name: '❤ 6'});
     expect(optimistic.getAttribute('aria-pressed')).toBe('true');
     expect(favoriteMock).toHaveBeenCalledWith('slug-0', true);
     await waitFor(() => expect(refreshMock).toHaveBeenCalledWith(state.router));
@@ -301,22 +320,69 @@ describe('Home 文章卡片 favorite（补丁缓存 + refresh）', () => {
 
   it('失败回滚到服务端值', async () => {
     favoriteMock.mockRejectedValueOnce(new Error('network down'));
-    render(<Home />);
+    renderView(<Home />);
 
     fireEvent.click(screen.getByRole('button', {name: '❤ 5'}));
-    expect(screen.getByRole('button', {name: '❤ 6'})).toBeDefined();
-
+    // rejected mock 下乐观与回滚都在微任务内完成，中间态不可观测
+    //（scope 队列又推迟一个微任务）——断言终态：回滚值 + 调用发生
     // 回滚：补丁把点击前快照写回（请求失败即服务端状态未变）
     const rolledBack = await screen.findByRole('button', {name: '❤ 5'});
     expect(rolledBack.getAttribute('aria-pressed')).toBe('false');
     expect(favoriteMock).toHaveBeenCalledWith('slug-0', true);
   });
 
+  it('失败回滚后 toast 呈现错误文案（不静默）', async () => {
+    favoriteMock.mockRejectedValueOnce(new Error('network down'));
+    renderView(<Home />);
+
+    fireEvent.click(screen.getByRole('button', {name: '❤ 5'}));
+
+    // 回滚完成后 rejection 才传播到视图 catch（scope 队列微任务链），
+    // 等回滚终态出现后再断言 toast 文案
+    await screen.findByRole('button', {name: '❤ 5', pressed: false} as Parameters<typeof screen.findByRole>[1]);
+    await waitFor(() =>
+      expect(state.toastMessages).toEqual(['network down'])
+    );
+  });
+
+  it('scope 串行：同 slug 连点两次，第二次等第一次 settle 后才执行', async () => {
+    const first = deferred();
+    // 第一次未决期间连点：第二次 mutate 入 scope 队列但【不执行】——
+    // favoriteMock 仍只被调 1 次，这是 scope 串行的核心可观测行为
+    favoriteMock.mockReturnValueOnce(first.promise);
+    // makeArticles 是浅形状（视图断言用），favoriteMock 契约是完整
+    // Article——按既有用例同法以 as 对齐（mock 只消费 favorited/
+    // favoritesCount/slug 三个域）
+    favoriteMock.mockResolvedValueOnce({
+      ...makeArticles(1)[0],
+      favorited: true,
+      favoritesCount: 6
+    } as unknown as Parameters<typeof favoriteMock.mockResolvedValueOnce>[0]);
+    renderView(<Home />);
+
+    fireEvent.click(screen.getByRole('button', {name: '❤ 5'}));
+    await screen.findByRole('button', {name: '❤ 6'});
+
+    // 连点（视图乐观态 favorited=true，第二次意图是翻回 false）：排队
+    fireEvent.click(screen.getByRole('button', {name: '❤ 6'}));
+    // 微任务排空后队列仍压着第二次调用——第一次未 settle，mutate 不执行
+    await waitFor(() => expect(refreshMock).toHaveBeenCalled());
+    expect(favoriteMock).toHaveBeenCalledTimes(1);
+
+    // 第一次成功（count 9）→ 队列释放第二次：以 settle 后的缓存值
+    //（favorited: true）为基线翻转（参数 false），服务端权威值 6 收口
+    first.resolve({...makeArticles(1)[0], favorited: true, favoritesCount: 9});
+    await waitFor(() => expect(favoriteMock).toHaveBeenCalledTimes(2));
+    expect(await screen.findByRole('button', {name: '❤ 6'})).toBeDefined();
+    // 两次调用的参数序列：FIFO，第二次基于第一次的结果翻转
+    expect(favoriteMock.mock.calls.map((c) => c[1])).toEqual([true, false]);
+  });
+
   it('缓存无基线（条目已被清理）：补丁放弃，不发 refresh 也不写缓存', async () => {
     clearAllCaches(); // 模拟登出清缓存后的 POP 快照视图
     const pending = deferred();
     favoriteMock.mockReturnValueOnce(pending.promise);
-    render(<Home />);
+    renderView(<Home />);
 
     fireEvent.click(screen.getByRole('button', {name: '❤ 5'}));
 
@@ -327,7 +393,7 @@ describe('Home 文章卡片 favorite（补丁缓存 + refresh）', () => {
 
   it('未登录点击：引导去 /login 且不发请求', () => {
     getCurrentUserMock.mockReturnValue(null);
-    render(<Home />);
+    renderView(<Home />);
 
     fireEvent.click(screen.getByRole('button', {name: '❤ 5'}));
 

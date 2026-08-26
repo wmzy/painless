@@ -66,12 +66,14 @@ export default function Register() {
             />
           )}
         </FormItem>
+        {/* 同 Login：email 字段失焦即校验（字段级 mode 覆盖 form 默认） */}
         <FormItem
           form={form}
           name='email'
+          mode='onBlur'
           validate={compose(required('Email is required'), email('Invalid email'))}
         >
-          {({id, errorId, invalid, control}) => (
+          {({id, errorId, invalid, control, onBlur}) => (
             <Input
               id={id}
               value={control}
@@ -79,6 +81,7 @@ export default function Register() {
               placeholder='Email'
               aria-invalid={invalid}
               aria-describedby={invalid ? errorId : undefined}
+              onBlur={onBlur}
             />
           )}
         </FormItem>

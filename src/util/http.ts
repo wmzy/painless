@@ -1,5 +1,7 @@
 import * as ff from 'fetch-fun';
 
+import {pushRequestLog} from './requestLog';
+
 const BASE_URL: string =
   (import.meta.env.VITE_API_URL as string | undefined) ||
   'https://api.realworld.io/api/';
@@ -71,9 +73,13 @@ const client = ff
   // ——withTimeout 自带 inner:'builtin:retry' 定位，重试的每一趟都拿到
   // 全新预算；重试只放行幂等方法 + 瞬态状态码（408/425/429/500/502/
   // 503/504、网络错误、超时），POST 与 4xx 永不重放，退避/Retry-After
-  // 均用库默认。
+  // 均用库默认。totalTimeout 30s 是整请求总预算（含全部重试与退避等待）
+  // ：没有它，最坏情形 3 次尝试 × 10s + 指数退避（上限 10s）+ Retry-
+  // After（上限 30s）可把一个 GET 挂到分钟级；有它，超预算抛 TimeoutError
+  // 收口。
   .pipe(ff.use, ff.withTimeout(10_000))
   .pipe(ff.use, ff.withRetry(2))
+  .pipe(ff.totalTimeout, 30_000)
   // RealWorld 规范用 `Token <token>` 前缀；供应商每次尝试重新求值（含
   // 重试），凭据为空串/null/undefined/纯空白时自动跳过 Authorization
   // 报头并删除继承值——未登录请求保持匿名，无需自研剥头中间件。
@@ -87,6 +93,16 @@ const client = ff
     if (e.status === 401 && tokenGetter()) fireUnauthorized();
     return e.withMessage(errorText(e.data) || e.message);
   });
+
+// dev-only 请求日志：Request/Response/Error 事件推入 requestLog 环形
+// 缓冲，DevTool 面板订阅展示。生产构建里 import.meta.env.DEV 折叠为
+// false，整个 pipe 分支被摇掉——logging 中间件与缓冲都不进生产包。
+const baseClient = import.meta.env.DEV
+  ? client.pipe(
+      ff.use,
+      ff.withLogging((msg, data) => pushRequestLog(msg, data))
+    )
+  : client;
 
 // init 的其余字段直接合入 Options，自定义 headers 逐个合并以覆盖默认头。
 function withInit(o: ff.Options, init?: RequestInitish) {
@@ -102,7 +118,7 @@ export function fetchJSON<T = unknown>(
   url: string,
   init?: RequestInitish
 ): Promise<T> {
-  return ff.fetchJSON<T>(ff.url(withInit(client, init), url)) as Promise<T>;
+  return ff.fetchJSON<T>(ff.url(withInit(baseClient, init), url)) as Promise<T>;
 }
 
 // signal 为只读查询的取消通道：经 withInit 合入 Options 后直通 fetch；
@@ -112,7 +128,7 @@ export function get<T = unknown>(
   params?: Record<string, string | number | undefined>,
   init?: RequestInitish
 ) {
-  let o = ff.url(withInit(client, {method: 'get', ...init}), url);
+  let o = ff.url(withInit(baseClient, {method: 'get', ...init}), url);
   if (params) {
     // 与 qss 语义一致：undefined 值跳过序列化
     const defined = Object.fromEntries(
@@ -125,7 +141,7 @@ export function get<T = unknown>(
 
 export function del<T = unknown>(url: string, init?: RequestInitish) {
   return ff.fetchJSON<T>(
-    ff.url(ff.method(withInit(client, init), 'delete'), url)
+    ff.url(ff.method(withInit(baseClient, init), 'delete'), url)
   ) as Promise<T>;
 }
 
@@ -153,7 +169,7 @@ function sendJSON<T>(
 ): Promise<T> {
   return ff.fetchJSON<T>(
     ff.body(
-      ff.method(ff.url(withInit(client, init), url), m),
+      ff.method(ff.url(withInit(baseClient, init), url), m),
       JSON.stringify(data)
     )
   ) as Promise<T>;

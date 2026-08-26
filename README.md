@@ -71,30 +71,54 @@ All examples below are taken from (or lightly adapted from) the actual source in
 Routes are a plain module-level object: each route owns a `path`, a lazy `component`, and an optional async `data` loader that runs before the view renders.
 
 ```tsx
-// src/views/index.tsx
-import {View, HistoryRouter as Router} from '@native-router/react';
+// src/views/index.tsx (excerpt)
+import {View, HistoryRouter as Router, createRoutes} from '@native-router/react';
 
-const routes = {
+// createRoutes (satisfies semantics): the table is checked against Route
+// while every path keeps its string-literal type — `as Route` would widen
+// the paths to string and kill TypedLink's path union
+const routes = createRoutes({
   component: () => import('./Layout'),
   children: [
     {
       path: '/',
-      data: ({location}) => {
-        const query = decode(location.search.slice(1));
-        return articleService.query(query);
-      },
+      // search schema: parsed + coerced at resolve time; changing the search
+      // re-runs `data` (the URL is the state). withCache shares the entity
+      // cache with useQuery (fresh hit = zero requests, stale = old value
+      // first + background revalidate); mockViewData wraps the outside so
+      // only real data enters the cache.
+      search: homeSearchSchema,
+      data: mockViewData(
+        withCache(
+          homeCache,
+          ({search}: {search: HomeSearch}): [HomeSearch] => [search],
+          ({search, signal}: {search: HomeSearch; signal: AbortSignal}) =>
+            articleService.query(search, signal)
+        ),
+        articlePageSchema,
+        'articlePage'
+      ),
+      pendingComponent: HomeSkeleton, // cold start only — see Design Philosophy
       component: () => import('./Home')
     },
     {
       path: '/article/:title',
-      data: ({params: {title}}) => articleService.findByTitle(title!),
-      component: () => import('./Article')
+      component: () => import('./Article'),
+      data: withCache(
+        articleCache,
+        ({params}: {params: {title?: string}}): [string] => [params.title!],
+        ({params: {title}, signal}: {params: {title?: string}; signal: AbortSignal}) =>
+          articleService.findByTitle(title!, signal)
+      ),
+      errorComponent: NotFound // article-level 404; others go to errorHandler
     },
     // ... /help, /about, /login, /register
     {path: '/editor', beforeLoad: requireLogin, component: () => import('./Editor')},
     {path: '/editor/:slug', beforeLoad: requireLogin, component: () => import('./Editor')}
   ]
-} as Route;
+});
+
+export type AppPaths = RoutePaths<typeof routes>;
 
 export default function App() {
   return (
@@ -299,6 +323,18 @@ const {data: comments, loading, error} = useQuery(
 );
 ```
 
+#### When to Reach Past the Preset
+
+The preset wires the behaviors most projects need (dedup, SWR, focus/reconnect revalidation, abort-on-change, optional retry). `react-toolroom/async` ships more primitives that the preset deliberately does **not** re-export — when one of these fits, drop to the library hook directly on the same injectable/cache instead of growing the preset:
+
+- **Polling** (`usePolling` — TanStack's `refetchInterval`): live dashboards. It skips ticks while a call is slow and pauses when the tab is hidden; pass `args` so the poller addresses the same cache key as your `useRun`.
+- **Infinite lists** (`useInfinite` — TanStack's `useInfiniteQuery`): `fetchNextPage`/`fetchPreviousPage`, `maxPages` windowing. RealWorld's Home is offset pagination (correct for the API), but infinite scroll is a one-hook drop-in when your API is cursor-based.
+- **Retry observability** (`useFailureCount`): expose "retrying (2/3)…" UI when you enable `opts.retry`.
+- **Mutation serialization** (`useMutation` `scope`, react-toolroom 0.11): rapid-fire writes to the same entity — the template's favorite button queues per-slug (`scope: (slug) => \`favorite:${slug}\``), so a second click executes on the *settled* baseline instead of racing.
+- **Lower-level stores** (`useResult`/`useLoading`/`useError` share one broadcast domain per injectable): siblings reading the same query sync for free; late mounters start from the last result with zero requests.
+
+The rule of thumb: the preset is the default path; a library primitive beside it is an *addition*, not a fork — both talk to the same entity caches.
+
 ### Route Loaders Share the Entity Caches (`withCache`)
 
 The two data channels — route `data` loaders and `useQuery` — deliberately share the **entity caches**. They differ in *when* they trigger and whether they block (loader: navigation resolve, `pendingComponent` skeleton; query: post-mount, loading/error states), but cache and invalidation are one. `withCache(cache, keyOf, fn)` (`src/util/loaderCache.ts`) wraps a loader; `keyOf(ctx)` is the **single place** the entity's key is defined — the loader addresses `articleCache` as `[title]` / `homeCache` as `[search]`, and mutations address the same tuples through the cache binding, so views never hand-assemble keys at all (the old `homeCacheArgs` "payload must match the schema output shape" footgun is structurally gone — the hash drops `undefined` keys).
@@ -350,9 +386,13 @@ The pipeline journals every write, and on failure rolls back with an identity gu
 ```tsx
 // src/views/Home/index.tsx
 const [favorite] = useMutation(favoriteOnHome);
+const toast = useToast();
 const toggleFavorite = (a: Article) => {
   if (!getCurrentUser()) return void navigate(router, '/login');
-  void favorite(a.slug, !a.favorited).catch(() => undefined);
+  // rollback is automatic; the toast is the only user-facing feedback left
+  void favorite(a.slug, !a.favorited).catch((e) =>
+    toast(e instanceof Error ? e.message : 'Favorite failed', {variant: 'danger'})
+  );
 };
 ```
 
@@ -366,25 +406,26 @@ Comment posting stays with declarative invalidation (`invalidates: [commentsCach
 
 ### A Typed HTTP Client on `fetch-fun`
 
-`src/util/http.ts` builds a pipeable client: base URL (`VITE_API_URL` override, default `https://api.realworld.io/api/`), JSON headers, auth injection, retry (idempotent GET/HEAD only) with a per-attempt 10s timeout, and an error mapper that turns non-2xx responses into `ApiError` — `status` and the field-structured `errors` object preserved, `message` flattened for readability (`message` first, otherwise the `errors` object joined into text). A 401 fires the registered unauthorized handler (the auth service uses it to auto-logout on expired tokens):
+`src/util/http.ts` builds a pipeable client: base URL (`VITE_API_URL` override, default `https://api.realworld.io/api/`), JSON headers, a per-attempt 10s timeout (inner of retry, so every retry gets a fresh budget), retry ×2 (idempotent methods + transient statuses only, library defaults for backoff/`Retry-After`), a whole-request 30s `totalTimeout` budget that bounds all retries + backoff as one unit, auth injection, and an error mapper. Errors stay `fetch-fun`'s `HTTPError` — identity preserved via `withMessage`, so `instanceof HTTPError`, `.status` and `.data` (the field-structured `errors` object) all keep working downstream; `message` is rewritten for readability (the API's `message` first, otherwise the `errors` object joined into text). A 401 fires the registered unauthorized handler (the auth service uses it to auto-logout on expired tokens):
 
 ```ts
 // src/util/http.ts (excerpt)
-export class ApiError extends Error {
-  readonly status: number;
-  readonly errors: Record<string, string[]>;
-}
-
 const client = ff
   .create({baseUrl: BASE_URL})
   .pipe(ff.header, 'content-type', 'application/json')
   .pipe(ff.header, 'accept', 'application/json')
-  .pipe(ff.use, ff.withAuth(() => tokenGetter() ?? '', 'Token'))
-  .pipe(ff.use, stripEmptyAuth) // never send an empty Authorization header
-  .pipe(ff.use, ff.withRetry(2, {methods: ['GET', 'HEAD']}))
   .pipe(ff.use, ff.withTimeout(10_000)) // per-attempt budget, inner of retry
-  .pipe(ff.use, mapToApiError); // HTTPError → ApiError (+ 401 hook)
+  .pipe(ff.use, ff.withRetry(2))        // idempotent methods + transient statuses only
+  .pipe(ff.totalTimeout, 30_000)        // whole-request budget: retries + backoff bounded
+  .pipe(ff.use, ff.withAuth(() => tokenGetter() ?? '', 'Token')) // empty creds → no header
+  .pipe(ff.mapError, (e) => {
+    if (!(e instanceof ff.HTTPError)) return e;
+    if (e.status === 401 && tokenGetter()) fireUnauthorized();
+    return e.withMessage(errorText(e.data) || e.message);
+  });
 ```
+
+In dev builds a `withLogging` middleware is appended that pushes every Request/Response/Error event into a ring buffer (`src/util/requestLog.ts`) — the DevTool panel renders it as a request log (see below). `import.meta.env.DEV` folds the branch out of production builds.
 
 Services are thin functions over `get`/`post`/`put`/`del`:
 
@@ -444,6 +485,15 @@ Two integration points:
 - Component queries: `useQuery`'s `mock: {schema, key}` option.
 
 Both register with the **DevTool** panel (dev-only), where each dataset can be switched between `empty` (mock only when the API errors or returns nothing) and `always`. Every mock-config write (`setMockConfig`) clears the shared `queryCache` — mocks take precedence over cache: a mode switch or panel Refresh must bypass the loader's fresh `withCache` hits, or the mock would never take effect (dev-only; production has no `setMockConfig` callers).
+
+The panel also hosts two more dev inspectors:
+
+- **Cache view** — `allCaches` snapshots with per-entry age, in-flight badges and a set/delete event stream, plus a Clear button (this is the closest thing to TanStack Query DevTools this stack needs, at ~0 runtime cost).
+- **Request log** — the dev-only `withLogging` middleware in `src/util/http.ts` pushes every Request/Response/Error event into a ring buffer (`src/util/requestLog.ts`); the panel renders them newest-first with status coloring, so "did this interaction hit the network?" is one glance away.
+
+### Dark Mode via a Root Theme Control
+
+`src/index.tsx` creates a single `useControl` boolean at the app root — seeded from `prefers-color-scheme`, then user-owned — and drives `lightTheme`/`darkTheme` (haze-ui's `--haze-*` CSS variable classes) off it. The control travels to the nav bar's `ThemeToggle` via a plain context (`src/util/theme.tsx`); the toggle itself is a haze-ui `Switch` whose `checked` prop natively accepts a `Control<boolean>` — no `value`/`onChange` plumbing. This is also the canonical example of *sharing* a control across distant components: the root creates it once, everyone else reuses the same token.
 
 ### Zero-Runtime CSS
 

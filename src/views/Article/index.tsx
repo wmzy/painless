@@ -6,24 +6,13 @@ import {navigate} from '@native-router/core';
 import {useData, useMatched} from '@native-router/react';
 import {Form, useForm, reset, useIsSubmitting} from 'react-f0rm';
 import {useMutation} from 'react-toolroom/async';
-import {
-  Card,
-  Title,
-  Text,
-  Avatar,
-  Divider,
-  Textarea,
-  Alert,
-  Button,
-  Badge,
-  Flex
-} from 'haze-ui';
+import {Card, Title, Text, Avatar, Divider, Textarea, Alert, Button, Badge, Flex, useToast} from 'haze-ui';
 import {FormItem} from 'haze-ui/form';
 
 import * as articleService from '@/services/article';
 import {favoriteOnArticle, followOnArticle} from '@/services/mutations';
 import {getCurrentUser} from '@/services/auth';
-import {articleCache, commentsCache} from '@/util/useQuery';
+import {commentsCache} from '@/util/useQuery';
 
 import CommentList from './CommentList';
 
@@ -40,19 +29,28 @@ export default function ArticleView() {
   // useData 约定：本路由挂了 loader，进组件前数据必有值，用 ! 收窄；
   // 无 loader 的可选数据路由（如 Editor）则用 ?? undefined
   const article = useData<Article>()!;
-  const {router, params} = useMatched();
+  const {router} = useMatched();
   const commentForm = useForm();
   // 同 Editor：react-f0rm ≥0.4 的 onSubmit 被 await，isSubmitting 覆盖整个异步提交
   const commentSubmitting = useIsSubmitting(commentForm);
   const [error, setError] = useState<string | null>(null);
+  // favorite/follow 这类轻量写操作的失败反馈走 toast（乐观值已由管道
+  // 自动回滚，无需页内 Alert 占位）；评论提交失败仍走页内 Alert（表单
+  // 就在错误发生处，上下文更强）。
+  const toast = useToast();
 
   // 乐观写穿管道全在 services/mutations.ts（cache.mutation 组合）：
   // 乐观首步 → 服务调用 → 字段选择式 apply → 失败自动回滚（并发写
   // 保护）。本视图只保留调用与错误提示——peek 合并/set/refresh 全部
   // 消失（refresh 由 loaderCache 的 set 事件订阅自动扇出），favorite
   // 同时写穿 home 投影缓存，返回列表页立即看到新计数。
-  const [favorite] = useMutation(favoriteOnArticle);
-  const [follow] = useMutation(followOnArticle);
+  // scope 按 slug 串行同文章的连点（同 Home；follow 独立 scope 互不阻塞）
+  const [favorite] = useMutation(favoriteOnArticle, {
+    scope: (slug: string) => `favorite:${slug}`
+  });
+  const [follow] = useMutation(followOnArticle, {
+    scope: (slug: string) => `follow:${slug}`
+  });
 
   // 发评论 → 声明式失效：useMutation 成功后对 commentsCache 整实体失效
   //（前缀即全部条目），CommentList 挂载中的 useCache 消费者经 provider
@@ -70,17 +68,20 @@ export default function ArticleView() {
 
   const toggleFavorite = () => {
     if (!requireAuth()) return;
-    setError(null);
     void favorite(article.slug, !article.favorited).catch((e: unknown) =>
-      setError(errText(e))
+      toast(e instanceof Error ? e.message : 'Favorite failed', {
+        variant: 'danger'
+      })
     );
   };
 
   const toggleFollow = () => {
     if (!requireAuth()) return;
-    setError(null);
     void follow(article.slug, article.author.username, !article.author.following).catch(
-      (e: unknown) => setError(errText(e))
+      (e: unknown) =>
+        toast(e instanceof Error ? e.message : 'Follow failed', {
+          variant: 'danger'
+        })
     );
   };
 

@@ -4,6 +4,9 @@
 // cache（articleCache/homeCache，withCache 寻址的就是它们），
 // @native-router/core 只 mock refresh——断言「值变了才回写视图」这一
 // 关键语义；router 用裸对象即可（类型断言已在 withCache 内完成）。
+import type {ArticlePage} from '@/types';
+import type {HomeSearch} from '@/types/search';
+
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import {waitFor} from '@testing-library/react';
 
@@ -13,9 +16,6 @@ import {refresh} from '@native-router/core';
 
 import {getMockConfigs, mockViewData, setMockConfig} from './mock';
 import {withCache} from './loaderCache';
-
-import type {ArticlePage} from '@/types';
-import type {HomeSearch} from '@/types/search';
 
 import {clearAllCaches, createQueryCache, homeCache} from './useQuery';
 

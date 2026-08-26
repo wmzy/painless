@@ -462,5 +462,33 @@ describe('http utilities', () => {
       expect(error.name).toBe('AbortError');
       expect(fetchMock).toHaveBeenCalledTimes(3);
     });
+
+    it('should reject with TimeoutError once the whole-request budget elapses', async () => {
+      vi.useFakeTimers();
+      // totalTimeout 是最外层预算（包住 retry 与退避）：AbortSignal.timeout
+      // 的调用序列为 [30_000 总预算, 10_000 × 每次尝试]。只中止总预算
+      // 信号——验证 30s 总预算把整条重试链收口为 TimeoutError(30000ms)
+      // （后续尝试拿到已中止的复合信号立即失败，退避即刻返回）。
+      const total = new AbortController();
+      vi.spyOn(AbortSignal, 'timeout').mockImplementation((ms: number) =>
+        ms === 30_000 ? total.signal : new AbortController().signal
+      );
+      fetchMock.mockImplementation(hangingFetch());
+
+      const outcome = get('articles').catch((e: unknown) => e);
+      // 总预算到点：in-flight 尝试被中止；重试把 TimeoutError 视为瞬态
+      // 故障照常退避重试（后续尝试拿到已中止的复合信号立即失败），推进
+      // fake timers 走完两次退避（与 per-attempt 用例同法）。
+      total.abort(
+        new DOMException('Signal timed out.', 'TimeoutError')
+      );
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      const error = (await outcome) as ff.TimeoutError;
+
+      expect(error).toBeInstanceOf(ff.TimeoutError);
+      expect(error.message).toBe('Request timed out after 30000ms');
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    });
   });
 });

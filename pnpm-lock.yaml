@@ -21,17 +21,11 @@ importers:
         specifier: ^1.4.0
         version: 1.4.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       fetch-fun:
-        specifier: ^0.9.0
-        version: 0.9.0
+        specifier: ^0.10.0
+        version: 0.10.0
       haze-ui:
-        specifier: ^1.8.1
-        version: 1.8.1(@linaria/core@8.2.0(supports-color@7.2.0))(react-dom@19.2.8(react@19.2.8))(react-f0rm@0.5.1(react@19.2.8)(zod@4.4.3))(react@19.2.8)
-      qss:
-        specifier: ^3.0.0
-        version: 3.0.0
-      ramda:
-        specifier: ^0.32.0
-        version: 0.32.0
+        specifier: ^1.9.0
+        version: 1.9.0(@linaria/core@8.2.0(supports-color@7.2.0))(react-dom@19.2.8(react@19.2.8))(react-f0rm@0.6.0(react@19.2.8)(zod@4.4.3))(react@19.2.8)
       react:
         specifier: ^19.2.8
         version: 19.2.8
@@ -39,11 +33,11 @@ importers:
         specifier: ^19.2.8
         version: 19.2.8(react@19.2.8)
       react-f0rm:
-        specifier: ^0.5.1
-        version: 0.5.1(react@19.2.8)(zod@4.4.3)
+        specifier: ^0.6.0
+        version: 0.6.0(react@19.2.8)(zod@4.4.3)
       react-toolroom:
-        specifier: ^0.10.0
-        version: 0.10.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        specifier: ^0.11.0
+        version: 0.11.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react-use-control:
         specifier: ^1.3.2
         version: 1.3.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -141,6 +135,9 @@ importers:
       prettier:
         specifier: ^3.9.6
         version: 3.9.6
+      ramda:
+        specifier: ^0.32.0
+        version: 0.32.0
       rollup-plugin-type-as-json-schema:
         specifier: ^0.2.6
         version: 0.2.6
@@ -2586,8 +2583,8 @@ packages:
       picomatch:
         optional: true
 
-  fetch-fun@0.9.0:
-    resolution: {integrity: sha512-BCF8qBDAKWpGo6MXaa8DhHLBfp1UEHnFvl2k+6u1U1FHd1lpN8DlUkfnr97/qRaoMwCZjHc/63BSQoMTSN+UBA==}
+  fetch-fun@0.10.0:
+    resolution: {integrity: sha512-Dg/gx7jWJxqtQfPxzVlVulYpTdsho4rLHXjsHtIR/oappxw58rhX4qlgotzRIN6mlRxHPEbwtN1VlMElZVRg+Q==}
     engines: {node: '>=20.3'}
 
   fflate@0.8.3:
@@ -2821,8 +2818,8 @@ packages:
     resolution: {integrity: sha512-T2UbfbBEF32wiepXIsMlTW9+dDYC6wMh/t/vYA4tuOMKqWz/n3vr1NFSxQiyP+zk2mXsoMA/i/7qV6LKut1t1A==}
     engines: {node: '>= 0.4'}
 
-  haze-ui@1.8.1:
-    resolution: {integrity: sha512-NP/GlTyKrPIR0hpbK6Ap66WezYiRiOV5uAs14P4lTq77bJUvreza2xqw0avdTew0dalauzJ1sCraNS3ZO6X0vA==}
+  haze-ui@1.9.0:
+    resolution: {integrity: sha512-POKf6Oz7dJl5i+ZqYg/FCJJF4X2XacipwE270EDGjWobURczdzjMhiWzMeyp/uQucwZ/RvpF9TduiHyrgKxb+w==}
     peerDependencies:
       '@linaria/core': ^7.0.0 || ^8.0.0
       react: ^19.0.0
@@ -3640,10 +3637,6 @@ packages:
     resolution: {integrity: sha512-+Owyggi9IxT1ePKGafcI87ubSmxol6smwJ+RAHDQlx9+9cPwFWDiKFFCPuWhr9ignlGpZ9vDQLw67N4dcTVFEA==}
     engines: {node: '>=20'}
 
-  qss@3.0.0:
-    resolution: {integrity: sha512-ZHoCB3M/3Voev64zhLLUOKDtaEdJ/lymsJJ7R3KBusVZ2ovNiIB7XOq3Xh6V1a8O+Vho+g2B5YElq9zW7D8aQw==}
-    engines: {node: '>=4'}
-
   queue-lit@1.5.2:
     resolution: {integrity: sha512-tLc36IOPeMAubu8BkW8YDBV+WyIgKlYU7zUNs0J5Vk9skSZ4JfGlPOqplP0aHdfv7HL0B2Pg6nwiq60Qc6M2Hw==}
     engines: {node: '>=12'}
@@ -3659,8 +3652,8 @@ packages:
     peerDependencies:
       react: ^19.2.8
 
-  react-f0rm@0.5.1:
-    resolution: {integrity: sha512-lhWGAPppnvTrRdfT7KpiGYhWEwYVv9FBeiS+P/8bETQSG5QRKY6/ap/ZjQyyZTiROSCVW2hKPmW/GFNU9O/iiw==}
+  react-f0rm@0.6.0:
+    resolution: {integrity: sha512-M8lnyBaBbzNpf2wqB4+nQbcctIq2hFPrWGuHKAr0a53LZJI9oSpuWcNSj8m1orQhwQl6eObn9PKh6mFPqcbL2Q==}
     peerDependencies:
       react: '>=16.8.0'
       valibot: '>=1.0.0'
@@ -3680,8 +3673,8 @@ packages:
   react-is@17.0.2:
     resolution: {integrity: sha512-w2GsyukL62IJnlaff/nRegPQR94C/XXamvMWmSHRJ4y7Ts/4ocGRmTHvOs8PSE6pB3dWOrD/nueuU5sduBsQ4w==}
 
-  react-toolroom@0.10.0:
-    resolution: {integrity: sha512-R1RfUp/PAkxPG2i0OWdX7SKPmnalc304elBebSo2QO0rfvzR6NMPNOSQAZs1shD0mQU4aysuQnC2MdR+XmgzvQ==}
+  react-toolroom@0.11.0:
+    resolution: {integrity: sha512-r4EggNyWJJbq4w13VU7mVcfJLaXz0DNtjgyeOq3MQ96iSxqTZaTjwEW/N2VDqo4X96N878vZEun/qYANbF8tWQ==}
     peerDependencies:
       react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
       react-dom: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
@@ -6946,7 +6939,7 @@ snapshots:
     optionalDependencies:
       picomatch: 4.0.5
 
-  fetch-fun@0.9.0: {}
+  fetch-fun@0.10.0: {}
 
   fflate@0.8.3: {}
 
@@ -7229,11 +7222,11 @@ snapshots:
     dependencies:
       function-bind: 1.1.2
 
-  haze-ui@1.8.1(@linaria/core@8.2.0(supports-color@7.2.0))(react-dom@19.2.8(react@19.2.8))(react-f0rm@0.5.1(react@19.2.8)(zod@4.4.3))(react@19.2.8):
+  haze-ui@1.9.0(@linaria/core@8.2.0(supports-color@7.2.0))(react-dom@19.2.8(react@19.2.8))(react-f0rm@0.6.0(react@19.2.8)(zod@4.4.3))(react@19.2.8):
     dependencies:
       '@linaria/core': 8.2.0(supports-color@7.2.0)
       react: 19.2.8
-      react-f0rm: 0.5.1(react@19.2.8)(zod@4.4.3)
+      react-f0rm: 0.6.0(react@19.2.8)(zod@4.4.3)
       react-toolroom: 0.7.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react-use-control: 1.3.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
     transitivePeerDependencies:
@@ -8061,8 +8054,6 @@ snapshots:
     dependencies:
       hookified: 2.2.0
 
-  qss@3.0.0: {}
-
   queue-lit@1.5.2: {}
 
   queue-microtask@1.2.3: {}
@@ -8074,7 +8065,7 @@ snapshots:
       react: 19.2.8
       scheduler: 0.27.0
 
-  react-f0rm@0.5.1(react@19.2.8)(zod@4.4.3):
+  react-f0rm@0.6.0(react@19.2.8)(zod@4.4.3):
     dependencies:
       '@for-fun/event-emitter': 1.0.1
       react: 19.2.8
@@ -8086,7 +8077,7 @@ snapshots:
 
   react-is@17.0.2: {}
 
-  react-toolroom@0.10.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
+  react-toolroom@0.11.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
     dependencies:
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)

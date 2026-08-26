@@ -9,7 +9,10 @@
 import type {Comment} from '@/types';
 
 import {describe, it, expect, vi, beforeEach} from 'vitest';
-import {render, screen, fireEvent, waitFor} from '@testing-library/react';
+import {screen, fireEvent, waitFor} from '@testing-library/react';
+
+
+
 
 
 const state = vi.hoisted(() => ({
@@ -77,6 +80,7 @@ vi.mock('@/services/auth', () => ({getCurrentUser: vi.fn()}));
 
 import {navigate, refresh} from '@native-router/core';
 
+import {renderView} from '@/test-utils';
 import {getCurrentUser} from '@/services/auth';
 import * as articleService from '@/services/article';
 import {withCache} from '@/util/loaderCache';
@@ -140,7 +144,7 @@ describe('Article 评论表单', () => {
   it('提交中按钮禁用并显示 Posting...，完成后恢复且双击不双发', async () => {
     const pending = deferred();
     addCommentMock.mockReturnValueOnce(pending.promise);
-    render(<ArticleView />);
+    renderView(<ArticleView />);
 
     fireEvent.change(screen.getByPlaceholderText('Write a comment...'), {target: {value: 'Nice!'}});
     fireEvent.click(screen.getByRole('button', {name: 'Post Comment'}));
@@ -160,7 +164,7 @@ describe('Article 评论表单', () => {
   });
 
   it('空评论：展示 FieldError 且不发请求', async () => {
-    render(<ArticleView />);
+    renderView(<ArticleView />);
 
     fireEvent.click(screen.getByRole('button', {name: 'Post Comment'}));
 
@@ -173,13 +177,15 @@ describe('Article favorite / follow（写穿缓存 + refresh）', () => {
   it('favorite：点击即时 +1 并高亮，成功后以服务端返回为准', async () => {
     const pending = deferred();
     favoriteMock.mockReturnValueOnce(pending.promise);
-    render(<ArticleView />);
+    renderView(<ArticleView />);
 
     fireEvent.click(screen.getByRole('button', {name: '❤ 0'}));
 
     // 乐观：请求未决时已写穿缓存，视图换新 +1 且置高亮（refresh 经
-    // loaderCache 的 set 事件订阅微任务扇出——不再是视图直调）
-    const optimistic = screen.getByRole('button', {name: '❤ 1'});
+    // loaderCache 的 set 事件订阅微任务扇出——不再是视图直调）。
+    // scope 队列（react-toolroom 0.11）把 mutate 的执行推迟一个微任务
+    //（链空的首次调用也要先 resolve 队列尾），乐观断言随之异步等待
+    const optimistic = await screen.findByRole('button', {name: '❤ 1'});
     expect(optimistic.getAttribute('aria-pressed')).toBe('true');
     expect(favoriteMock).toHaveBeenCalledWith('some-title-1', true);
     await waitFor(() => expect(refreshMock).toHaveBeenCalledWith(state.router));
@@ -197,24 +203,25 @@ describe('Article favorite / follow（写穿缓存 + refresh）', () => {
 
   it('favorite：失败回滚计数并展示错误', async () => {
     favoriteMock.mockRejectedValueOnce(new Error('favorite failed'));
-    render(<ArticleView />);
+    renderView(<ArticleView />);
 
     fireEvent.click(screen.getByRole('button', {name: '❤ 0'}));
-    expect(screen.getByRole('button', {name: '❤ 1'})).toBeDefined();
-
-    // 回滚：写回点击时快照（请求失败即服务端状态未变，快照即权威值）
+    // rejected mock 下乐观翻转与回滚都在微任务内完成，中间态不可观测
+    //（scope 队列又推迟一个微任务）——直接断言终态：回滚后的 0 值 +
+    // toast 错误文案 + 服务调用发生
     expect(await screen.findByRole('button', {name: '❤ 0'})).toBeDefined();
     expect(screen.getByRole('button', {name: '❤ 0'}).getAttribute('aria-pressed')).toBe('false');
+    expect(favoriteMock).toHaveBeenCalledWith('some-title-1', true);
     expect(await screen.findByText('favorite failed')).toBeDefined();
   });
 
   it('follow：点击即时切换文案，成功后以 peek 当前值合并服务端 profile', async () => {
     const pending = deferred();
     followMock.mockReturnValueOnce(pending.promise);
-    render(<ArticleView />);
+    renderView(<ArticleView />);
 
     fireEvent.click(screen.getByRole('button', {name: 'Follow alice'}));
-    expect(screen.getByRole('button', {name: 'Unfollow alice'})).toBeDefined();
+    expect(await screen.findByRole('button', {name: 'Unfollow alice'})).toBeDefined();
     expect(followMock).toHaveBeenCalledWith('alice', true);
 
     // 成功回调经 peek 取缓存当前值合并——而非闭包快照
@@ -230,19 +237,19 @@ describe('Article favorite / follow（写穿缓存 + refresh）', () => {
     const favPending = deferred();
     followMock.mockReturnValueOnce(followPending.promise);
     favoriteMock.mockReturnValueOnce(favPending.promise);
-    render(<ArticleView />);
+    renderView(<ArticleView />);
 
     // 先点 follow（pending），再点 favorite：favorite 乐观写穿把缓存换成
     // favorited: true / count 1
     fireEvent.click(screen.getByRole('button', {name: 'Follow alice'}));
     fireEvent.click(screen.getByRole('button', {name: '❤ 0'}));
-    expect(screen.getByRole('button', {name: '❤ 1'})).toBeDefined();
+    expect(await screen.findByRole('button', {name: '❤ 1'})).toBeDefined();
 
     // follow 成功返回：经 peek 合并 author，favorite 的乐观值必须保留
     //（闭包快照里还是 favorited: false——直接铺开就会覆盖掉它）
     followPending.resolve({username: 'alice', image: '', following: true});
     expect(await screen.findByRole('button', {name: 'Unfollow alice'})).toBeDefined();
-    expect(screen.getByRole('button', {name: '❤ 1'})).toBeDefined();
+    expect(await screen.findByRole('button', {name: '❤ 1'})).toBeDefined();
 
     // favorite 随后成功：以服务端返回为准
     favPending.resolve({...state.article, favorited: true, favoritesCount: 7});
@@ -255,7 +262,7 @@ describe('Article favorite / follow（写穿缓存 + refresh）', () => {
     // 引发同步 TypeError
     favoriteMock.mockReturnValueOnce(favPending.promise);
     followMock.mockResolvedValueOnce({username: 'alice', image: '', following: true});
-    render(<ArticleView />);
+    renderView(<ArticleView />);
 
     // 先点 favorite（pending），再点 follow：follow 乐观写穿 + 服务端返回
     // 依次把 author.following 换成 true
@@ -281,18 +288,17 @@ describe('Article favorite / follow（写穿缓存 + refresh）', () => {
 
   it('follow：失败回滚文案并展示错误', async () => {
     followMock.mockRejectedValueOnce(new Error('follow failed'));
-    render(<ArticleView />);
+    renderView(<ArticleView />);
 
     fireEvent.click(screen.getByRole('button', {name: 'Follow alice'}));
-    expect(screen.getByRole('button', {name: 'Unfollow alice'})).toBeDefined();
-
+    // 同上：rejected mock 的中间态不可观测，断言终态（回滚 + toast）
     expect(await screen.findByRole('button', {name: 'Follow alice'})).toBeDefined();
     expect(await screen.findByText('follow failed')).toBeDefined();
   });
 
   it('未登录点击 favorite/follow：引导去 /login 且不发请求', () => {
     getCurrentUserMock.mockReturnValue(null);
-    render(<ArticleView />);
+    renderView(<ArticleView />);
 
     fireEvent.click(screen.getByRole('button', {name: '❤ 0'}));
     fireEvent.click(screen.getByRole('button', {name: 'Follow alice'}));
@@ -320,7 +326,7 @@ describe('发评论后刷新评论列表', () => {
       .mockResolvedValueOnce([commentA])
       .mockResolvedValueOnce([commentA, commentB]);
     addCommentMock.mockResolvedValueOnce(commentB);
-    render(<ArticleView />);
+    renderView(<ArticleView />);
 
     expect(await screen.findByText('first comment')).toBeDefined();
 

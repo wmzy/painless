@@ -11,4 +11,4 @@ minimumReleaseAgeExclude:
   - '@native-router/core'
   - '@native-router/react'
   - '@for-fun/event-emitter'
-  - fetch-fun@0.9.0
+  - fetch-fun

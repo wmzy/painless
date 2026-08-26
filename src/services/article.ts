@@ -6,6 +6,8 @@ import type {
   Comment
 } from '@/types/index';
 
+import {fillPath} from 'fetch-fun';
+
 import * as http from '@/util/http';
 
 // 只读查询统一接可选尾参 signal：useQuery 的 useRun({signal: true}) 在
@@ -17,12 +19,19 @@ export function query(
   return http.get<ArticlePage>('articles', params, {signal});
 }
 
+// 路径参数统一经 fillPath（fetch-fun 0.10）：模板 `{name}` 占位符在编译
+// 期约束参数集合（缺键/多键都是类型错误），运行时逐值 encodeURIComponent
+// ——标题/用户名里的空格、斜杠、中文不再依赖手拼模板字符串的裸插值。
 export function findByTitle(
   title: string,
   signal?: AbortSignal
 ): Promise<Article> {
   return http
-    .get<{article: Article}>(`articles/${title}`, undefined, {signal})
+    .get<{article: Article}>(
+      fillPath('articles/{title}', {title}),
+      undefined,
+      {signal}
+    )
     .then(({article}) => article);
 }
 
@@ -31,9 +40,11 @@ export function fetchCommentsByTitle(
   signal?: AbortSignal
 ): Promise<Comment[]> {
   return http
-    .get<{comments: Comment[]}>(`articles/${title}/comments`, undefined, {
-      signal
-    })
+    .get<{comments: Comment[]}>(
+      fillPath('articles/{title}/comments', {title}),
+      undefined,
+      {signal}
+    )
     .then(({comments}) => comments);
 }
 
@@ -55,9 +66,10 @@ export function favoriteArticle(
   favorited: boolean,
   signal?: AbortSignal
 ): Promise<Article> {
+  const url = fillPath('articles/{slug}/favorite', {slug});
   const request = favorited
-    ? http.post<{article: Article}>(`articles/${slug}/favorite`, {}, {signal})
-    : http.del<{article: Article}>(`articles/${slug}/favorite`, {signal});
+    ? http.post<{article: Article}>(url, {}, {signal})
+    : http.del<{article: Article}>(url, {signal});
   return request.then(({article}) => article);
 }
 
@@ -66,9 +78,10 @@ export function followAuthor(
   following: boolean,
   signal?: AbortSignal
 ): Promise<Author> {
+  const url = fillPath('profiles/{username}/follow', {username});
   const request = following
-    ? http.post<{profile: Author}>(`profiles/${username}/follow`, {}, {signal})
-    : http.del<{profile: Author}>(`profiles/${username}/follow`, {signal});
+    ? http.post<{profile: Author}>(url, {}, {signal})
+    : http.del<{profile: Author}>(url, {signal});
   return request.then(({profile}) => profile);
 }
 
@@ -79,7 +92,7 @@ export function addComment(
 ): Promise<Comment> {
   return http
     .post<{comment: Comment}>(
-      `articles/${slug}/comments`,
+      fillPath('articles/{slug}/comments', {slug}),
       {comment: {body}},
       {signal}
     )
@@ -95,7 +108,11 @@ export function saveArticle(
   signal?: AbortSignal
 ): Promise<Article> {
   const request = slug
-    ? http.put<{article: Article}>(`articles/${slug}`, {article}, {signal})
+    ? http.put<{article: Article}>(
+        fillPath('articles/{slug}', {slug}),
+        {article},
+        {signal}
+      )
     : http.post<{article: Article}>('articles', {article}, {signal});
   return request.then(({article: saved}) => saved);
 }

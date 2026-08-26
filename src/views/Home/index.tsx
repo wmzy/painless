@@ -1,7 +1,7 @@
 import {css} from '@linaria/core';
 import {navigate} from '@native-router/core';
 import {useData, useMatched, useSearch, useSetSearch} from '@native-router/react';
-import {Card, Title, Text, Badge, Avatar, Flex, Chip, Button} from 'haze-ui';
+import {Card, Title, Text, Badge, Avatar, Flex, Chip, Button,useToast} from 'haze-ui';
 import {useMutation} from 'react-toolroom/async';
 
 import {Article, ArticlePage} from '@/types';
@@ -48,14 +48,28 @@ export default function Home() {
   // 页缓存）→ 失败自动回滚。视图侧只剩调用，peek/set/refresh/手写回滚
   // 全部消失（refresh 由 loaderCache 的 set 事件订阅自动扇出；Article
   // 页与 Home 页的多投影联动由两层组合一次写齐）。
-  const [favorite] = useMutation(favoriteOnHome);
+  // 卡片级乐观收藏：cache.mutation 组合管道（services/mutations.ts）——
+  // 乐观 +1 → 服务调用 → 响应字段选择式 apply（打到全部含该 slug 的
+  // 页缓存）→ 失败自动回滚。scope（react-toolroom 0.11）按 slug 串行
+  // 同一文章的连点：第二次点击排队等第一次 settle 后执行，乐观翻转
+  // 以服务端权威值为基线，不丢点击意图；不同文章互不阻塞。
+  const [favorite] = useMutation(favoriteOnHome, {
+    scope: (slug: string) => `favorite:${slug}`
+  });
+  const toast = useToast();
 
   const toggleFavorite = (a: Article) => {
     if (!getCurrentUser()) {
       void navigate(router, '/login');
       return;
     }
-    void favorite(a.slug, !a.favorited).catch(() => undefined);
+    // 失败时乐观值已被 cache.mutation 管道自动回滚，UI 复原；剩余的用户
+    // 侧反馈只有「为什么没反应」——toast 一条 danger 提示补上这一环。
+    void favorite(a.slug, !a.favorited).catch((e: unknown) =>
+      toast(e instanceof Error ? e.message : 'Favorite failed', {
+        variant: 'danger'
+      })
+    );
   };
 
   return (

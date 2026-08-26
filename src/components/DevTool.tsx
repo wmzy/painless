@@ -9,6 +9,12 @@ import {
   setMockConfig,
   type MockConfigValue
 } from '@/util/mock';
+import {
+  clearRequestLogs,
+  getRequestLogs,
+  onRequestLogsChange,
+  type HttpRequestLog
+} from '@/util/requestLog';
 import {allCaches, clearAllCaches} from '@/util/useQuery';
 
 import Popover from './Popover';
@@ -101,6 +107,8 @@ function DevToolInner({open: openControl}: {open?: Control<boolean> | boolean}) 
           ))}
           <hr />
           <CacheView />
+          <hr />
+          <RequestLogView />
         </Card>
       </Popover>
     );
@@ -243,6 +251,60 @@ function CacheView() {
       {events.map(({id, label}) => (
         <div key={id}>{label}</div>
       ))}
+    </div>
+  );
+}
+
+// 请求日志视图：http.ts 的 dev-only withLogging 推入 requestLog 环形
+// 缓冲，这里订阅展示（最新在上）。每条按事件类型着色：Request 中性、
+// Response 按 2xx/其它分 success/danger、Error 红。面板关闭即卸载退订。
+type LogData = {url?: string; method?: string; status?: number};
+
+function logVariant(log: HttpRequestLog): 'default' | 'success' | 'danger' {
+  if (log.msg === 'Response') {
+    const status = (log.data as LogData | undefined)?.status ?? 0;
+    return status >= 200 && status < 300 ? 'success' : 'danger';
+  }
+  if (log.msg === 'Error') return 'danger';
+  return 'default';
+}
+
+function RequestLogView() {
+  const [logs, setLogs] = useState<HttpRequestLog[]>(getRequestLogs);
+
+  useEffect(
+    () => onRequestLogsChange(() => setLogs(getRequestLogs())),
+    []
+  );
+
+  return (
+    <div>
+      <div
+        x-class={css`
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        `}
+      >
+        <b>Requests: {logs.length}</b>
+        <Button onClick={clearRequestLogs}>Clear Logs</Button>
+      </div>
+      {logs.map((log) => {
+        const data = (log.data as LogData | undefined) ?? {};
+        const label =
+          log.msg === 'Request'
+            ? `→ ${(data.method ?? 'GET')} ${data.url ?? ''}`
+            : log.msg === 'Response'
+              ? `← ${data.status} ${data.url ?? ''}`
+              : `✗ ${data.url ?? ''}`;
+        return (
+          <div key={log.id}>
+            <Badge size='sm' variant={logVariant(log)}>
+              {label}
+            </Badge>
+          </div>
+        );
+      })}
     </div>
   );
 }

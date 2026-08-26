@@ -10,6 +10,8 @@ import {
   type User
 } from '@/services/auth';
 
+import ThemeToggle from '@/components/ThemeToggle';
+
 export default function Layout() {
   const router = useRouter();
   // 初始值取 auth 模块加载时恢复的当前用户，之后靠订阅驱动更新
@@ -41,6 +43,7 @@ export default function Layout() {
         <NavLink href='/'>Home</NavLink>
         <NavLink href='/help'>Help</NavLink>
         <NavLink href='/about'>About</NavLink>
+        <ThemeToggle />
         {user ? (
           <>
             <span>{user.username}</span>

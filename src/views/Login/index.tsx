@@ -44,12 +44,16 @@ export default function Login() {
       <Form form={form} onSubmit={handleSubmit} aria-label='Login form'>
         {/* 错误 span 只在 invalid 时渲染，aria-describedby 相应条件传递，
             避免指向不存在元素的悬空 id */}
+        {/* mode='onBlur'（react-f0rm 0.6 字段级覆盖 + haze-ui 1.9 FormItem
+            透传）：表单默认 onSubmit 提交时才校验，email 单字段失焦即校验。
+            onBlur 由 FormItem binding 提供，接给 Input 才触发失焦钩子 */}
         <FormItem
           form={form}
           name='email'
+          mode='onBlur'
           validate={compose(required('Email is required'), email('Invalid email'))}
         >
-          {({id, errorId, invalid, control}) => (
+          {({id, errorId, invalid, control, onBlur}) => (
             <Input
               id={id}
               value={control}
@@ -57,6 +61,7 @@ export default function Login() {
               placeholder='Email'
               aria-invalid={invalid}
               aria-describedby={invalid ? errorId : undefined}
+              onBlur={onBlur}
             />
           )}
         </FormItem>
