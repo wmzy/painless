@@ -44,6 +44,9 @@ importers:
       react-toolroom:
         specifier: ^0.10.0
         version: 0.10.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      react-use-control:
+        specifier: ^1.3.2
+        version: 1.3.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
     devDependencies:
       '@babel/core':
         specifier: ^8.0.1

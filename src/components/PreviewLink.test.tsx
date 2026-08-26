@@ -1,23 +1,20 @@
 import {describe, it, expect, vi} from 'vitest';
 import {render, screen, fireEvent} from '@testing-library/react';
+import {useControl} from 'react-use-control';
 
 vi.mock('@native-router/react', () => ({
   PrefetchLink: ({children, ...props}: any) => (
     <a {...props}>{children}</a>
   ),
-  usePrefetch: () => ({view: null, loading: false, error: null})
+  // loading: true 使受控用例可观察：visible=true 时 Preview 渲染
+  // 'loading'（portal 到 body），对现有只断言链接本身的用例无影响
+  usePrefetch: () => ({view: null, loading: true, error: null})
 }));
 
 vi.mock('@native-router/core', () => ({}));
 
-vi.mock('haze-ui', () => ({
-  useControl: (initial: unknown) => {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const React = require('react') as typeof import('react');
-    return React.useState(initial);
-  }
-}));
-
+// PreviewLink 的面板开合用 react-use-control（非受控），真模块为纯 ESM，
+// vitest 下直接加载，无需替身
 // Import after mocks
 const PreviewLink = (await import('./PreviewLink')).default;
 
@@ -58,5 +55,38 @@ describe('PreviewLink', () => {
     // 不注入任何 prefetch 值，未传时仍走库默认 'intent'
     const link = screen.getByText('Default').closest('a');
     expect(link?.getAttribute('prefetch')).toBeNull();
+  });
+
+  it('honors a controlled visible prop via control object', () => {
+    // 触屏场景：宿主用自己的交互（此处以按钮代长按）驱动预览显隐，
+    // 不依赖 hover/focus。visible 传 control 即受控，宿主 setVisible
+    // 直接开关预览，状态为同一份（非拷贝）
+    function Harness() {
+      const [visible, setVisible, visibleCtrl] = useControl(undefined, false);
+      return (
+        <>
+          <button onClick={() => setVisible((v) => !v)}>toggle-preview</button>
+          <span data-testid="host-visible">{String(visible)}</span>
+          <PreviewLink to="/test" visible={visibleCtrl}>
+            Link
+          </PreviewLink>
+        </>
+      );
+    }
+
+    render(<Harness />);
+    // 初始隐藏：Preview 返回 null（portal 未挂 'loading'）
+    expect(screen.queryByText('loading')).toBeNull();
+    expect(screen.getByTestId('host-visible').textContent).toBe('false');
+
+    // 宿主开预览
+    fireEvent.click(screen.getByText('toggle-preview'));
+    expect(screen.getByText('loading')).toBeDefined();
+    expect(screen.getByTestId('host-visible').textContent).toBe('true');
+
+    // 再关：预览卸载，宿主状态同步 false
+    fireEvent.click(screen.getByText('toggle-preview'));
+    expect(screen.queryByText('loading')).toBeNull();
+    expect(screen.getByTestId('host-visible').textContent).toBe('false');
   });
 });

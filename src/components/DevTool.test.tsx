@@ -2,7 +2,7 @@ import type {Article, Comment} from '@/types';
 
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import {render, screen, fireEvent, act} from '@testing-library/react';
-import {useState} from 'react';
+import {useControl} from 'react-use-control';
 
 import {stableHash} from 'react-toolroom/async';
 
@@ -11,16 +11,15 @@ import {articleCache, clearAllCaches, commentsCache} from '@/util/useQuery';
 
 import DevTool, {truncateKey, ageSeconds} from './DevTool';
 
-// 沿用 RouterError.test.tsx 的 haze-ui mock 约定；DevTool 对 useControl 均为
-// 非受控用法（useControl(undefined, initial)），用 useState 等价替身驱动面板开合。
+// 沿用 RouterError.test.tsx 的 haze-ui mock 约定（UMD 产物在 vitest ESM
+// 下无法提供命名导出）。useControl 已改为直接依赖 react-use-control
+//（纯 ESM），走真模块，不再需要 useState 替身。
 vi.mock('haze-ui', () => ({
   Button: ({children, onClick}: any) => (
     <button onClick={onClick}>{children}</button>
   ),
   Card: ({children}: any) => <div>{children}</div>,
-  Badge: ({children}: any) => <span>{children}</span>,
-  useControl: <T,>(_control: unknown, initial: T) =>
-    useState<T>(typeof initial === 'function' ? (initial as () => T)() : initial)
+  Badge: ({children}: any) => <span>{children}</span>
 }));
 
 function openPanel() {
@@ -158,6 +157,39 @@ describe('DevTool CacheView', () => {
     fireEvent.click(screen.getByText('Clear'));
     expect(screen.getByText('clear')).toBeDefined();
     expect(screen.getByText('Cache: 0')).toBeDefined();
+  });
+
+  it('honors a controlled open prop via control object', () => {
+    // 宿主持有 open 状态（useControl 三元组的 ctrl）传给 DevTool：
+    // 外部 setVisible(true) 直接开面板，面板内 Close 写回同一状态，
+    // 宿主可见 open=false——同一 control 双向共享，非拷贝同步
+    function Harness() {
+      const [open, setOpen, openCtrl] = useControl(undefined, false);
+      return (
+        <>
+          <button onClick={() => setOpen(true)}>open-externally</button>
+          <span data-testid="host-open">{String(open)}</span>
+          <DevTool open={openCtrl}>
+            <div>content</div>
+          </DevTool>
+        </>
+      );
+    }
+
+    render(<Harness />);
+    // 初始收起：面板未挂载（Close 不可见），宿主状态 false
+    expect(screen.queryByText('Close')).toBeNull();
+    expect(screen.getByTestId('host-open').textContent).toBe('false');
+
+    // 宿主驱动开面板
+    fireEvent.click(screen.getByText('open-externally'));
+    expect(screen.getByText('Close')).toBeDefined();
+    expect(screen.getByTestId('host-open').textContent).toBe('true');
+
+    // 面板内 Close 写回共享状态，宿主同步看到 false
+    fireEvent.click(screen.getByText('Close'));
+    expect(screen.getByTestId('host-open').textContent).toBe('false');
+    expect(screen.queryByText('Close')).toBeNull();
   });
 
   it('unsubscribes every cache listener on unmount', () => {

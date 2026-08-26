@@ -1,6 +1,7 @@
 import {css} from '@linaria/core';
 import {useCallback, ReactNode, useEffect, useRef, useState} from 'react';
-import {Badge, Button, Card, useControl} from 'haze-ui';
+import {Badge, Button, Card} from 'haze-ui';
+import {useControl, type Control} from 'react-use-control';
 
 import {
   getMockConfigs,
@@ -14,6 +15,9 @@ import Popover from './Popover';
 
 type Props = {
   children: ReactNode;
+  // 面板开合遵循 control 模式（同 haze-ui 组件约定）：传 Control 受控
+  //（宿主完全接管开关），传 boolean 为非受控初值，不传则默认收起
+  open?: Control<boolean> | boolean;
 };
 
 // cache.snapshot() 的条目形状（react-toolroom CacheProvider 契约：
@@ -57,8 +61,8 @@ type CacheEvent = {
 // 事件流保留的最近条数：够回看一轮典型交互，又不让 300px 面板被撑爆
 const MAX_EVENTS = 8;
 
-function DevToolInner() {
-  const [open, setOpen] = useControl<boolean>(undefined, false);
+function DevToolInner({open: openControl}: {open?: Control<boolean> | boolean}) {
+  const [open, setOpen] = useControl(openControl as Control<boolean>, false);
   const [config, setConfig] = useState(getMockConfigs);
 
   useEffect(
@@ -278,11 +282,11 @@ function MockView({
   );
 }
 
-export default function DevTool({children}: Props) {
+export default function DevTool({children, open}: Props) {
   return (
     <>
       {children}
-      <DevToolInner />
+      <DevToolInner open={open} />
     </>
   );
 }

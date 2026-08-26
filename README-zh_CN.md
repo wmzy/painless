@@ -143,14 +143,22 @@ const requireLogin: Route['beforeLoad'] = () => {
 ```tsx
 // src/components/PreviewLink.tsx
 import {PrefetchLink} from '@native-router/react';
+import {useControl, type Control} from 'react-use-control';
 
-export default function PreviewLink({children, ...props}) {
-  const [visible, setVisible] = useControl<boolean>(undefined, false);
+type Props = ComponentProps<typeof PrefetchLink> & {
+  visible?: Control<boolean> | boolean;
+};
+
+export default function PreviewLink({children, visible: visibleControl, ...props}: Props) {
+  const [visible, setVisible] = useControl(visibleControl as Control<boolean>, false);
   return (
     <PrefetchLink {...props}>
       <span
         onMouseEnter={() => setVisible(true)}
         onMouseLeave={() => setVisible(false)}
+        onFocus={() => setVisible(true)}
+        onBlur={() => setVisible(false)}
+        tabIndex={0}
       >
         {children}
       </span>
@@ -161,6 +169,80 @@ export default function PreviewLink({children, ...props}) {
 ```
 
 > 注意：预取同样会执行路由的 `beforeLoad` 守卫——未登录时 hover 指向受守卫路由的链接，只会 resolve 到重定向目标，无副作用。
+
+### 一个 prop 统一受控/非受控（`react-use-control`）
+
+组件暴露给宿主的状态——面板开合、预览显隐——遵循 **control 对象**约定，取代经典的 `value`/`defaultValue`/`onChange` 三件套。control 是 `useControl` 返回的不透明令牌：谁先创建状态谁拥有它，其余使用者直接复用。同一约定驱动所有 haze-ui 有状态组件与 `FormItem` 表单桥。
+
+改造前——经典三件套，每次渲染与每次写入都要做双源仲裁：
+
+```tsx
+type Props = {
+  open?: boolean;
+  defaultOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
+};
+
+function DevTool({open, defaultOpen = false, onOpenChange}: Props) {
+  // 两份事实来源：外部 `open` 与内部 state
+  const [internal, setInternal] = useState(defaultOpen);
+  const isOpen = open ?? internal;
+
+  const setOpen = (next: boolean) => {
+    if (open === undefined) setInternal(next);
+    onOpenChange?.(next);
+  };
+  // ...
+}
+```
+
+改造后——`src/components/DevTool.tsx` 实际源码，一个 prop，默认非受控：
+
+```tsx
+import {useControl, type Control} from 'react-use-control';
+
+function DevToolInner({open: openControl}: {open?: Control<boolean> | boolean}) {
+  const [open, setOpen] = useControl(openControl as Control<boolean>, false);
+  // ...
+}
+
+export default function DevTool({children, open}: Props) {
+  return (
+    <>
+      {children}
+      <DevToolInner open={open} />
+    </>
+  );
+}
+```
+
+宿主按用法自行选模式——组件零改动：
+
+```tsx
+<DevTool />  // 非受控：内部状态，默认收起
+<DevTool open />  // 非受控：普通值作为初始状态种子
+
+// 受控：宿主持有状态——同一份共享状态，而非两份靠回调对账；
+// 面板内 Close 按钮经同一 control 写回
+const [open, setOpen, openCtrl] = useControl(false);
+<DevTool open={openCtrl} />
+<button onClick={() => setOpen(true)}>打开面板</button>  // 如快捷键、E2E
+```
+
+令牌相对三件套的收益：
+
+- **一个 prop 取代三个** —— 不需要 `defaultOpen`/`onOpenChange` 管线；普通值天然表示“非受控种子”
+- **零仲裁、零镜像** —— 不存在第二份事实来源需要对账：已持有状态的 control 被原样复用（无 `useEffect` 同步、无回调往返）
+- **兄弟共享免费** —— 同一 control 传给多个子组件即共享同一状态；三件套要给每个子组件穿 `value`+`onChange`
+- **全栈一套机制** —— `FormItem` render-prop 的 `control` 就是同一种令牌，react-f0rm 字段才能以 `value={control}` 零适配地绑定 haze-ui 输入控件
+
+适用边界——该模式只用于宿主可能需要驾驭的状态。刻意不改造的：
+
+- 只读接收方：`Preview` 保持 `visible: boolean`——它从不回写
+- 已被其它库持有的状态：表单字段归 react-f0rm 所有
+- 页面局部状态：视图级 `error` 消息维持 `useState`
+
+一个注意点：control prop 跨渲染必须保持同一引用——开发构建下，同一挂载的 hook 收到不同 control 对象会直接抛错。
 
 ### 项目级 `useQuery` preset
 

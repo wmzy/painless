@@ -143,14 +143,22 @@ Prefetching runs the same guard — hovering a `PrefetchLink` to a guarded route
 ```tsx
 // src/components/PreviewLink.tsx
 import {PrefetchLink} from '@native-router/react';
+import {useControl, type Control} from 'react-use-control';
 
-export default function PreviewLink({children, ...props}) {
-  const [visible, setVisible] = useControl<boolean>(undefined, false);
+type Props = ComponentProps<typeof PrefetchLink> & {
+  visible?: Control<boolean> | boolean;
+};
+
+export default function PreviewLink({children, visible: visibleControl, ...props}: Props) {
+  const [visible, setVisible] = useControl(visibleControl as Control<boolean>, false);
   return (
     <PrefetchLink {...props}>
       <span
         onMouseEnter={() => setVisible(true)}
         onMouseLeave={() => setVisible(false)}
+        onFocus={() => setVisible(true)}
+        onBlur={() => setVisible(false)}
+        tabIndex={0}
       >
         {children}
       </span>
@@ -161,6 +169,80 @@ export default function PreviewLink({children, ...props}) {
 ```
 
 > Note: prefetching runs route `beforeLoad` guards too — hovering a link to a guarded route while logged out just resolves the redirect target, no side effects.
+
+### Controlled/Uncontrolled State in One Prop (`react-use-control`)
+
+State a component exposes to its host — panel open/closed, preview visibility — follows the **control object** convention instead of the classic `value`/`defaultValue`/`onChange` triple. A control is an opaque token returned by `useControl`: whoever creates the state first owns it, everyone else reuses it. The same convention powers every stateful haze-ui component and the `FormItem` form bridge.
+
+Before — the classic triple needs dual-source arbitration on every render and every write:
+
+```tsx
+type Props = {
+  open?: boolean;
+  defaultOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
+};
+
+function DevTool({open, defaultOpen = false, onOpenChange}: Props) {
+  // Two sources of truth: external `open` vs internal state
+  const [internal, setInternal] = useState(defaultOpen);
+  const isOpen = open ?? internal;
+
+  const setOpen = (next: boolean) => {
+    if (open === undefined) setInternal(next);
+    onOpenChange?.(next);
+  };
+  // ...
+}
+```
+
+After — actual `src/components/DevTool.tsx` source, one prop, uncontrolled by default:
+
+```tsx
+import {useControl, type Control} from 'react-use-control';
+
+function DevToolInner({open: openControl}: {open?: Control<boolean> | boolean}) {
+  const [open, setOpen] = useControl(openControl as Control<boolean>, false);
+  // ...
+}
+
+export default function DevTool({children, open}: Props) {
+  return (
+    <>
+      {children}
+      <DevToolInner open={open} />
+    </>
+  );
+}
+```
+
+The host picks a mode per usage — the component never changes:
+
+```tsx
+<DevTool />  // uncontrolled: internal state, closed by default
+<DevTool open />  // uncontrolled: plain value seeds the initial state
+
+// controlled: the host owns the state — one shared state, not two kept in
+// sync; the panel's Close button writes back through the same control
+const [open, setOpen, openCtrl] = useControl(false);
+<DevTool open={openCtrl} />
+<button onClick={() => setOpen(true)}>Open panel</button>  // e.g. a hotkey, or E2E
+```
+
+What the token buys over the triple:
+
+- **One prop instead of three** — no `defaultOpen`/`onOpenChange` plumbing; a plain value already means "uncontrolled seed"
+- **No arbitration, no mirroring** — there is no second source of truth to reconcile: a control that already holds state is reused as-is (no `useEffect` sync, no callback round-trips)
+- **Sibling sharing for free** — pass the same control to several children and they share one state; the triple needs `value`+`onChange` threaded through each child
+- **One mechanism across the stack** — `FormItem`'s render-prop `control` is the same token, which is why a react-f0rm field binds a haze-ui input as `value={control}` with zero adapters
+
+Scope discipline — the pattern is for state a host may want to steer. Deliberately not converted:
+
+- read-only receivers: `Preview` keeps `visible: boolean` — it never writes back
+- state owned by another library: react-f0rm owns form fields
+- page-local state: view-level `error` messages stay `useState`
+
+One caveat: a control prop must be identity-stable across renders — dev builds throw if the same mounted hook receives a different control object.
 
 ### A Project-Level `useQuery` Preset
 

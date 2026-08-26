@@ -13,7 +13,7 @@ These are intentional design decisions, not missing features. Do not suggest add
 - **Pure client-side SPA** — No SSR/SSG. SEO can be handled by serving pre-rendered HTML to bot traffic via headless browser, not by contaminating the app architecture.
 - **Frontend is not the backend** — API Routes/Server Actions belong in dedicated backend frameworks. The web frontend is one of many clients; coupling it with the backend serves only one client.
 - **Flat routing** — The route is the page. Nested/parallel routes decompose page state into URL fragments, adding unnecessary complexity. Independent UI sections are components, not routes.
-- **No state management libraries** — Proper page/component decomposition keeps state local. Use React primitives (`useState`, `useContext`, `useRef`) and `useControl` from haze-ui for controlled/uncontrolled component state.
+- **No state management libraries** — Proper page/component decomposition keeps state local. Use React primitives (`useState`, `useContext`, `useRef`) and `useControl` from `react-use-control` (direct dependency) for component state exposed to hosts via props.
 - **No structural sharing in the query layer** — Refetches settle new references; content-identical background revalidations re-render subscribers. Deep equality is O(payload) on every fetch; a hot component takes scalar props behind `React.memo` instead (object props are always new references after settle, so memo boundaries must compare scalars).
 - **No built-in image optimization** — Image optimization is a service concern, not a framework concern. A dedicated service serves all clients, not just the frontend.
 - **Platform-agnostic deployment** — Produces standard static assets. No vendor lock-in to any deployment platform.
@@ -91,8 +91,8 @@ These are allowed by ESLint (no `react/no-unknown-property` rule).
 | `react-toolroom/async` | Async data primitives: `useInjectable`, `useInject`, `useCache` (revalidates via `provider.load`), `useRun` (+`{signal, hash}`), `useResult`, `useLoading`, `useInitialLoading`, `useError`, `useFocusRevalidate`, `useReconnectRevalidate`, `useRetry`, `useInfinite` (0.9: bidirectional pages/pageParams/maxPages), `stableHash`, `useMutation` + `invalidates`, `invalidate`, `createMemoryCacheProvider` (also `load`/`peek`/`snapshot`/`subscribe`/`clear`) |
 | `fetch-fun` | Pipeable functional fetch toolkit (^0.9.0) — basis of `src/util/http.ts` |
 | `react-f0rm` | Event-driven forms: `Form`, `useForm`, `useIsSubmitting`, `setServerErrors`, `reset` |
-| `haze-ui` | Component library (Card, Input, Textarea, TagInput, Chip, ...), re-exports `useControl`; `haze-ui/form` subpath: `FormItem` / `useFormControl` (react-f0rm ↔ react-use-control bridge) |
-| `react-use-control` | Controlled/uncontrolled state — `useControl(prop, default)` |
+| `haze-ui` | Component library (Card, Input, Textarea, TagInput, Chip, ...), also re-exports `useControl`; `haze-ui/form` subpath: `FormItem` / `useFormControl` (react-f0rm ↔ react-use-control bridge) |
+| `react-use-control` | Controlled/uncontrolled state via control objects — `useControl`, `Control<T>`, `useThru`, `isControl`; every stateful haze-ui component takes `Control<T> \| T` props |
 | `@linaria/core` | Zero-runtime CSS-in-JS |
 | `@for-fun/event-emitter` | Tiny emitter — auth change events, DevTool mock-config changes |
 | `json-schema-faker` + `@faker-js/faker` | Mock data from JSON Schema |
@@ -103,15 +103,32 @@ These are allowed by ESLint (no `react/no-unknown-property` rule).
 
 ## Component State Pattern: `useControl`
 
-Use `useControl` for component-internal state that may need external control. Do NOT use it to wrap state already managed by another library (e.g., react-f0rm).
+`react-use-control` (direct dependency; haze-ui re-exports `useControl` too) unifies controlled/uncontrolled state behind a **control object**. Use it for component state exposed to hosts via props. Do NOT use it to wrap state already managed by another library (e.g. react-f0rm).
+
+State exposed via props follows the `Control<T> | T` convention (identical to every stateful haze-ui component — see haze-ui `lib/CONVENTIONS.md`):
 
 ```tsx
-// Good — component state that could be externally controlled
-function DevTool() {
-  const [open, setOpen] = useControl(false);
+// Good — state a host may want to steer
+type Props = {open?: Control<boolean> | boolean};
+
+function DevToolInner({open: openControl}: {open?: Control<boolean> | boolean}) {
+  const [open, setOpen] = useControl(openControl as Control<boolean>, false);
   // ...
 }
+```
 
+- Destructure the prop with an alias (`open: openControl`) to avoid shadowing; the `as Control<boolean>` cast is required by react-use-control 1.3.x typings (first param is `Control<T> | Nullish`; at runtime `isControl` routes plain values to the uncontrolled-seed path)
+- The third tuple element is the control to pass down/share: `const [open, setOpen, openCtrl] = useControl(false)`
+- A control prop must be identity-stable across renders — dev builds throw if the same mounted hook receives a different control object
+- Adopted by `DevTool` (`open` — lets E2E/hotkeys open the panel) and `PreviewLink` (`visible` — lets hosts drive preview on touch devices); form fields use the same token via `FormItem`'s `control`
+
+Deliberately NOT converted (do not "fix" these):
+
+- read-only receivers — `Preview` takes plain `visible: boolean`; a control earns its keep only when multiple parties read *and write*
+- state owned by another library — react-f0rm owns form fields (pass `FormItem`'s `control` through instead)
+- page-local state — view-level `error` messages stay `useState`
+
+```tsx
 // Bad — form state is already managed by react-f0rm
 function FormField() {
   const {value, onChange} = useField({name: 'email'});
