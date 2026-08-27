@@ -1,5 +1,3 @@
-import type {HomeSearch} from '@/types/search';
-
 import {View, HistoryRouter as Router, createRoutes, type Route, type RoutePaths} from '@native-router/react';
 
 import Loading from '@/components/Loading';
@@ -42,14 +40,20 @@ const routes = createRoutes({
       // hover 过的链接点击不再重复发请求。mock 在外层：只有透传的真实
       // 数据才进缓存，faker 造数不污染缓存。
       search: homeSearchSchema,
+      // ctx.search 不再手写注解：createRoutes 返回表按本层 search
+      // schema（homeSearchSchema）推导 loader/守卫的 search 类型，
+      // HomeSearch 只在 schema 处定义一次
       data: mockViewData(
         withCache(
           homeCache,
           // key 只此一处定义：[search]（schema coerce 后的形状，hash 侧
           // 剥 undefined 键归一），mutation 侧经 homeCache 寻址同一批条目
-          ({search}: {search: HomeSearch}): [HomeSearch] => [search],
-          ({search, signal}: {search: HomeSearch; signal: AbortSignal}) =>
-            articleService.query(search, signal)
+          ({search}) => [search],
+          // ctx.search 作者期是 any：TS 无法用同级属性（本层 search
+          // schema）做回调的上下文类型，精确类型在 createRoutes 返回表
+          // 上闭环；值本身经 schema 校验/coerce，运行时形状有保证
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+          ({search, signal}) => articleService.query(search, signal)
         ),
         articlePageSchema,
         'articlePage'

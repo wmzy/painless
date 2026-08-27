@@ -116,8 +116,11 @@ export function withCache<
 >(
   cache: CacheProvider<T, K>,
   // 路由 loader ctx 按路由异构（search/params/signal/router 各异），
-  // keyOf 收 any：调用方按本路由的实际形状解构
-  keyOf: (ctx: any) => K,
+  // keyOf 收 any：调用方按本路由的实际形状解构。返回收 unknown[] 而非
+  // K：keyOf 常是注解-free 的箭头（ctx.search 在字面量内是 any），返回
+  // any[] 会与 cache 推导出的元组 K 冲突；K 的元组形状以 cache 为唯一
+  // 契约源，key 的运行时形状经 load 的 hash 归一，错形状不产生错误条目
+  keyOf: (ctx: any) => unknown[],
   fn: F,
   opts?: {staleTime?: number}
 ): F {
@@ -128,7 +131,7 @@ export function withCache<
     // unknown 收拢——运行时只是注册订阅，无任何成员调用
     bindRefresh(cache as unknown as CacheProvider<unknown, unknown[]>, ctx.router);
   }
-    const args = keyOf(ctx);
+    const args = keyOf(ctx) as K;
     // load/peek 在 CacheProvider 契约里是可选成员，但 createQueryCache
     // 恒由 createMemoryCacheProvider 创建，二者必然存在
     const entry = cache.peek!(args);
