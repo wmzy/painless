@@ -78,7 +78,7 @@
     "@native-router/core": "^1.8.0",
     "@native-router/react": "^1.6.1",
     "fetch-fun": "^0.10.0",
-    "haze-ui": "link:../haze-ui",
+    "haze-ui": "^1.10.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-f0rm": "^0.6.0",
