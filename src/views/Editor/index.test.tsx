@@ -9,12 +9,14 @@
 import type {Article} from '@/types';
 
 import {describe, it, expect, vi, beforeEach} from 'vitest';
-import {render, screen, fireEvent} from '@testing-library/react';
+import {render, screen, fireEvent, act} from '@testing-library/react';
 
 
 const state = vi.hoisted(() => ({
   article: undefined as Article | undefined,
-  router: {pathname: '/editor'}
+  router: {pathname: '/editor'},
+  // useBlocker 注册的离开拦截谓词：测试同步调用它模拟路由器询问
+  blocker: undefined as ((to: string) => boolean) | undefined
 }));
 
 // 保留真实模块，只覆写视图用到的 post/put；422 拒绝值直接用鸭子形状
@@ -27,7 +29,12 @@ vi.mock('@/util/http', async (importOriginal) => ({
 vi.mock('@native-router/react', () => ({
   useRouter: () => state.router,
   // useData<T>() 泛型在 mock 中以类型断言透传即可
-  useData: () => state.article
+  useData: () => state.article,
+  // 只捕获谓词不真注册（真注册需要 router 实例的 blocker 通道，视图
+  // 单测关心的是谓词行为与确认框交互，POP 回推等由库侧测试覆盖）
+  useBlocker: (fn: (to: string) => boolean) => {
+    state.blocker = fn;
+  }
 }));
 vi.mock('@native-router/core', () => ({navigate: vi.fn()}));
 
@@ -84,6 +91,7 @@ beforeEach(() => {
   putMock.mockReset();
   navigateMock.mockReset();
   state.article = undefined;
+  state.blocker = undefined;
   // 模块级共享缓存逐用例清空，防止 invalidates 断言被上一用例残留串场
   clearAllCaches();
 });
@@ -270,5 +278,90 @@ describe('Editor', () => {
     expect(await screen.findByText('has already been taken')).toBeDefined();
     expect(homeCache.peek!([{offset: 0, limit: 10}])).toBeDefined();
     expect(navigateMock).not.toHaveBeenCalled();
+  });
+
+  // —— 未保存离开拦截（useBlocker + ConfirmDialog + beforeunload）——
+  // 谓词经 mock 捕获后同步调用（act 包裹：谓词内 setConfirmNav 触发
+  // 状态更新），等价于路由器在 navigate 头部询问 blocker。
+  it('dirty 导航被拦：弹确认框、否决且未离开', () => {
+    render(<Editor />);
+    fireEvent.change(screen.getByPlaceholderText('Article Title'), {
+      target: {value: 'New title'}
+    });
+
+    let vetoed = true;
+    act(() => {
+      vetoed = state.blocker!('/');
+    });
+
+    // dirty → 否决 + 弹确认框
+    expect(vetoed).toBe(false);
+    expect(screen.getByText('Unsaved changes')).toBeDefined();
+    expect(screen.getByRole('button', {name: 'Leave'})).toBeDefined();
+    expect(screen.getByRole('button', {name: 'Stay'})).toBeDefined();
+    // 否决即未离开：navigate 未被调用
+    expect(navigateMock).not.toHaveBeenCalled();
+  });
+
+  it('确认离开：reset 清 dirty 后放行 navigate 到被拦目标', () => {
+    render(<Editor />);
+    const title = screen.getByPlaceholderText('Article Title');
+    fireEvent.change(title, {target: {value: 'New title'}});
+    act(() => {
+      state.blocker!('/');
+    });
+
+    fireEvent.click(screen.getByRole('button', {name: 'Leave'}));
+
+    // reset 落地：回到 initialValues（新建态空串），对话框关闭
+    expect((title as HTMLInputElement).value).toBe('');
+    expect(screen.queryByText('Unsaved changes')).toBeNull();
+    // dirty 已清零：后续导航询问直接放行（无需任何绕过标志）
+    expect(state.blocker!('/about')).toBe(true);
+    // 放行跳转到当初被拦的目标
+    expect(navigateMock).toHaveBeenCalledTimes(1);
+    expect(navigateMock).toHaveBeenCalledWith(state.router, '/');
+  });
+
+  it('取消离开：关对话框、无导航、修改保留仍 dirty', () => {
+    render(<Editor />);
+    const title = screen.getByPlaceholderText('Article Title');
+    fireEvent.change(title, {target: {value: 'New title'}});
+    act(() => {
+      state.blocker!('/');
+    });
+
+    fireEvent.click(screen.getByRole('button', {name: 'Stay'}));
+
+    expect(screen.queryByText('Unsaved changes')).toBeNull();
+    expect(navigateMock).not.toHaveBeenCalled();
+    // 修改保留，仍是 dirty 态——再次询问依旧被拦
+    expect((title as HTMLInputElement).value).toBe('New title');
+    expect(state.blocker!('/')).toBe(false);
+  });
+
+  it('干净时导航零拦截：谓词放行且不弹框', () => {
+    render(<Editor />);
+
+    // 未做任何修改：同步谓词直接 true，确认框不出现
+    expect(state.blocker!('/')).toBe(true);
+    expect(screen.queryByText('Unsaved changes')).toBeNull();
+    expect(navigateMock).not.toHaveBeenCalled();
+  });
+
+  it('保存成功：提交值成为新基线，后续导航不被未保存拦截否决', async () => {
+    // 回归锁：提交成功后 live values 仍与旧 initialValues 不同，若不
+    // setInitialValues 重定基线，随后的 navigate('/') 会被自己的
+    // blocker 否决（e2e publish 链路即在此挂掉）
+    postMock.mockResolvedValueOnce({article: makeArticle({slug: 'new-title-1'})});
+    render(<Editor />);
+
+    fillRequired();
+    fireEvent.click(screen.getByRole('button', {name: 'Publish Article'}));
+
+    await screen.findByRole('button', {name: 'Publish Article'});
+    expect(navigateMock).toHaveBeenCalledWith(state.router, '/');
+    // 提交值已是「已保存态」：isDirty 归零，离开询问直接放行
+    expect(state.blocker!('/')).toBe(true);
   });
 });

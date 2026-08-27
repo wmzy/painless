@@ -1,13 +1,17 @@
 import type {Article} from '@/types';
 
-import {useState} from 'react';
+import {useState, useEffect, useRef} from 'react';
 // react-f0rm ≥0.4：onSubmit / onValidSubmit 都在校验通过后触发且被
 // await（isSubmitting 覆盖整个异步提交，finally 复位），二者已无行为
 // 差异——统一用 onSubmit。
-import {Form, useForm, useIsSubmitting} from 'react-f0rm';
-import {Card, Title, Input, Textarea, TagInput, Alert} from 'haze-ui';
+// 未保存拦截批：isDirty(form) 是同步谓词（live values 对 initialValues
+// 的逐字段比较）；reset(form) 全量复位（values/errors/touched 清空，
+// 回落 initialValues，dirty 归零）——拦截判定与「确认放弃」都建立在
+// 这两个同步 API 上。
+import {Form, useForm, useIsSubmitting, isDirty, reset, setInitialValues} from 'react-f0rm';
+import {Card, Title, Input, Textarea, TagInput, Alert, ConfirmDialog} from 'haze-ui';
 import {FormItem} from 'haze-ui/form';
-import {useRouter, useData} from '@native-router/react';
+import {useRouter, useData, useBlocker} from '@native-router/react';
 import {navigate} from '@native-router/core';
 import {useMutation} from 'react-toolroom/async';
 
@@ -49,6 +53,63 @@ export default function Editor() {
   });
   const isSubmitting = useIsSubmitting(form);
 
+  // —— 未保存离开拦截（三类通道）——
+  // ① in-app 导航（TypedLink / navigate）：useBlocker 的同步谓词，
+  //    dirty 时弹确认框并返回 false 否决，干净时返回 true 放行。
+  // ② 浏览器回退/前进（POP）：同由 useBlocker 覆盖——被否决的 POP 由
+  //    库自动反向 go() 回推，URL 停留在当前页，确认框照常弹出。
+  // ③ 刷新/关闭的整页卸载：路由器拦不住（导航栏已 NavLink as 组合
+  //    SPA 化，点导航链接走 ①；裸 <a> 整页跳转的入口已不存在），由
+  //    下方 beforeunload 兜底——浏览器原生确认框，无法自定义 UI。
+  // confirmNav 同时承载「待跳转目标 path」与确认框 open 态（null = 关）；
+  // confirmRef 提供同步读写，确认回调不依赖渲染闭包里的 state 新鲜度。
+  const confirmRef = useRef<string | null>(null);
+  const [confirmNav, setConfirmNav] = useState<string | null>(null);
+
+  useBlocker((to) => {
+    if (!isDirty(form)) return true;
+    confirmRef.current = to;
+    setConfirmNav(to);
+    return false;
+  });
+
+  // 确认离开：reset 回落 initialValues（values/errors/touched 全清，
+  // dirty 清零）后再 navigate。注意 reset 的第二参不能省——省略时
+  // form.initialValues 会被置 undefined，getValueByPath 拿不到兜底值，
+  // TagInput 会对 undefined 取 .length 崩溃；显式回传原 initialValues
+  // （react-f0rm Devtools 同款调用）。用户已确认放弃修改，语义即
+  // 「回到未修改态再导航」，无需引入绕过标志（bypass flag）——
+  // reset 后上面的谓词天然放行。
+  const handleConfirmLeave = () => {
+    const to = confirmRef.current;
+    confirmRef.current = null;
+    reset(form, form.initialValues);
+    setConfirmNav(null);
+    if (to != null) void navigate(router, to);
+  };
+
+  // 取消离开：仅关确认框，留在页面继续编辑（修改保留）
+  const handleCancelLeave = () => {
+    confirmRef.current = null;
+    setConfirmNav(null);
+  };
+
+  // 通道③：整页卸载（刷新/关闭）的原生兜底。dirty 时
+  // preventDefault + returnValue 触发浏览器自带「离开站点？」确认。
+  useEffect(() => {
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (!isDirty(form)) return;
+      e.preventDefault();
+      // returnValue 是 legacy API（TS 标记 deprecated），但部分浏览器
+      // （尤其旧 Chromium/Firefox）不认 preventDefault 只认它，双写是
+      // beforeunload 的标准跨浏览器做法。
+      // eslint-disable-next-line @typescript-eslint/no-deprecated
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [form]);
+
   // 发布/编辑 → 声明式失效：提交成功后整实体失效 homeCache / articleCache
   // （0.9 起每实体一 cache，前缀即全部条目）。否则 navigate('/') 后
   // Home / Article 的 loader 在 staleTime 内新鲜命中旧缓存，新发布/编辑
@@ -67,6 +128,10 @@ export default function Editor() {
         body: values.body,
         tagList: values.tagList
       });
+      // 保存成功：刚提交的值即「已保存态」，以之为新 initialValues 把
+      // 表单拉回干净——否则随后的 navigate('/') 会被未离开保存拦截
+      // 否决（live values 仍与旧 initialValues 不同，isDirty 仍真）
+      setInitialValues(form, values);
       void navigate(router, '/');
     } catch (e: unknown) {
       // 422 字段错误回填到对应字段下方，顶部 Alert 只兜非字段错误
@@ -158,6 +223,22 @@ export default function Editor() {
               : 'Publish Article'}
         </button>
       </Form>
+      {/* 条件挂载 + open：ConfirmDialog 的 open 传布尔时是非受控语义
+          （仅作初值），由本组件的 confirmNav 状态控制挂载/卸载；overlay
+          点击（onClose）与取消同义——留在页面 */}
+      {confirmNav !== null && (
+        <ConfirmDialog
+          open
+          title='Unsaved changes'
+          confirmText='Leave'
+          cancelText='Stay'
+          onConfirm={handleConfirmLeave}
+          onCancel={handleCancelLeave}
+          onClose={handleCancelLeave}
+        >
+          You have unsaved changes. Leave the page and discard them?
+        </ConfirmDialog>
+      )}
     </Card>
   );
 }

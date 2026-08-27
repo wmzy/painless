@@ -45,11 +45,6 @@ export default function Home() {
 
   // 卡片级乐观收藏：cache.mutation 组合管道（services/mutations.ts）——
   // 乐观 +1 → 服务调用 → 响应字段选择式 apply（打到全部含该 slug 的
-  // 页缓存）→ 失败自动回滚。视图侧只剩调用，peek/set/refresh/手写回滚
-  // 全部消失（refresh 由 loaderCache 的 set 事件订阅自动扇出；Article
-  // 页与 Home 页的多投影联动由两层组合一次写齐）。
-  // 卡片级乐观收藏：cache.mutation 组合管道（services/mutations.ts）——
-  // 乐观 +1 → 服务调用 → 响应字段选择式 apply（打到全部含该 slug 的
   // 页缓存）→ 失败自动回滚。scope（react-toolroom 0.11）按 slug 串行
   // 同一文章的连点：第二次点击排队等第一次 settle 后执行，乐观翻转
   // 以服务端权威值为基线，不丢点击意图；不同文章互不阻塞。

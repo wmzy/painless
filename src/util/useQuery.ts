@@ -261,7 +261,7 @@ export function useQuery<F extends AsyncFunc>(
   // useCache 的 F 泛型随 cache 参数延迟求值（R<F>/Parameters<F> 实例化
   // 分歧）：tsc 需要此断言收拢；eslint 的类型程序对同表达式解析不同，
   // 认为多余——按 tsc 为准，精确禁用该行
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+   
   const stale = useCache(injectable as AsyncFunc, cache as Parameters<typeof useCache>[1], staleTime);
 
   // focus/可见性恢复时的后台重验证（react-query 的 refetchOnWindowFocus）：

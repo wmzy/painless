@@ -1,7 +1,7 @@
 import {useEffect, useState} from 'react';
-import {View, useRouter, ScrollRestoration} from '@native-router/react';
+import {View, useRouter, ScrollRestoration, NavLink} from '@native-router/react';
 import {navigate, invalidate, refresh} from '@native-router/core';
-import {NavigationBar, NavLink, Container, Title} from 'haze-ui';
+import {NavigationBar, NavLink as HazeNavLink, Container, Title} from 'haze-ui';
 
 import {
   getCurrentUser,
@@ -37,18 +37,36 @@ export default function Layout() {
       {/* back/forward 恢复滚动位置；push 回到顶部（POP 始终恢复） */}
       <ScrollRestoration />
       <NavigationBar>
-        <NavLink href='/'>
+        {/* 品牌 + 导航链接统一走 native-router NavLink：in-app 导航（点击
+            preventDefault + navigate，不再整页刷新），as={HazeNavLink} 把
+            计算出的 href / 组合 onClick 注入 haze-ui NavLink（其 forwardRef
+            + rest 透传接住注入）。active 高亮无需手传：native 侧命中当前
+            路由时注 aria-current='page'，haze-ui 侧 active 缺省兜底读
+            aria-current，两段标准 aria 链路自动点亮。根路径链接（品牌/
+            Home）须加 end：不加时 to='/' 按前缀规则对所有路径 active，
+            任何页面都会点亮，高亮语义被稀释（react-router 同款惯例）。 */}
+        <NavLink as={HazeNavLink} to='/' end>
           <Title level={3}>Painless</Title>
         </NavLink>
-        <NavLink href='/'>Home</NavLink>
-        <NavLink href='/help'>Help</NavLink>
-        <NavLink href='/about'>About</NavLink>
+        <NavLink as={HazeNavLink} to='/' end>
+          Home
+        </NavLink>
+        <NavLink as={HazeNavLink} to='/help'>
+          Help
+        </NavLink>
+        <NavLink as={HazeNavLink} to='/about'>
+          About
+        </NavLink>
         <ThemeToggle />
         {user ? (
           <>
             <span>{user.username}</span>
-            <NavLink href='/editor'>New Article</NavLink>
-            <NavLink
+            <NavLink as={HazeNavLink} to='/editor'>
+              New Article
+            </NavLink>
+            {/* Logout 不是导航：保持 haze-ui NavLink 的按钮语义（href 缺省
+                落 '#' + preventDefault），onClick 里的登出链路原样 */}
+            <HazeNavLink
               onClick={() => {
                 // logout 已清全部实体缓存；viewStack 里还留着本会话旧账号
                 // 的视图快照——不清则 POP 回退会直接渲染旧账号数据、绕过
@@ -61,12 +79,16 @@ export default function Layout() {
               }}
             >
               Logout
-            </NavLink>
+            </HazeNavLink>
           </>
         ) : (
           <>
-            <NavLink href='/login'>Login</NavLink>
-            <NavLink href='/register'>Register</NavLink>
+            <NavLink as={HazeNavLink} to='/login'>
+              Login
+            </NavLink>
+            <NavLink as={HazeNavLink} to='/register'>
+              Register
+            </NavLink>
           </>
         )}
       </NavigationBar>

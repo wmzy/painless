@@ -8,7 +8,7 @@ minimumReleaseAgeExclude:
   - react-f0rm
   - react-toolroom
   - haze-ui
-  - '@native-router/core'
-  - '@native-router/react'
-  - '@for-fun/event-emitter'
   - fetch-fun
+  - react-use-control
+  - '@native-router/*'
+  - '@for-fun/*'

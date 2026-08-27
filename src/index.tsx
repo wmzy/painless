@@ -26,8 +26,13 @@ const DevTool = import.meta.env.DEV
 // ToastContainer 也挂根：provider 覆盖全部视图（含 Layout 之外），任何
 // 视图的 useToast 都有宿主；测试渲染单个视图时同样可用。
 function Root() {
+  // useControl 首参是「外部 control 或初始值」：实现里 null 会被当成
+  // 初始值本身（dark 恒为 null，lazy 函数被丢弃），「新建 control +
+  // lazy 初始」要显式传 undefined——这也让 ThemeToggle 的 Switch 状态
+  // 链拿到 boolean（role="switch" 的 aria-checked 由 Switch 按 checked
+  // 渲染，null 会被 React 省略，axe 报 aria-required-attr）。
   const [dark, , themeControl] = useControl<boolean>(
-    null,
+    undefined,
     () => window.matchMedia('(prefers-color-scheme: dark)').matches
   );
 
