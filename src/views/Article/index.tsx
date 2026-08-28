@@ -6,8 +6,7 @@ import {navigate} from '@native-router/core';
 import {useData, useMatched} from '@native-router/react';
 import {Form, useForm, reset, useIsSubmitting} from 'react-f0rm';
 import {useMutation} from 'react-toolroom/async';
-import {Card, Title, Text, Avatar, Divider, Textarea, Alert, Button, Badge, Flex, useToast} from 'haze-ui';
-import {FormItem} from 'haze-ui/form';
+import {Card, Title, Text, Avatar, Divider, Textarea, Alert, Button, Badge, Flex, useToast, FormItem} from 'haze-ui';
 
 import * as articleService from '@/services/article';
 import {favoriteOnArticle, followOnArticle} from '@/services/mutations';

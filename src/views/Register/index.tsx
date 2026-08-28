@@ -2,11 +2,10 @@ import type {AppPaths} from '@/views';
 
 import {useMemo, useState} from 'react';
 import {Form, useForm} from 'react-f0rm';
-import {Card, Title, Input, Text, Alert} from 'haze-ui';
-// FormItem（haze-ui/form 1.8.0）：接管字段 id/错误 span/aria 链路——首条
-// 错误渲染为 <span role='alert'>，control 桥直接驱动 haze-ui 控件，取代
-// Field + FieldError 的手工挂接（FieldError 组件随之删除）
-import {FormItem} from 'haze-ui/form';
+import {Card, Title, Input, Text, Alert, FormItem} from 'haze-ui';
+// FormItem（haze-ui 1.8 引入、1.11 起随 form 层并入主 barrel）：接管字段
+// id/错误 span/aria 链路——首条错误渲染为 <span role='alert'>，control
+// 桥直接驱动 haze-ui 控件，取代 Field + FieldError 的手工挂接
 import {useRouter, TypedLink} from '@native-router/react';
 import {navigate} from '@native-router/core';
 

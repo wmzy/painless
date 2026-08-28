@@ -1,6 +1,6 @@
 import {lazy, Suspense} from 'react';
 import {createRoot} from 'react-dom/client';
-import 'haze-ui/styles.css';
+import './styles';
 import {lightTheme, darkTheme, ToastContainer} from 'haze-ui';
 import {useControl} from 'react-use-control';
 

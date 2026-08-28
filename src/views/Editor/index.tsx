@@ -9,8 +9,7 @@ import {useState, useEffect, useRef} from 'react';
 // 回落 initialValues，dirty 归零）——拦截判定与「确认放弃」都建立在
 // 这两个同步 API 上。
 import {Form, useForm, useIsSubmitting, isDirty, reset, setInitialValues} from 'react-f0rm';
-import {Card, Title, Input, Textarea, TagInput, Alert, ConfirmDialog} from 'haze-ui';
-import {FormItem} from 'haze-ui/form';
+import {Card, Title, Input, Textarea, TagInput, Alert, ConfirmDialog, FormItem} from 'haze-ui';
 import {useRouter, useData, useBlocker} from '@native-router/react';
 import {navigate} from '@native-router/core';
 import {useMutation} from 'react-toolroom/async';
@@ -145,7 +144,7 @@ export default function Editor() {
       {error && <Alert variant='danger'>{error}</Alert>}
       {/* react-f0rm ≥0.4：onSubmit 被 await，isSubmitting 覆盖整个异步提交 */}
       <Form form={form} onSubmit={handleSubmit} aria-label='Article editor form'>
-        {/* FormItem（haze-ui/form）桥接 react-f0rm 字段与 react-use-control：
+        {/* FormItem（haze-ui）桥接 react-f0rm 字段与 react-use-control：
             control 直接传给控件的 value prop（受控语义，写入即 setValueByPath），
             id/errorId/invalid 由 FormItem 生成并接好 aria 链路，首条错误由
             FormItem 渲染为字段下方的 <span role='alert'>（取代 FieldError）。

@@ -8,12 +8,14 @@ export default defineConfig({
     // e2e/ 是 Playwright 用例（自带 dev server），vitest 不得误捞
     exclude: ['node_modules', 'dist', 'mock', 'typings', 'fixtures', 'e2e/**'],
     passWithNoTests: true,
-    // haze-ui（type:module，原生导入会被外部化）内部具名导入 babel-runtime-jsx-plus
-    // （仅 UMD main 的 CJS 包），Node 原生 ESM 链接解析不出具名导出；
-    // 两者 inline 后经 vite 互操作转换即可在测试中正常渲染 haze-ui 组件。
+    // haze-ui 1.11（wyw-in-js 构建）：dist 各模块副作用导入 *.wyw-in-js.css，
+    // Node 原生 ESM 解析不了 .css 说明符——inline 后走 vite 管道即可正常
+    // 渲染。旧版 inline 的 babel-runtime-jsx-plus（UMD 具名导出问题）随
+    // 1.11 预打包升级消失，dist 裸依赖只剩 react 系/react-f0rm/
+    // react-use-control，无需再 inline。
     server: {
       deps: {
-        inline: ['babel-runtime-jsx-plus', 'haze-ui']
+        inline: ['haze-ui']
       }
     }
   },
