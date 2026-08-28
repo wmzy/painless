@@ -56,6 +56,22 @@ type AsyncFunc = (...args: any[]) => Promise<any>;
 // 与 react-toolroom 内部的 Awaited/R 保持同构，避免泛型延迟求值时类型对不上
 type R<F extends AsyncFunc> = ReturnType<F> extends Promise<infer A> ? A : ReturnType<F>;
 
+// K 的挂钩机制：从 fetcher 参数元组剥掉尾部的可选 AbortSignal（useRun 的
+// {signal: true} 每次 run 尾附新 signal，由 hashArgs 归一剥离——类型层与
+// hash 层同构），剩余元组即该查询的 cache key 形状。QueryOptions.cache 的
+// K 由此推导，实体 cache（createQueryCache 显式标注 K）与 fetcher 形状
+// 不一致时编译期报错。残余限制：只剥「元组尾部的可选 signal」——signal
+// 必须是尾参且可选（本仓库服务层约定即如此）；若 fetcher 参数里有其它
+// 每次调用都变、靠 hash 归一兜底的形态（如非尾部混入的 signal），类型层
+// 无法识别，仍退化为运行时 hash 归一。另：useQuery 实现体内 F 未定，
+// QueryKey<F> 无法静态证明与 Parameters<F> 同构，故实现体保留原 as 断言
+// 收拢（tsc 认必要；eslint 的类型程序解析不同视其多余——按 tsc 为准）。
+type QueryKey<F> = F extends (...args: infer A) => Promise<unknown>
+  ? A extends [...infer K, signal?: AbortSignal]
+    ? K
+    : A
+  : never;
+
 const DEFAULT_CACHE_TIME = 10000;
 const DEFAULT_STALE_TIME = 2000;
 
@@ -241,9 +257,14 @@ export type MockConfig = {
   key: string;
 };
 
-export type QueryOptions<T> = {
-  /** 结果缓存提供者：必传——按实体选择 cache（见 allCaches 注册表） */
-  cache: EntityCache<T, any>;
+export type QueryOptions<T, K extends unknown[]> = {
+  /**
+   * 结果缓存提供者：必传——按实体选择 cache（见 allCaches 注册表）。
+   * K 与 fetcher 参数元组挂钩（见 QueryKey）：cache 的 key 形状必须与
+   * fn 的参数形状一致，拼错（如 fetcher 收 [slug: string] 而传
+   * K=[number] 的 cache）在编译期报错，不再只靠 hash 归一在运行时兜底。
+   */
+  cache: EntityCache<T, K>;
   /** 缓存多久后标记为 stale（ms），默认 2000 */
   staleTime?: number;
   /** 初始数据，避免首屏取到 undefined */
@@ -302,26 +323,28 @@ export type QueryResult<T> = {
 };
 
 // select 重载：泛型 S 由调用点的 select 返回值推导，data 收窄为投影切片
-//（initData 语义仍是「select 之前的原始数据」，见实现注释）
+//（initData 语义仍是「select 之前的原始数据」，见实现注释）。cache 的
+// K 一律由 QueryKey<F> 推导：调用点只需让 cache 与 fn 同源，形状错配
+// 编译期暴露。
 export function useQuery<F extends AsyncFunc, S = R<F>>(
   fn: F,
   args: Parameters<F>,
-  opts: QueryOptions<R<F>> & {select: (data: R<F>) => S; initData: R<F>}
+  opts: QueryOptions<R<F>, QueryKey<F>> & {select: (data: R<F>) => S; initData: R<F>}
 ): QueryResult<S>;
 export function useQuery<F extends AsyncFunc, S = R<F>>(
   fn: F,
   args: Parameters<F>,
-  opts: QueryOptions<R<F>> & {select: (data: R<F>) => S}
+  opts: QueryOptions<R<F>, QueryKey<F>> & {select: (data: R<F>) => S}
 ): QueryResult<S | undefined>;
 export function useQuery<F extends AsyncFunc>(
   fn: F,
   args: Parameters<F>,
-  opts: QueryOptions<R<F>> & {initData: R<F>}
+  opts: QueryOptions<R<F>, QueryKey<F>> & {initData: R<F>}
 ): QueryResult<R<F>>;
 export function useQuery<F extends AsyncFunc>(
   fn: F,
   args: Parameters<F>,
-  opts: QueryOptions<R<F>>
+  opts: QueryOptions<R<F>, QueryKey<F>>
 ): QueryResult<R<F> | undefined>;
 export function useQuery<F extends AsyncFunc>(
   fn: F,
@@ -333,7 +356,7 @@ export function useQuery<F extends AsyncFunc>(
     select,
     mock,
     retry
-  }: QueryOptions<R<F>>
+  }: QueryOptions<R<F>, QueryKey<F>>
 ): QueryResult<R<F> | undefined> {
   const injectable = useInjectable(fn);
 
@@ -363,10 +386,14 @@ export function useQuery<F extends AsyncFunc>(
   // QueryCache 完全一致，无需断言；cache 本就存任意值/任意参数（hashArgs
   // 归一），运行时安全。
   // useCache 的 F 泛型随 cache 参数延迟求值（R<F>/Parameters<F> 实例化
-  // 分歧）：tsc 需要此断言收拢；eslint 的类型程序对同表达式解析不同，
-  // 认为多余——按 tsc 为准，精确禁用该行
-   
-  const stale = useCache(injectable as AsyncFunc, cache as Parameters<typeof useCache>[1], staleTime);
+  // 分歧，且 cache 收紧为 QueryKey<F> 后与 Parameters<F> 在泛型内不可静态
+  // 证明同构）：tsc 需要此断言收拢；eslint 的类型程序对同表达式解析不同，
+  // 认为多余——按 tsc 为准，故不加 disable 注释。
+  const stale = useCache(
+    injectable as AsyncFunc,
+    cache as unknown as Parameters<typeof useCache>[1],
+    staleTime
+  );
 
   // focus/可见性恢复时的后台重验证（react-query 的 refetchOnWindowFocus）：
   // bfcache 恢复、路由 viewStack 快照回放后数据可能过时，回到页面即对
@@ -418,8 +445,9 @@ export function useQuery<F extends AsyncFunc>(
 
   const refetch = useCallback(() => {
     // useRun 存下的条目带 signal 尾参，hashArgs 剥离后与本处 args 归一
-    // 为同一 key，delete 必然命中。
-    cache.delete(args);
+    // 为同一 key，delete 必然命中。args 含尾部 signal 而 QueryKey<F> 已
+    // 剥离——泛型内不可静态证明同构（运行时 hash 归一等价），经 K 断言。
+    cache.delete(args as unknown as QueryKey<F>);
     void injectable(...args);
   }, args as DependencyList);
 
