@@ -5,6 +5,11 @@
 // withCache(cache, keyOf, fn) 按 keyOf(ctx) 寻址，视图侧 mutation 写穿
 // 同一 cache，于是「loader 拉过的数据 useQuery 直接命中、mutation 写穿
 // 的值 loader 新鲜命中」。
+// 条目回收（react-toolroom ≥0.12 per-entry 语义）：cacheTime 按条目的
+// lastUsedAt 逐条计龄——loader 直写（cache.load）的条目即使当时没有
+// useQuery 消费者，闲置满窗口也会被回收（消费即 touch：useQuery 命中、
+// loader 新鲜/重验证读取都刷新 lastUsedAt），回收后下一次导航按 miss
+// 重新拉取，无泄漏也无「永不回收」的特例。
 // 分层职责：viewStack 管「要不要跑 loader」（POP 命中快照零请求、
 // invalidate 后重解析），cache 管「跑了 loader 发不发请求」（新鲜命中
 // 零请求 / stale 旧值先行后台重验证 / miss 骨架）。

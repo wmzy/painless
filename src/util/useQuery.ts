@@ -2,7 +2,12 @@
 // 把 react-toolroom/async 的 useInjectable / useCache / useRun /
 // useResultSelect / useLoading / useInitialLoading / useError / useRetry /
 // useFocusRevalidate 组合为单一 hook useQuery(fn, args, opts)，统一：
-// - 模块级共享内存缓存（cacheTime 默认 10000ms）；
+// - 模块级共享内存缓存（cacheTime 默认 5min，对齐 TanStack Query 的
+//   gcTime 缺省）：0.12 起 cacheTime 是 per-entry 逐条回收——条目以
+//   lastUsedAt（get/peek/set/load/patchWhere/hydrate 触碰即刷新）计龄，
+//   满窗口且无 in-flight 的条目经「useCount 归零 sweep + 写入防抖扫描」
+//   双通道回收，loader 直写的零消费者条目同样按窗口回收，不再是旧版
+//   「整表 10s 清空」的粗粒度语义；
 // - 陈旧标记（staleTime 默认 2000ms）——均对齐迁移前 Tags / CommentList
 //   手写组合的取值；
 // - 并发去重：0.8 起 useCache 的 miss/stale 重验证内部走 provider.load
@@ -72,7 +77,9 @@ type QueryKey<F> = F extends (...args: infer A) => Promise<unknown>
     : A
   : never;
 
-const DEFAULT_CACHE_TIME = 10000;
+// 默认 5min（对齐 TanStack Query gcTime）：per-entry 逐条回收（见文件
+// 头），非旧版整表清空。
+const DEFAULT_CACHE_TIME = 5 * 60_000;
 const DEFAULT_STALE_TIME = 2000;
 
 // select 缺省时的恒等投影：useResultSelect 只要结果存在就会调 select，
@@ -105,8 +112,8 @@ const hashArgs = (args: unknown[]) =>
 
 // 每实体一 cache：值类型与 key 元组类型都在 cache 上收紧（peek 不再需要
 // as 断言，key 写错形状编译期暴露），'article' 这类魔法字符串前缀随之
-// 消失——身份就是 cache 绑定本身。cacheTime 缺省 10s，低频全局实体可
-// 单独放长（见 tagsCache）。
+// 消失——身份就是 cache 绑定本身。cacheTime 缺省 5min（per-entry 逐条
+// 回收），低频全局实体可单独放长（见 tagsCache）。
 // EntityCache 把 mutation/patchWhere 从可选收成必有：createQueryCache
 // 恒由 createMemoryCacheProvider 创建（运行时必然携带），调用方零断言。
 export type EntityCache<T, K extends unknown[]> = CacheProvider<T, K> & {
@@ -231,10 +238,11 @@ export const commentsCache = createQueryCache<Comment[], [string]>('comments');
  *
  * 唯一持久化实体（localStorage 键 'painless.cache.tags'）。tags 全局
  * 低频变化（发文章才可能长出新 tag），却挂在首页等高频入口——cacheTime
- * 给长（1h），内存 GC 窗口与盘侧生命周期尽量对齐，避免「内存侧已清、
- * 盘侧仍在」的不一致反复暴露成冷启动重拉。重启后 hydrate 回的条目保留
- * 原 cachedAt：年龄按真实年龄计，重启即越 staleTime，首次消费旧值先行
- * + 后台重验证（SWR 语义），陈旧数据不会被当成新鲜值用。
+ * 给长（1h，per-entry：单例条目持续被消费即不会被回收），内存 GC 窗口
+ * 与盘侧生命周期尽量对齐，避免「内存侧已清、盘侧仍在」的不一致反复
+ * 暴露成冷启动重拉。重启后 hydrate 回的条目保留原 cachedAt：年龄按真
+ * 实年龄计，重启即越 staleTime，首次消费旧值先行 + 后台重验证（SWR
+ * 语义），陈旧数据不会被当成新鲜值用。
  */
 export const tagsCache = createQueryCache<string[], []>(
   'tags',

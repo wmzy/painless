@@ -1,6 +1,7 @@
 import {css} from '@linaria/core';
 import {useCallback, ReactNode, useEffect, useRef, useState} from 'react';
 import {Badge, Button, Card} from 'haze-ui';
+import {InjectDevTools, type ObservableCache} from 'react-toolroom/devtools';
 import {useControl, type Control} from 'react-use-control';
 
 import {
@@ -18,6 +19,17 @@ import {
 import {allCaches, clearAllCaches} from '@/util/useQuery';
 
 import Popover from './Popover';
+
+// InjectDevTools 的 injectables 传空：调用追踪（subscribeInjectEvents）
+// 只认 useInjectable(fn) 产物，且 store 是 per-hook-instance 的——本面板
+// 自建的 injectable 与 useQuery 内部 useInjectable(fn) 互不可见，观察不
+// 到真实调用，恒显 'No calls settled yet.'。真实请求观察由
+// fetch-fun withLogging → RequestLogView 承担（见下方 RequestLogView），
+// 重复且不可用的 inject 追踪不留。caches 侧保留：注册表条目的 cache 即
+// createMemoryCacheProvider 产物，天然满足 ObservableCache 形状
+//（snapshot 返回 {key,value,cachedAt[,pending]}，subscribe 收
+// CacheEvent），结构化兼容直接透传，零字段适配。
+const NO_INJECTABLES: readonly never[] = [];
 
 type Props = {
   children: ReactNode;
@@ -57,6 +69,23 @@ type CacheEvent = {
 
 // 事件流保留的最近条数：够回看一轮典型交互，又不让 300px 面板被撑爆
 const MAX_EVENTS = 8;
+
+// InjectDevTools 的挂载小节：只挂 cache 快照表（injectables 恒空数组，
+// 见 NO_INJECTABLES 注释）。模块常量身份恒稳定，满足 InjectDevTools 对
+// injectables/caches「身份恒稳定，否则观察者重挂」的要求；caches 用
+// 打开面板时的注册表快照（allCaches 只增不减，收起再开重新收集）。
+function InjectPanel() {
+  const [caches] = useState<ObservableCache[]>(() =>
+    allCaches.map(({cache}) => cache)
+  );
+  return (
+    <InjectDevTools
+      injectables={NO_INJECTABLES}
+      caches={caches}
+      title='Cache'
+    />
+  );
+}
 
 function DevToolInner({open: openControl}: {open?: Control<boolean> | boolean}) {
   const [open, setOpen] = useControl(openControl as Control<boolean>, false);
@@ -98,6 +127,13 @@ function DevToolInner({open: openControl}: {open?: Control<boolean> | boolean}) 
           ))}
           <hr />
           <CacheView />
+          <hr />
+          {/* react-toolroom/devtools 的 cache 快照表面板：复用 allCaches
+              注册表逐实体渲染 Key/Age/Value 表。自研 CacheView（聚合 +
+              事件流 + Clear）保留：面板看逐实体明细，CacheView 看注册表
+              全貌与事件流。injectables 观察不留——useQuery 的真实请求流
+              已由 RequestLogView 承担（见 NO_INJECTABLES 注释）。 */}
+          <InjectPanel />
           <hr />
           <RequestLogView />
         </Card>

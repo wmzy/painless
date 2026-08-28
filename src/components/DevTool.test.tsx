@@ -7,7 +7,7 @@ import {useControl} from 'react-use-control';
 import {stableHash} from 'react-toolroom/async';
 
 
-import {articleCache, clearAllCaches, commentsCache} from '@/util/useQuery';
+import {articleCache, clearAllCaches, commentsCache, createQueryCache} from '@/util/useQuery';
 import {clearRequestLogs, pushRequestLog} from '@/util/requestLog';
 
 import DevTool, {truncateKey, ageSeconds} from './DevTool';
@@ -225,14 +225,14 @@ describe('DevTool CacheView', () => {
   it('unsubscribes every cache listener on unmount', () => {
     // 桩掉 subscribe 以拿到退订函数：CacheView 卸载必须退订，否则面板
     // 关闭后事件仍往已卸载组件的 setState 打（内存泄漏 + 幽灵状态）。
-    // 聚合面板对每个实体 cache 各订阅一次——以 articleCache 为代表断言
+    // 面板开着时有两位订阅者——自研 CacheView 与 react-toolroom 的
+    // InjectDevTools（同一 cache 各订阅一次，各自退订）——以 articleCache
+    // 为代表断言订阅数与退订数一致
     const unsub = vi.fn();
     const listeners = new Set<unknown>();
     const subscribeSpy = vi
       .spyOn(articleCache, 'subscribe')
-      .mockImplementation(((
-        listener: (e: {type: 'set'} | {type: 'delete'; deleted: readonly unknown[][]}) => void
-      ) => {
+      .mockImplementation(((listener: unknown) => {
         listeners.add(listener);
         return unsub;
       }) as never);
@@ -242,17 +242,68 @@ describe('DevTool CacheView', () => {
           <div>content</div>
         </DevTool>
       );
-      // 面板未开：CacheView 未挂载，不应有订阅
+      // 面板未开：CacheView/InjectPanel 均未挂载，不应有订阅
       expect(subscribeSpy).not.toHaveBeenCalled();
 
       fireEvent.click(screen.getByText('DEV'));
-      expect(subscribeSpy).toHaveBeenCalledTimes(1);
-      expect(listeners.size).toBe(1);
+      expect(subscribeSpy).toHaveBeenCalledTimes(2);
+      expect(listeners.size).toBe(2);
 
       unmount();
-      expect(unsub).toHaveBeenCalledTimes(1);
+      expect(unsub).toHaveBeenCalledTimes(2);
     } finally {
       subscribeSpy.mockRestore();
     }
+  });
+
+  it('InjectDevTools renders a per-entity cache snapshot table fed from the registry', () => {
+    // devtools 面板的 cache 表：每个 ObservableCache 一张表（Key/Age/
+    // Value 三列），行 key 是 hash 后的字符串——种子一条 tag 实体后开
+    // 面板，断言表渲染出该实体条目。injectables 恒空（观察不到 useQuery
+    // 侧调用，见 DevTool.tsx NO_INJECTABLES 注释），面板应显示空态文案
+    // 而非调用记录；cache 快照表断言保留
+    const tagsCache = createQueryCache<string[], []>('devtool-test-tags');
+    tagsCache.set([], ['react', 'redux']);
+    seedA('inject-probe', 1);
+    openPanel();
+
+    // 面板标题（title prop）与空态注入追踪都在
+    expect(screen.getByText('Cache')).toBeDefined();
+    expect(screen.getByText('No calls settled yet.')).toBeDefined();
+    // article 实体条目经自研 CacheView（带实体名前缀的行）可见
+    expect(screen.getByTitle(stableHash(['inject-probe']))).toBeDefined();
+    // devtools 面板订阅的是同一 registry cache：tags 单例条目的 hash key
+    // 出现在 devtools 表格单元格中（Key 列）
+    const tagsKey = stableHash([]);
+    const keyCells = screen.getAllByText(tagsKey);
+    expect(keyCells.length).toBeGreaterThanOrEqual(1);
+    // Value 列渲染 JSON 摘要
+    expect(screen.getAllByText(JSON.stringify(['react', 'redux'])).length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('survives parent rerenders while the panel is open (hooks order stability)', () => {
+    // 回归：InjectPanel 内不得出现「useMemo 工厂内调 hook」——首帧注册
+    // N 个 hook、缓存命中后工厂不再执行、hook 数骤减，面板开着时父级
+    // 任一次重渲染即崩（'Do not call Hooks inside useMemo'）。宿主
+    // rerender 触发整树重渲染，面板内容必须原样存活
+    const tagsCache = createQueryCache<string[], []>('devtool-test-rerender');
+    tagsCache.set([], ['react']);
+    const {rerender} = render(
+      <DevTool>
+        <div>content</div>
+      </DevTool>
+    );
+    fireEvent.click(screen.getByText('DEV'));
+    expect(screen.getByText('Cache')).toBeDefined();
+
+    rerender(
+      <DevTool>
+        <div>content-v2</div>
+      </DevTool>
+    );
+    // 面板仍开着且内容完好：标题、cache 表、自研 CacheView 计数都在
+    expect(screen.getByText('Cache')).toBeDefined();
+    expect(screen.getAllByText(stableHash([])).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText(/Cache: \d+/)).toBeDefined();
   });
 });

@@ -1,11 +1,13 @@
 import type {AppPaths} from '@/views';
 
-import {useMemo, useState} from 'react';
+import {useState} from 'react';
 import {Form, useForm} from 'react-f0rm';
 import {Card, Title, Input, Text, Alert, FormItem} from 'haze-ui';
 // FormItem（haze-ui 1.8 引入、1.11 起随 form 层并入主 barrel）：接管字段
 // id/错误 span/aria 链路——首条错误渲染为 <span role='alert'>，control
-// 桥直接驱动 haze-ui 控件，取代 Field + FieldError 的手工挂接
+// 桥直接驱动 haze-ui 控件，取代 Field + FieldError 的手工挂接。
+// 1.12 起额外透传 react-f0rm ≥0.6 的 validateDebounce / delayError /
+// rules 到 useField，字段校验调度（debounce 窗口）无需再手写。
 import {useRouter, TypedLink} from '@native-router/react';
 import {navigate} from '@native-router/core';
 
@@ -20,18 +22,13 @@ import {
 } from '@/util/validators';
 
 // —— 用户名异步查重：react-f0rm 异步 validate 协议示范 ——
-// 取舍说明：react-f0rm 0.6 的 useField 内建 validateDebounce / delayError
-// 选项，但 haze-ui 1.9 的 FormItem 只透传 validate / mode 两个校验相关
-// prop（见 FormItemProps），表单层拿不到内建入口 → debounce 在校验函数
-// 闭包内自实现（每次触发先撤销上一轮未发出的请求）；delayError 属渲染层
-// 错误延迟展示，无法从 validate 函数内模拟，且异步轮自身的往返延迟已经
-// 天然错峰了错误出现时机，故不手写。若未来 FormItem 透传这两个选项，
-// 删掉闭包定时器改传 prop 即可，validate 只剩「查 signal + 发请求」。
-//
+// debounce 窗口（validateDebounce）由 FormItem 透传给 react-f0rm ≥0.6 的
+// useField（haze-ui ≥1.12 起内建支持），此前的手写 debounce 闭包校验器
+// 已删除：validate 里只剩「查 signal + 发请求」，窗口内重复触发只跑最后
+// 一轮（提交 trigger 会等窗口走完，语义与手写版一致）。
 // AbortSignal 全链路：useValidate 在新一轮校验开始（或字段卸载）时
-// abort 上一轮的 meta.signal——校验函数据此撤销挂起的 debounce 定时器
-// 与在途请求；即使被取消的轮次仍返回结果，useValidate 的 lock 机制也会
-// 独立丢弃过期结果，双保险。
+// abort 上一轮的 meta.signal——校验函数据此撤销在途请求；即使被取消的
+// 轮次仍返回结果，useValidate 的 lock 机制也会独立丢弃过期结果。
 const USERNAME_RESERVED = new Set(['admin', 'root', 'system', 'superuser']);
 // debounce 窗口与模拟网络延迟分开调参：窗口内重复触发只发最后一次
 const USERNAME_DEBOUNCE_MS = 300;
@@ -65,44 +62,22 @@ function checkUsernameReserved(username: string, signal: AbortSignal) {
   });
 }
 
-// debounce 闭包工厂：pending 定时器要跨 render 存活，组件里用 useMemo
-// 固定一份校验器（render 里直接调用工厂会每帧新建闭包，丢掉上一轮
-// 定时器的引用）。必填走同步分支，保持原 required 的即时语义；AbortError
-// 会被 useValidate 的 .catch(() => {}) 吞掉，取消的轮次不落任何错误。
-function createUsernameValidator() {
-  let pending: ReturnType<typeof setTimeout> | null = null;
-  return (value: string, meta: {signal: AbortSignal}) => {
-    const empty = required('Username is required')(value);
-    if (empty !== undefined) return empty;
-    // debounce：新一轮触发先撤销上一轮还没发出的请求
-    if (pending !== null) clearTimeout(pending);
-    const {signal} = meta;
-    return new Promise<string | undefined>((resolve, reject) => {
-      // 只撤销自己的定时器（识别 mine），不误伤已接管 pending 的新一轮
-      let mine: ReturnType<typeof setTimeout> | null = null;
-      const cancel = () => {
-        if (mine !== null) {
-          clearTimeout(mine);
-          if (pending === mine) pending = null;
-        }
-        reject(usernameAbortError());
-      };
-      signal.addEventListener('abort', cancel, {once: true});
-      mine = pending = setTimeout(() => {
-        mine = null;
-        pending = null;
-        checkUsernameReserved(value, signal).then(
-          (reserved) =>
-            resolve(reserved ? `'${value}' is already taken` : undefined),
-          reject
-        );
-      }, USERNAME_DEBOUNCE_MS);
-    });
-  };
-}
+// 异步查重校验器：必填走同步分支（返回同步错误，不经网络请求）。注意
+// validateDebounce>0 时 react-f0rm 对整个 validator（含本同步 required
+// 分支）统一经 setTimeout 延后——空值失焦后错误也是 300ms 窗口走完才
+// 出现，并非「required 即时显示」；异步轮保留对 meta.signal.aborted 的
+// 响应与 AbortError 语义（AbortError 被 useValidate 的 .catch(() => {})
+// 吞掉，取消的轮次不落任何错误）。
+const validateUsername = (value: string, meta: {signal: AbortSignal}) => {
+  const empty = required('Username is required')(value);
+  if (empty !== undefined) return empty;
+  if (meta.signal.aborted) return Promise.reject(usernameAbortError());
+  return checkUsernameReserved(value, meta.signal).then((reserved) =>
+    reserved ? `'${value}' is already taken` : undefined
+  );
+};
 
 export default function Register() {
-  // 类型化表单：validate 参数与 handleSubmit 的 values 均由此推断
   // 类型化表单：validate 参数与 handleSubmit 的 values 均由此推断。
   // 空字符串 initialValues 让字段从首帧就是受控输入（undefined 起始会
   // 触发 React 的 uncontrolled→controlled 警告）
@@ -110,8 +85,6 @@ export default function Register() {
   const form = useForm<RegisterValues>({
     initialValues: {username: '', email: '', password: ''}
   });
-  // debounce 闭包跨 render 固定一份（见 createUsernameValidator 注释）
-  const validateUsername = useMemo(createUsernameValidator, []);
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
 
@@ -136,11 +109,13 @@ export default function Register() {
             避免指向不存在元素的悬空 id */}
         {/* 用户名：异步查重示范（react-f0rm 异步 validate 协议）。
             mode='onBlur' 同 email——失焦/提交才校验，避免每次击键一轮
-            请求；onBlur 由 FormItem binding 提供，接给 Input 才触发 */}
+            请求；validateDebounce 把窗口调度交给 useField（窗口内重复
+            触发只跑最后一轮，提交 trigger 会等窗口走完） */}
         <FormItem
           form={form}
           name='username'
           mode='onBlur'
+          validateDebounce={USERNAME_DEBOUNCE_MS}
           validate={validateUsername}
         >
           {({id, errorId, invalid, control, onBlur}) => (

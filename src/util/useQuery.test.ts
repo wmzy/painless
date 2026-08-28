@@ -78,7 +78,7 @@ describe('useQuery', () => {
     expect(first.result.current.stale).toBe(false);
     first.unmount();
 
-    await sleep(30); // 跨过 staleTime=20，仍在 cacheTime 内
+    await sleep(30); // 跨过 staleTime=20，远在 cacheTime(5min) 内
 
     const second = renderHook(() =>
       useQuery(fn, [], {cache, initData: [] as string[], staleTime})
