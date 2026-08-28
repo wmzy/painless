@@ -44,6 +44,12 @@ Some data libraries keep old object references when a refetch returns identical 
 
 Image optimization is a service concern, not a framework concern. A dedicated image service (CDN-based or self-hosted) can serve optimized images to all clients — web, mobile, desktop — not just the frontend framework. Coupling this into the framework creates vendor lock-in and serves only one client.
 
+### Token in localStorage — A Documented Trade-off
+
+The auth token lives in `localStorage` (`src/services/auth.ts`) — RealWorld mandates `Token`-header authentication, and localStorage survives refresh, so a login isn't lost on reload. The cost is stated plainly: any successful XSS can read the token, where an httpOnly cookie keeps it out of JavaScript's reach entirely.
+
+We accept the trade deliberately. The textbook alternative — an httpOnly refresh cookie plus an access token held in memory — requires backend cooperation a pure client-side template cannot assume, and it discards the session on every refresh: a narrower attack surface bought with a worse product. The main XSS vector is already closed — React escapes by default and the template never touches `dangerouslySetInnerHTML` — and what remains is defense-in-depth (CSP and friends) that is application-specific and deliberately left to you. A template's job is to put the trade-off on the table, not to decide it for you. If your threat model differs, the whole mechanism is one file: swap the storage in `src/services/auth.ts`.
+
 ### Platform-Agnostic Deployment
 
 Painless produces standard static assets. It does not couple to any specific deployment platform — no proprietary middleware, no platform-specific APIs, no vendor lock-in. Deploy to GitHub Pages, Netlify, Vercel, Cloudflare Pages, your own CDN, or a USB drive. The output is yours.

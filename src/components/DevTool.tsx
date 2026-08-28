@@ -39,18 +39,9 @@ type CacheEntry = {
   value: unknown;
   cachedAt: number;
   pending?: boolean;
-  /** 面板侧附加：条目所属的实体 cache 名（allCaches 顺序） */
+  /** 面板侧附加：条目所属的实体 cache 注册名（useQuery 自动登记） */
   cacheName: string;
 };
-
-// 多实体聚合：allCaches 与展示名配对（cacheEntries 名与 useQuery 的
-// 导出一致），CacheView 遍历 snapshot/subscribe
-const cacheEntries: [string, (typeof allCaches)[number]][] = [
-  ['article', allCaches[0]],
-  ['home', allCaches[1]],
-  ['comments', allCaches[2]],
-  ['tags', allCaches[3]]
-];
 
 // cache.subscribe() 的事件形状（CacheProvider 契约的 CacheEvent）：set 不带
 // key；delete 是「一切移除」的合流形状（单删/clear/deleteWhere/
@@ -163,13 +154,15 @@ function formatEvent(
     : `delete ${e.deleted.length} 条`;
 }
 
-// 缓存检查器（多实体聚合）：allCaches 遍历 snapshot()，订阅每个 cache
-// 的变更事件（含 clear）刷新并追加事件流；面板关闭即卸载取消全部订阅。
-// 条目带 cache 名前缀（article/home/…），Clear 按钮清空全部实体。
+// 缓存检查器（多实体聚合）：直读 allCaches 注册表（name + cache 成对，
+// 由 useQuery 创建实体时自动登记，无需此处按索引配名）遍历 snapshot()，
+// 订阅每个 cache 的变更事件（含 clear）刷新并追加事件流；面板关闭即
+// 卸载取消全部订阅。条目带 cache 名前缀（article/home/…），Clear 按钮
+// 清空全部实体。
 function CacheView() {
   const collect = useCallback(() => {
     const rows: CacheEntry[] = [];
-    for (const [name, cache] of cacheEntries) {
+    for (const {name, cache} of allCaches) {
       for (const entry of cache.snapshot?.() ?? []) {
         rows.push({...entry, cacheName: name});
       }
@@ -196,7 +189,7 @@ function CacheView() {
   // 卸载退订全部——与 refresh 分开，避免重复订阅
   useEffect(() => {
     const unsubs: (() => void)[] = [];
-    for (const [, cache] of cacheEntries) {
+    for (const {cache} of allCaches) {
       const unsub = cache.subscribe?.((e) => {
         const next = collect();
         const label = formatEvent(

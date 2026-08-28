@@ -34,7 +34,7 @@ function deferred<T>() {
 const fakeRouter = {history: {}};
 // withCache 机制用本地类型化 cache（与 Article 实体解耦）：值形状即本
 // 文件的 {article: string} 假数据
-const entryCache = createQueryCache<{article: string}, [string]>();
+const entryCache = createQueryCache<{article: string}, [string]>('loader-test');
 // Article 形态的 ctx：路由无 search schema → 寻址落到 params
 const ctx = {params: {title: 'some-title'}, router: fakeRouter};
 // key 由 withCache 的 keyOf 定义——测试侧与 loader 同源（同一表达式）

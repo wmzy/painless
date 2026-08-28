@@ -9,7 +9,9 @@ import {memo, createElement} from 'react';
 // 依赖），本测试无需再 mock haze-ui（早期 useQuery → DevTool → haze-ui
 // 链路在 vitest ESM 下无法提供 UMD 命名导出，故曾整体 mock）。
 
-import {createQueryCache, useQuery} from './useQuery';
+import {stableHash} from 'react-toolroom/async';
+
+import {clearAllCaches, createQueryCache, useQuery} from './useQuery';
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -23,7 +25,7 @@ describe('useQuery', () => {
   it('loading → data：初始给 initData，请求完成后 data/loading/stale 就位', async () => {
     const pending = deferred<string[]>();
     const fetchTags = () => pending.promise;
-    const cache = createQueryCache<any, any>();
+    const cache = createQueryCache<any, any>('loading-data');
 
     const {result} = renderHook(() =>
       useQuery(fetchTags, [], {cache, initData: ['init']})
@@ -44,7 +46,7 @@ describe('useQuery', () => {
 
   it('同参数重新挂载：新鲜期内命中缓存，不再发请求', async () => {
     const fn = vi.fn().mockResolvedValue(['v1']);
-    const cache = createQueryCache<any, any>();
+    const cache = createQueryCache<any, any>('fresh-remount');
 
     const first = renderHook(() =>
       useQuery(fn, [], {cache, initData: [] as string[]})
@@ -66,7 +68,7 @@ describe('useQuery', () => {
       .fn()
       .mockResolvedValueOnce(['old'])
       .mockReturnValueOnce(pending.promise);
-    const cache = createQueryCache<any, any>();
+    const cache = createQueryCache<any, any>('stale-swr');
     const staleTime = 20;
 
     const first = renderHook(() =>
@@ -95,7 +97,7 @@ describe('useQuery', () => {
 
   it('refetch：绕过新鲜缓存强制重发，且引用稳定', async () => {
     const fn = vi.fn().mockResolvedValueOnce(['v1']).mockResolvedValueOnce(['v2']);
-    const cache = createQueryCache<any, any>();
+    const cache = createQueryCache<any, any>('refetch-stable');
 
     const {result, rerender} = renderHook(() =>
       useQuery(fn, [], {cache, initData: [] as string[]})
@@ -115,7 +117,7 @@ describe('useQuery', () => {
 
   it('请求失败：错误进入 error 状态，loading 复位', async () => {
     const fn = vi.fn().mockRejectedValue(new Error('boom'));
-    const cache = createQueryCache<any, any>();
+    const cache = createQueryCache<any, any>('error-state');
 
     const {result} = renderHook(() => useQuery(fn, [], {cache}));
 
@@ -128,7 +130,7 @@ describe('useQuery', () => {
   it('已有结果后的重拉：loading 保持 false，fetching 如实为 true', async () => {
     const pending = deferred<string[]>();
     const fn = vi.fn().mockResolvedValueOnce(['v1']).mockReturnValueOnce(pending.promise);
-    const cache = createQueryCache<any, any>();
+    const cache = createQueryCache<any, any>('background-fetching');
 
     const {result} = renderHook(() =>
       useQuery(fn, [], {cache, initData: [] as string[]})
@@ -156,7 +158,7 @@ describe('useQuery', () => {
   it('初次加载：loading 与 fetching 均 true，直到首个结果 settle', async () => {
     const pending = deferred<string[]>();
     const fn = vi.fn().mockReturnValue(pending.promise);
-    const cache = createQueryCache<any, any>();
+    const cache = createQueryCache<any, any>('initial-loading');
 
     const {result} = renderHook(() =>
       useQuery(fn, [], {cache, initData: [] as string[]})
@@ -183,7 +185,7 @@ describe('useQuery', () => {
       .fn()
       .mockReturnValueOnce(first.promise)
       .mockReturnValueOnce(second.promise);
-    const cache = createQueryCache<any, any>();
+    const cache = createQueryCache<any, any>('refetch-inflight');
 
     const {result} = renderHook(() =>
       useQuery(fn, [], {cache, initData: [] as string[]})
@@ -213,7 +215,7 @@ describe('useQuery', () => {
   it('跨组件同时挂载：provider 层共享同一 in-flight，重挂载命中缓存', async () => {
     const pending = deferred<string[]>();
     const fn = vi.fn().mockReturnValue(pending.promise);
-    const cache = createQueryCache<any, any>();
+    const cache = createQueryCache<any, any>('shared-inflight');
 
     // 0.8 形态：useCache 的 miss 走 provider.load——两个组件实例并发首载
     // 同参数，共享同一条 in-flight（fn 只执行一次），双方各自广播拿到
@@ -253,7 +255,7 @@ describe('useQuery', () => {
       calls.push({id, signal});
       return Promise.resolve([id]);
     });
-    const cache = createQueryCache<any, any>();
+    const cache = createQueryCache<any, any>('signal-abort');
 
     const {rerender} = renderHook(
       ({id}) => useQuery(fn, [id], {cache}),
@@ -280,7 +282,7 @@ describe('useQuery', () => {
     const fn: (args: Record<string, unknown>) => Promise<string[]> = vi.fn(
       () => Promise.resolve(['v1'])
     );
-    const cache = createQueryCache<any, any>();
+    const cache = createQueryCache<any, any>('hash-normalize');
 
     const first = renderHook(
       ({args}) => useQuery(fn, [args], {cache, initData: [] as string[]}),
@@ -305,7 +307,7 @@ describe('useQuery', () => {
   it('select：data 为投影切片，initData 以原始数据注入经投影返回', async () => {
     const pending = deferred<{articlesCount: number; title: string}>();
     const fn = () => pending.promise;
-    const cache = createQueryCache<any, any>();
+    const cache = createQueryCache<any, any>('select-slice');
 
     const {result} = renderHook(() =>
       useQuery(fn, [], {
@@ -339,7 +341,7 @@ describe('useQuery', () => {
       .mockReturnValueOnce(p1.promise)
       .mockReturnValueOnce(p2.promise)
       .mockReturnValueOnce(p3.promise);
-    const cache = createQueryCache<any, any>();
+    const cache = createQueryCache<any, any>('select-rerender');
 
     let childRenders = 0;
     const Slice = memo(({count}: {count: number}) => {
@@ -395,7 +397,7 @@ describe('useQuery', () => {
       .fn()
       .mockResolvedValueOnce(['v1'])
       .mockResolvedValueOnce(['v2']);
-    const cache = createQueryCache<any, any>();
+    const cache = createQueryCache<any, any>('online-revalidate');
 
     const {result} = renderHook(() =>
       useQuery(fn, [], {cache, initData: [] as string[], staleTime: 20})
@@ -414,7 +416,7 @@ describe('useQuery', () => {
 
   it('断网恢复：新鲜期内 online 事件不重发请求', async () => {
     const fn = vi.fn().mockResolvedValue(['v1']);
-    const cache = createQueryCache<any, any>();
+    const cache = createQueryCache<any, any>('online-fresh');
 
     const {result} = renderHook(() =>
       // staleTime 给宽（waitFor 的轮询本身要耗 ~10ms/次，20ms 会把
@@ -431,7 +433,7 @@ describe('useQuery', () => {
 
   it('断网恢复：卸载后 online 事件不再触发重拉（监听已清理）', async () => {
     const fn = vi.fn().mockResolvedValue(['v1']);
-    const cache = createQueryCache<any, any>();
+    const cache = createQueryCache<any, any>('online-unmounted');
 
     const {unmount} = renderHook(() =>
       useQuery(fn, [], {cache, initData: [] as string[], staleTime: 20})
@@ -444,5 +446,87 @@ describe('useQuery', () => {
       window.dispatchEvent(new Event('online'));
     });
     expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  // ---- 持久化（opts.persist：localStorage 冷启动镜像）------------------
+  //
+  // 这组用例各建带 persist 的临时 cache，localStorage 键唯一（共享真键
+  // 会与模块级 tagsCache 的镜像互相覆盖）。jsdom 的 localStorage 用例间
+  // 不自动清空，beforeAll 统一清场；各用例收尾自清键，杜绝向下游用例
+  // （尤其断网恢复组，它们重新 import 本模块的产物已固定）渗漏。
+
+  it('持久化 round-trip：写入落盘，新 cache 同键 hydrate 回同值且 cachedAt 保留', async () => {
+    const KEY = 'painless.test.roundtrip';
+    localStorage.clear();
+
+    const writer = createQueryCache<string[], []>('roundtrip-writer', 60_000, {
+      persist: KEY
+    });
+    writer.set([], ['tag-a', 'tag-b']);
+    // set 事件同步驱动镜像落盘
+    const raw = localStorage.getItem(KEY);
+    expect(raw).toBeDefined();
+    // 盘上是 dehydrate 形状：hashed key → [value, cachedAt]，cachedAt 为
+    // 写入毫秒时间戳—— staleness 计算的原材料
+    const stored = JSON.parse(raw!);
+    expect(stored[stableHash([])]).toEqual([
+      ['tag-a', 'tag-b'],
+      expect.any(Number)
+    ]);
+    const cachedAt = stored[stableHash([])][1] as number;
+
+    // 模拟重启：全新 cache 读同一键。hydrate 合并语义保留盘上 cachedAt
+    // ——重启后条目年龄按真实年龄计，条目天然 stale，消费侧旧值先行 +
+    // 后台重验证（SWR），陈旧数据不会冒充新鲜值
+    const reader = createQueryCache<string[], []>('roundtrip-reader', 60_000, {
+      persist: KEY
+    });
+    const entry = reader.peek!([]);
+    expect(entry?.value).toEqual(['tag-a', 'tag-b']);
+    expect(entry?.cachedAt).toBe(cachedAt);
+
+    localStorage.removeItem(KEY);
+  });
+
+  it('clearAllCaches 同步清持久化 storage（登出擦盘语义完整）', () => {
+    const KEY = 'painless.test.logout';
+    localStorage.clear();
+
+    const cache = createQueryCache<string[], []>('logout-wipe', 60_000, {
+      persist: KEY
+    });
+    cache.set([], ['tag']);
+    expect(localStorage.getItem(KEY)).not.toBeNull();
+
+    clearAllCaches();
+    // 内存与盘同清：下个账号冷启动不得 hydrate 回上个账号的数据
+    expect(cache.snapshot?.()).toEqual([]);
+    expect(localStorage.getItem(KEY)).toBeNull();
+  });
+
+  it('坏 JSON / 坏形状静默降级：不抛、cache 空开始、盘上坏数据不清（等覆写）', () => {
+    // 坏 JSON：模块加载路径上不允许存储层炸掉——静默丢弃，cache 空开始
+    const BAD1 = 'painless.test.bad-json';
+    localStorage.setItem(BAD1, '{not json');
+    const c1 = createQueryCache<string[], []>('bad-json', 60_000, {
+      persist: BAD1
+    });
+    expect(c1.snapshot?.()).toEqual([]);
+
+    // 坏形状（值不是 [value, cachedAt] 二元组）：粗验不合格整体丢弃
+    const BAD2 = 'painless.test.bad-shape';
+    localStorage.setItem(BAD2, JSON.stringify({k: ['v']}));
+    const c2 = createQueryCache<string[], []>('bad-shape', 60_000, {
+      persist: BAD2
+    });
+    expect(c2.snapshot?.()).toEqual([]);
+
+    // 降级路径不写盘：盘上坏数据原样保留，等下次真实 set 的镜像覆写。
+    // 读侧丢弃 ≠ 写侧擦除——避免 hydrate 失败时误清用户数据
+    expect(localStorage.getItem(BAD1)).toBe('{not json');
+    expect(localStorage.getItem(BAD2)).toBe(JSON.stringify({k: ['v']}));
+
+    localStorage.removeItem(BAD1);
+    localStorage.removeItem(BAD2);
   });
 });

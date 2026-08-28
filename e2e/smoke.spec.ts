@@ -346,6 +346,170 @@ test('editor blocks unsaved navbar navigation (in-app) until confirmed', async (
 });
 
 // ---------------------------------------------------------------------------
+// 行为链路补充（复用上面的 mockApi/login fixtures）。page.route 与既有
+// mockApi 叠加时的匹配语义（均经浏览器实测确认）：
+// - handler 按注册的逆序尝试（后注册者先命中），fulfill 即终结，不再
+//   进入更早注册的 handler；
+// - route.fallback() 只向「更早注册」的下一个 handler 回退——改写单个
+//   端点的探针/计数路由必须注册在 mockApi 之后，记账后 fallback 才能交
+//   还 mockApi 分发，不复制端点分发逻辑；
+// - pattern 对完整 URL（含 query string）做 glob 匹配：`**/api/articles`
+//   匹配不到 `/api/articles?offset=0&limit=10`，恒带 query 的端点要写
+//   `?*`（glob 的 ? 匹配单个非 / 字符，恰好吃掉 URL 的字面 ?）。
+// ---------------------------------------------------------------------------
+
+// 断网恢复重验证（useReconnectRevalidate）：Tags 侧栏经 useQuery 订阅
+// tagsCache（key=[]，staleTime 默认 2000ms），window online 事件时对
+// miss/stale 条目后台重拉。mock 用可变闭包让 GET /tags 依次返回两个
+// 标签集：首拉 ['alpha'] 上屏 → 等条目过期 → offline→online 触发重拉
+// ['alpha','omega']——omega chip 出现是「重验证真发生了」的 UI 铁证，
+// 请求计数（首拉 1 次、重拉 1 次）同时排除风暴式重发。
+//
+// 时序取舍：过期是纯时间条件，没有可等待的 UI 观测点（Tags 的 stale
+// 只映射为 opacity 样式类，且组件内 stale 标志只在重验证周期里翻转，
+// 不会随时间独自置真），故以 waitForTimeout(2100) 等满 staleTime——
+// 等的是「前置条件本身」，不是拿 sleep 等某个会自行发生的 UI 变化。
+//
+// 断网模拟：context.setOffline 走 CDP 网络仿真，与 page.route 的
+// fulfill 互不干扰（被 mock 命中的请求不出网络栈）；setOffline(false)
+// 恢复时 Chromium 原生派发 online 事件且此刻 navigator.onLine 已翻真
+// ——reconnect 处理器先查 onLine 再动作，条件必须成立，因此用真实
+// 断网而非手工 dispatchEvent（后者绕开 onLine 门槛，覆盖是假的）。
+test('tags refetch on reconnect (offline → online)', async ({
+  page,
+  context
+}) => {
+  const tagPayloads = [['alpha'], ['alpha', 'omega']];
+  let tagsGets = 0;
+  await mockApi(page, {published: false});
+  // 仅接管 /tags：取值与自增在同一处同步完成（handler 内无 await），
+  // 不依赖 request 事件与 route 处理器之间不确定的先后序
+  await page.route('**/api/tags', (route) => {
+    const tags = tagPayloads[Math.min(tagsGets, tagPayloads.length - 1)];
+    tagsGets++;
+    return json(route, 200, {tags});
+  });
+
+  await page.goto('/');
+  await expect(page.getByRole('button', {name: 'alpha'})).toBeVisible();
+  await expect.poll(() => tagsGets).toBe(1);
+
+  // 等满 staleTime（默认 2000ms），理由见上方时序注释
+  await page.waitForTimeout(2100);
+
+  await context.setOffline(true);
+  await context.setOffline(false);
+
+  await expect(page.getByRole('button', {name: 'omega'})).toBeVisible();
+  await expect.poll(() => tagsGets).toBe(2);
+});
+
+// 401 自动登出：http 层在错误映射处判「401 且 tokenGetter() 非空」→
+// 触发 auth 服务注册的 unauthorized handler → logout()（clearAllCaches
+// + setUser(null) + localStorage 移除 'painless.user'），Layout 经
+// onAuthChange 订阅同步导航栏。选 favorite mutation 作 401 载体：登录
+// 态请求必带 token（触发条件成立），且 mutation 失败走 toast 报错 +
+// 乐观回滚，不牵动路由 errorComponent——视图保持稳定，登出断言不被
+// 换页干扰；登录/注册自身的 401 发生在未登录态（token 为空）天然不
+// 触发，无法用它验证本链路。Toast 3s 自动消失，其断言紧跟触发点。
+test('401 on authenticated request auto-logs-out', async ({page}) => {
+  await mockApi(page, {published: false});
+  // favorite 端点固定 401，响应体取 RealWorld {errors} 形状——mapError
+  // 把字段错误拼成可读文案写进 HTTPError.message，toast 断言据此落点
+  await page.route('**/api/articles/*/favorite', (route) =>
+    json(route, 401, {errors: {token: ['expired']}})
+  );
+  // feed 探针：叠加在 mockApi 之上（后注册先命中），记账（await
+  // headerValue，请求停在 handler 内，无 request 事件的异步竞态）后
+  // fulfill 按 fixture 同款形状回包。pattern 带 ?*：feed 请求恒带
+  // offset/limit query，glob 对完整 URL 匹配，裸 `**/api/articles`
+  // 匹配不到（段首注释）。本用例不依赖 state.published
+  const feedAuth: (string | null)[] = [];
+  await page.route('**/api/articles?*', async (route) => {
+    feedAuth.push(await route.request().headerValue('authorization'));
+    return json(route, 200, {
+      articles: [article1, article2],
+      articlesCount: 2
+    });
+  });
+
+  await page.goto('/');
+  await login(page);
+
+  // 触发 401：乐观收藏 → POST .../favorite 响应 401 → 登出链路 + 失败
+  // toast（乐观 +1 由 mutation 管道自动回滚，按钮态无需在此断言）
+  await page.getByRole('button', {name: /❤\s*3/}).click();
+  await expect(page.getByRole('alert')).toContainText('token expired');
+
+  // 导航栏切回匿名态：用户名消失、Sign in 回归；本地凭据已清
+  await expect(page.getByText(user.username)).toHaveCount(0);
+  await expect(page.getByRole('link', {name: 'Login'})).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem('painless.user')))
+    .toBeNull();
+
+  // 后续匿名请求正常：登出后整页重载（缓存已清、旧账号数据不作数），
+  // feed GET /articles 匿名发出（无 Authorization 头）且照常成功渲染。
+  // 内容可见后轮询 feed 账本到新增一条，再断言头值
+  const before = feedAuth.length;
+  await page.reload();
+  await expect(
+    page.getByRole('heading', {name: article1.title})
+  ).toBeVisible();
+  await expect.poll(() => feedAuth.length).toBe(before + 1);
+  expect(feedAuth[before]).toBeNull();
+});
+
+// PrefetchLink 预览与预取共享实体缓存：Home 卡片标题即 PreviewLink
+//（prefetch='viewport'，卡片滚入视口即经 router.preload 预解析目标
+// 路由——守卫 + resolveView + withCache(articleCache) 的 loader，GET
+// /articles/:slug 由此发出）；hover 走组件内 onMouseEnter 开 Preview
+// 浮层（usePrefetch 渲染已解析视图）；点击复用 link ref 里缓存的同一
+// resolve entry——loader 不重跑、articleCache 亦不重查，单篇文章 GET
+// 全程共 1 次（预取/预览/正式导航三态共享同一请求）。
+//
+// 定位取舍：Preview 浮层带 aria-hidden='true'（不在无障碍树里），
+// getByRole('dialog') 匹配不到，改用 [role=dialog] 属性选择器；浮层
+// pointer-events:none，点击仍落在卡片标题本体（浮层只读不可交互）。
+// 点击时同名的预览标题（h1）已在 DOM，需 .first() 锁定卡片 h2。
+test('PreviewLink previews on hover and reuses prefetch on click', async ({
+  page
+}) => {
+  const singleGets: Record<string, number> = {};
+  await mockApi(page, {published: false});
+  // 计数代理：glob 的 * 不含 /，只命中「单篇详情」这一层路径
+  //（comments/favorite 更深层与信息流 GET /articles 均不匹配；详情
+  // 请求无 query，无需 ?*），计数后 fallback 交还 mockApi 的正常分发
+  await page.route('**/api/articles/*', async (route) => {
+    const slug = new URL(route.request().url()).pathname.split('/').pop()!;
+    singleGets[slug] = (singleGets[slug] ?? 0) + 1;
+    await route.fallback();
+  });
+
+  await page.goto('/');
+  // viewport 预取：卡片滚入视口即拉详情，恰好一次
+  await expect.poll(() => singleGets[article1.slug]).toBe(1);
+
+  // hover 卡片标题 → onMouseEnter 开预览浮层：呈现预解析的 Article
+  // 视图（正文可辨而非 loading 占位），且零新增请求
+  await page.getByRole('heading', {name: article1.title}).hover();
+  const overlay = page.locator('[role="dialog"]');
+  await expect(
+    overlay.getByText('Paragraphs of the first fixture article.')
+  ).toBeVisible();
+  await expect.poll(() => singleGets[article1.slug]).toBe(1);
+
+  // 点击进详情：复用预取的同一 resolve entry（视图任务已 settle），
+  // 同一 GET 仍共 1 次——预取与正式导航共享实体缓存/在飞任务
+  await page.getByRole('heading', {name: article1.title}).first().click();
+  await expect(page).toHaveURL(new RegExp(`/article/${article1.slug}$`));
+  await expect(
+    page.getByText('Fixture comment for the article page.')
+  ).toBeVisible();
+  await expect.poll(() => singleGets[article1.slug]).toBe(1);
+});
+
+// ---------------------------------------------------------------------------
 // a11y：@axe-core/playwright 对 mock 数据渲染出的主要页面做 WCAG 2.0/2.1
 // A/AA 系统化扫描（复用上面的 mockApi/login fixtures，网络层全 mock，
 // 未预期端点 404）。违例处理约定：painless 视图侧问题（缺 label、aria

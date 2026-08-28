@@ -44,6 +44,12 @@ Painless 做出了刻意的取舍。以下是我们**选择不做**的东西，�
 
 图片优化是服务关注点，不是框架关注点。专门的图片服务（基于 CDN 或自建）可以向所有客户端——Web、移动、桌面——提供优化后的图片，而不只是前端框架。把它耦合进框架会造成厂商锁定，且只服务单一客户端。
 
+### localStorage 存 token —— 已声明的权衡
+
+认证 token 存在 `localStorage`（`src/services/auth.ts`）——RealWorld 规范要求 `Token` 头认证，而 localStorage 在刷新后依然存活，登录态不因刷新丢失。代价同样摆在明面上：一次成功的 XSS 就能读到 token，而 httpOnly cookie 能把它挡在 JavaScript 可及范围之外。
+
+我们刻意接受这笔交易。教科书式的替代方案——httpOnly 的 refresh cookie 配合内存中的 access token——需要后端配合，这不在纯客户端模板的预设之内，而且它让每次刷新都丢掉登录态：以更差的产品换取更窄的攻击面。XSS 的主要注入面已经封死——React 默认转义，模板从不使用 `dangerouslySetInnerHTML`——剩下的属于纵深防御（CSP 之类），与应用形态强相关，刻意留给应用自行配置。模板的职责是把权衡摆上台面，而不是替你决策。如果你的威胁模型不同，整套机制收敛在一个文件里：替换 `src/services/auth.ts` 中的存储即可。
+
 ### 平台无关的部署
 
 Painless 产出标准静态资源。它不与任何特定部署平台耦合——没有专有中间件、没有平台 API、没有厂商锁定。部署到 GitHub Pages、Netlify、Vercel、Cloudflare Pages、你自己的 CDN，或者拷进 U 盘。产物是你的。

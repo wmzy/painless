@@ -89,7 +89,8 @@ const hashArgs = (args: unknown[]) =>
 
 // 每实体一 cache：值类型与 key 元组类型都在 cache 上收紧（peek 不再需要
 // as 断言，key 写错形状编译期暴露），'article' 这类魔法字符串前缀随之
-// 消失——身份就是 cache 绑定本身。cacheTime 仍全实体统一 10s。
+// 消失——身份就是 cache 绑定本身。cacheTime 缺省 10s，低频全局实体可
+// 单独放长（见 tagsCache）。
 // EntityCache 把 mutation/patchWhere 从可选收成必有：createQueryCache
 // 恒由 createMemoryCacheProvider 创建（运行时必然携带），调用方零断言。
 export type EntityCache<T, K extends unknown[]> = CacheProvider<T, K> & {
@@ -98,38 +99,141 @@ export type EntityCache<T, K extends unknown[]> = CacheProvider<T, K> & {
   ) => BoundMutation<Args, Resp>;
 };
 
+// ---- 每实体缓存注册表 ------------------------------------------------------
+
+// 新建实体 cache 即自动登记（createQueryCache 工厂内 push）：登出清场
+// （clearAllCaches 遍历）与 DevTool 面板遍历都以注册表为唯一事实来源——
+// 消灭「新 cache 忘记登记」的手工不变量，也消灭 DevTool 按数组下标给
+// allCaches 配名的脆弱耦合（新增实体即自动带上名字）。
+export type CacheRegistryEntry = {
+  name: string;
+  cache: EntityCache<any, any[]>;
+};
+
+// 模块加载即填充：下方实体 cache 的创建语句逐个 push 进这同一个数组，
+// 导出的就是该引用——测试等处后建的临时 cache 同样可见。类型收窄为
+// EntityCache<any, any[]>：注册表只服务遍历（clear/snapshot/subscribe），
+// 不做逐条寻址，值/key 元组类型在此无意义。
+export const allCaches: CacheRegistryEntry[] = [];
+
+// 持久化 cache 的登出擦盘回调：storageKey → wipe。clearAllCaches 清完
+// 内存后逐个执行——下个账号冷启动不得 hydrate 回上个账号的数据。
+const persistWipes = new Map<string, () => void>();
+
+// 冷启动持久化挂载：localStorage 单键镜像（整表快照，一次序列化）。
+// - 启动时（cache 创建处）同步 hydrate：读盘 → JSON.parse → 形状粗验，
+//   坏 JSON / 结构性坏数据 / 隐私模式异常一律静默丢弃，模块加载路径上
+//   不允许存储层炸掉。hydrate 保留条目原 cachedAt——重启后条目的
+//   「年龄」是真实年龄，天然越过 staleTime，首次消费旧值先行 + 后台
+//   重验证（SWR 语义），不会把陈旧数据当新鲜用。
+// - 落盘：订阅 cache 事件（set/delete/clear/deletePrefix/过期统一触
+//   发），每次变更后把 dehydrate 快照（仅 settled 条目）写回；配额
+//   超限/非 JSON 安全值吞掉，内存 cache 仍是权威。
+// - 擦盘：回调登记进 persistWipes，由 clearAllCaches 统一执行（见其
+//   注释：先清内存后擦盘的顺序约束）。
+const attachPersistence = (cache: EntityCache<any, any[]>, key: string) => {
+  const storage = (() => {
+    try {
+      // 可用性探测：SSR 无 window、隐私模式 setItem 直接抛。探测失败
+      // 退化为纯内存 cache，匿名/受限环境照常运行。
+      if (typeof window === 'undefined') return undefined;
+      window.localStorage.setItem(`${key}:probe`, '1');
+      window.localStorage.removeItem(`${key}:probe`);
+      return window.localStorage;
+    } catch {
+      return undefined;
+    }
+  })();
+  if (!storage) return;
+
+  try {
+    const raw = storage.getItem(key);
+    if (raw) {
+      const data: unknown = JSON.parse(raw);
+      // 形状粗验：Record<string, [unknown, number]>。条目值本身不深检
+      // ——类型由写侧的 T 保证，这里拦的是结构性坏数据（手改/截断/
+      // 旧 schema），不合格整体丢弃而非逐条抢救。
+      if (
+        data !== null &&
+        typeof data === 'object' &&
+        !Array.isArray(data) &&
+        Object.values(data).every(
+          (e) => Array.isArray(e) && e.length === 2 && typeof e[1] === 'number'
+        )
+      ) {
+        cache.hydrate?.(data as Record<string, [any, number]>);
+      }
+    }
+  } catch {
+    // 坏 JSON：宁可空开始也不抛。
+  }
+
+  cache.subscribe?.(() => {
+    try {
+      storage.setItem(key, JSON.stringify(cache.dehydrate?.() ?? {}));
+    } catch {
+      // 静默降级：配额超限或非 JSON 安全值；内存 cache 保持正确。
+    }
+  });
+  persistWipes.set(key, () => storage.removeItem(key));
+};
+
 export function createQueryCache<T, K extends unknown[]>(
-  cacheTime = DEFAULT_CACHE_TIME
+  name: string,
+  cacheTime = DEFAULT_CACHE_TIME,
+  opts: {persist?: string} = {}
 ): EntityCache<T, K> {
   // 运行时成员齐全（memory provider 挂载 mutation/patchWhere），类型上
   // 经 unknown 收拢可选成员——见 EntityCache 注释
-  return createMemoryCacheProvider<T, K>({
+  const cache = createMemoryCacheProvider<T, K>({
     cacheTime,
     hash: hashArgs
   }) as unknown as EntityCache<T, K>;
+
+  if (opts.persist) {
+    attachPersistence(cache as EntityCache<any, any[]>, opts.persist);
+  }
+  allCaches.push({name, cache: cache as EntityCache<any, any[]>});
+  return cache;
 }
 
 // ---- 每实体缓存注册表 ------------------------------------------------------
 
+// 每实体一 cache：值类型与 key 元组类型都在 cache 上收紧（peek 不再需要
+// as 断言，key 写错形状编译期暴露），'article' 这类魔法字符串前缀随之
+// 消失——身份就是 cache 绑定本身。第一个参数是注册名：createQueryCache
+// 工厂内自动 push 进 allCaches，登出清场与 DevTool 遍历零遇忘，也消灭
+// 了 DevTool 按数组下标给 allCaches 配名的脆弱耦合。
 /** 文章实体：key = [slug]，Article 视图与编辑写穿共用 */
-export const articleCache = createQueryCache<Article, [string]>();
+export const articleCache = createQueryCache<Article, [string]>('article');
 /** 首页信息流投影：key = [homeSearch]（hash 归一剥 undefined tag） */
-export const homeCache = createQueryCache<ArticlePage, [HomeSearch]>();
+export const homeCache = createQueryCache<ArticlePage, [HomeSearch]>('home');
 /** 文章评论：key = [slug]，发评论后按 slug 失效重拉 */
-export const commentsCache = createQueryCache<Comment[], [string]>();
-/** 全局标签：key = []（单例条目） */
-export const tagsCache = createQueryCache<string[], []>();
+export const commentsCache = createQueryCache<Comment[], [string]>('comments');
+/**
+ * 全局标签：key = []（单例条目）。
+ *
+ * 唯一持久化实体（localStorage 键 'painless.cache.tags'）。tags 全局
+ * 低频变化（发文章才可能长出新 tag），却挂在首页等高频入口——cacheTime
+ * 给长（1h），内存 GC 窗口与盘侧生命周期尽量对齐，避免「内存侧已清、
+ * 盘侧仍在」的不一致反复暴露成冷启动重拉。重启后 hydrate 回的条目保留
+ * 原 cachedAt：年龄按真实年龄计，重启即越 staleTime，首次消费旧值先行
+ * + 后台重验证（SWR 语义），陈旧数据不会被当成新鲜值用。
+ */
+export const tagsCache = createQueryCache<string[], []>(
+  'tags',
+  60 * 60 * 1000,
+  {persist: 'painless.cache.tags'}
+);
 
-// 登出清场用：逐实体清空 + DevTool 面板遍历。新的实体 cache 记得登记。
-export const allCaches = [
-  articleCache,
-  homeCache,
-  commentsCache,
-  tagsCache
-] as const;
-
+// 登出清场用（DevTool 面板遍历同源）：遍历注册表逐实体清空 + 擦掉持久
+// 化实体对应的 storage。顺序约束：先清内存后擦盘——cache.clear() 的
+// delete 事件先让持久化镜像把空表写回，随后 removeItem 兜底删除（镜像
+// 写入即便被配额等异常吞掉也不残留）。擦盘语义必须完整：下个账号冷启
+// 动不得 hydrate 回上个账号的数据。
 export const clearAllCaches = () => {
-  for (const cache of allCaches) cache.clear();
+  for (const {cache} of allCaches) cache.clear();
+  for (const wipe of persistWipes.values()) wipe();
 };
 
 export type MockConfig = {
