@@ -1,6 +1,6 @@
 import type {Article} from '@/types';
 
-import {useState, useEffect, useRef} from 'react';
+import {useState, useEffect} from 'react';
 // react-f0rm ≥0.4：onSubmit / onValidSubmit 都在校验通过后触发且被
 // await（isSubmitting 覆盖整个异步提交，finally 复位），二者已无行为
 // 差异——统一用 onSubmit。
@@ -28,8 +28,9 @@ type EditorValues = {
 
 export default function Editor() {
   const router = useRouter();
-  // useData 约定：/editor 无 loader，文章数据可能不存在（新建态），用
-  // ?? undefined 收窄为可选；有 loader 保证有值的路由（如 Article）用 !
+  // useData 约定：/editor（新建）无 loader、/editor/:slug（编辑）挂
+  // loader——共用本组件，文章可能不存在（新建态），用 ?? undefined 收窄
+  // 为可选；有 loader 保证有值的路由（如 Article）用 !
   const article = useData<Article>() ?? undefined;
   const [error, setError] = useState<string | null>(null);
   // react-f0rm 0.5.0：setInitialValues 已改为内容比较——引用变化但内容
@@ -53,44 +54,30 @@ export default function Editor() {
   const isSubmitting = useIsSubmitting(form);
 
   // —— 未保存离开拦截（三类通道）——
-  // ① in-app 导航（TypedLink / navigate）：useBlocker 的同步谓词，
-  //    dirty 时弹确认框并返回 false 否决，干净时返回 true 放行。
+  // ① in-app 导航（TypedLink / navigate）：useBlocker 的同步谓词
+  //    （@native-router/react ≥1.7 的返回值是 {state, proceed, reset}），
+  //    契约是「返回 false 否决并挂起为待决询问（state 非 null，携带
+  //    目标 location 与来源 from），true 放行」——谓词即 !isDirty，
+  //    确认框直接由 state 驱动，不再手搓「待跳转目标 ref + open 态
+  //    state」一对镜像。
   // ② 浏览器回退/前进（POP）：同由 useBlocker 覆盖——被否决的 POP 由
-  //    库自动反向 go() 回推，URL 停留在当前页，确认框照常弹出。
+  //    库自动反向 go() 回推，URL 停留在当前页，确认框照常弹出；此时
+  //    proceed() 以一次新 push 重放目标，而非重跑历史遍历。
   // ③ 刷新/关闭的整页卸载：路由器拦不住（导航栏已 NavLink as 组合
   //    SPA 化，点导航链接走 ①；裸 <a> 整页跳转的入口已不存在），由
   //    下方 beforeunload 兜底——浏览器原生确认框，无法自定义 UI。
-  // confirmNav 同时承载「待跳转目标 path」与确认框 open 态（null = 关）；
-  // confirmRef 提供同步读写，确认回调不依赖渲染闭包里的 state 新鲜度。
-  const confirmRef = useRef<string | null>(null);
-  const [confirmNav, setConfirmNav] = useState<string | null>(null);
-
-  useBlocker((to) => {
-    if (!isDirty(form)) return true;
-    confirmRef.current = to;
-    setConfirmNav(to);
-    return false;
-  });
+  const blocker = useBlocker(() => !isDirty(form));
 
   // 确认离开：reset 回落 initialValues（values/errors/touched 全清，
-  // dirty 清零）后再 navigate。注意 reset 的第二参不能省——省略时
-  // form.initialValues 会被置 undefined，getValueByPath 拿不到兜底值，
-  // TagInput 会对 undefined 取 .length 崩溃；显式回传原 initialValues
-  // （react-f0rm Devtools 同款调用）。用户已确认放弃修改，语义即
-  // 「回到未修改态再导航」，无需引入绕过标志（bypass flag）——
-  // reset 后上面的谓词天然放行。
+  // dirty 清零）后 proceed 重放被否决的导航。reset 的第二参不能省——
+  // 省略时 form.initialValues 会被置 undefined，getValueByPath 拿不到
+  // 兜底值，TagInput 会对 undefined 取 .length 崩溃；显式回传原
+  // initialValues（react-f0rm Devtools 同款调用）。proceed 自带一次性
+  // bypass（只绕过本 blocker，其它 blocker/守卫照常询问），reset 表单
+  // 是「放弃修改」的语义本体，也让 beforeunload 谓词同步归零。
   const handleConfirmLeave = () => {
-    const to = confirmRef.current;
-    confirmRef.current = null;
     reset(form, form.initialValues);
-    setConfirmNav(null);
-    if (to != null) void navigate(router, to);
-  };
-
-  // 取消离开：仅关确认框，留在页面继续编辑（修改保留）
-  const handleCancelLeave = () => {
-    confirmRef.current = null;
-    setConfirmNav(null);
+    blocker.proceed();
   };
 
   // 通道③：整页卸载（刷新/关闭）的原生兜底。dirty 时
@@ -223,17 +210,18 @@ export default function Editor() {
         </button>
       </Form>
       {/* 条件挂载 + open：ConfirmDialog 的 open 传布尔时是非受控语义
-          （仅作初值），由本组件的 confirmNav 状态控制挂载/卸载；overlay
-          点击（onClose）与取消同义——留在页面 */}
-      {confirmNav !== null && (
+          （仅作初值），由 blocker.state（待决询问非 null）控制挂载/卸载；
+          overlay 点击（onClose）与取消同义——留在页面（reset 丢弃待决
+          导航，无任何重放） */}
+      {blocker.state && (
         <ConfirmDialog
           open
           title='Unsaved changes'
           confirmText='Leave'
           cancelText='Stay'
           onConfirm={handleConfirmLeave}
-          onCancel={handleCancelLeave}
-          onClose={handleCancelLeave}
+          onCancel={() => blocker.reset()}
+          onClose={() => blocker.reset()}
         >
           You have unsaved changes. Leave the page and discard them?
         </ConfirmDialog>

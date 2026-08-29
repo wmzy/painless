@@ -212,6 +212,44 @@ describe('useQuery', () => {
     expect(fn).toHaveBeenCalledTimes(2);
   });
 
+  // useArgsStatus 换装批（react-toolroom ≥0.14.1）：loading/error 改按
+  // args key 独立观测。本用例锁住与旧 injectable 级 useInitialLoading 的
+  // 行为差异：args 切到无缓存的新参数时，旧实现因「store 已有（旧参数
+  // 的）结果」恒 hasResult=true 而漏报初载（loading=false 但新参数数据
+  // 未到，屏上是旧参数的陈旧值）；per-args 观测下 keyed 槽按当前 args
+  // 寻址，初载如实为 true。
+  it('args 切换到无缓存参数：loading 如实回到 true（per-args 初载判定）', async () => {
+    const forA = deferred<string[]>();
+    const forB = deferred<string[]>();
+    const fn = vi
+      .fn()
+      .mockImplementationOnce(() => forA.promise)
+      .mockImplementationOnce(() => forB.promise);
+    const cache = createQueryCache<any, any>('args-switch-loading');
+
+    const {result, rerender} = renderHook(
+      ({key}: {key: string}) => useQuery(fn, [key], {cache, initData: [] as string[]}),
+      {initialProps: {key: 'a'}}
+    );
+
+    expect(result.current.loading).toBe(true);
+    await act(async () => {
+      forA.resolve(['from-a']);
+    });
+    await waitFor(() => expect(result.current.data).toEqual(['from-a']));
+    expect(result.current.loading).toBe(false);
+
+    // 切到无缓存的 b：b 在飞且 b 尚无结果 → loading 回到 true
+    rerender({key: 'b'});
+    expect(result.current.loading).toBe(true);
+
+    await act(async () => {
+      forB.resolve(['from-b']);
+    });
+    await waitFor(() => expect(result.current.data).toEqual(['from-b']));
+    expect(result.current.loading).toBe(false);
+  });
+
   it('跨组件同时挂载：provider 层共享同一 in-flight，重挂载命中缓存', async () => {
     const pending = deferred<string[]>();
     const fn = vi.fn().mockReturnValue(pending.promise);

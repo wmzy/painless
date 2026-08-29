@@ -9,6 +9,7 @@ import {withCache} from '@/util/loaderCache';
 import {articleCache, homeCache} from '@/util/useQuery';
 import {articlePageSchema} from '@/types/index.schema';
 import {homeSearchSchema} from '@/types/search';
+import {editorParamsSchema} from '@/types/params';
 
 import NotFound from './Article/NotFound';
 import HomeSkeleton from './Home/Skeleton';
@@ -105,6 +106,30 @@ const routes = createRoutes({
     {
       path: '/editor/:slug',
       beforeLoad: requireLogin,
+      // params schema（@native-router ≥1.9）：resolve 期匹配后、beforeLoad
+      // 前经 editorParamsSchema 解析——loader 拿到的 ctx.params 已是
+      // coerce（trim）后的 EditorParams。非法 slug（空/纯空白）以
+      // ParamsError 失败本次 resolve：params/search 段的失败经路由器
+      // errorHandler（全局 RouterError）呈现，下方 errorComponent 只
+      // 覆盖 data 段失败（文章不存在/加载失败 → NotFound），与
+      // /article/:title 的既有通道分工一致。无参的 /editor（新建）不
+      // 声明 params，schema 只作用于本层，行为不变。
+      params: editorParamsSchema,
+      // 编辑既有文章的取数：与 /article/:title 同构的 withCache 管道
+      //（findByTitle 的路径参数即 slug），Editor 经 useData 读到文章后
+      // 进「Edit Article」态（PUT articles/{slug}）。与 Article 视图共用
+      // articleCache 的 [slug] 寻址：编辑提交后的整实体失效对两个通道
+      // 同时生效。注解沿 /article/:title 的可选属性 + ! 模式：literal
+      // 内回调按 Route 宽松检查（params 为 Record<string, string>），
+      // 收窄注解必须兼容之；slug 运行时必有值——上面的 params schema
+      // 已在 loader 前完成 coerce（trim 后的非空 EditorParams）。
+      data: withCache(
+        articleCache,
+        ({params}: {params: {slug?: string}}): [string] => [params.slug!],
+        ({params: {slug}, signal}: {params: {slug?: string}; signal: AbortSignal}) =>
+          articleService.findByTitle(slug!, signal)
+      ),
+      errorComponent: NotFound,
       component: () => import('./Editor')
     }
   ]

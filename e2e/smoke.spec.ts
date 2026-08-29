@@ -228,6 +228,75 @@ test('publish article from editor', async ({page}) => {
   ).toBeVisible();
 });
 
+// /editor/:slug（编辑既有文章）：params schema（editorParamsSchema）在
+// resolve 期 coerce 通过 → loader 以 coerce 后的 slug 走 GET
+// /articles/:slug（与 /article/:title 同一 mock 端点）→ Editor 经
+// useData 预填进「Edit Article」态。PUT 由本用例在 mockApi 之后注册的
+// 探针路由捕获（后注册者先被咨询，非 PUT 经 fallback 交还 mockApi——
+// 与预取探针同一约定）。
+test('edit article from /editor/:slug: schema+loader 预填并 PUT 更新', async ({page}) => {
+  await mockApi(page, {published: false});
+  const puts: {slug: string; description: string}[] = [];
+  await page.route('**/api/articles/*', async (route) => {
+    const req = route.request();
+    if (req.method() === 'PUT') {
+      const slug = new URL(req.url()).pathname.split('/').pop()!;
+      const {article} = req.postDataJSON() as {
+        article: {description: string};
+      };
+      puts.push({slug, description: article.description});
+      return json(route, 200, {article: {...article1, description: article.description}});
+    }
+    return route.fallback();
+  });
+
+  await page.goto('/');
+  await login(page);
+
+  await page.goto(`/editor/${article1.slug}`);
+  await expect(page.getByRole('heading', {name: 'Edit Article'})).toBeVisible();
+  await expect(page.getByPlaceholder('Article Title')).toHaveValue(article1.title);
+  await expect(
+    page.getByPlaceholder("What's this article about?")
+  ).toHaveValue(article1.description);
+
+  await page
+    .getByPlaceholder("What's this article about?")
+    .fill('Updated by the edit flow test');
+  await page.getByRole('button', {name: 'Update Article'}).click();
+
+  // 更新成功 → 跳回首页（提交后 setInitialValues 清 dirty，navigate
+  // 不被未保存拦截否决）；PUT 命中正确的 slug 与载荷
+  await expect(
+    page.getByRole('heading', {name: article2.title})
+  ).toBeVisible();
+  expect(puts).toEqual([
+    {slug: article1.slug, description: 'Updated by the edit flow test'}
+  ]);
+});
+
+// 非法 slug（%20 解码为空格，trim 后为空）：params schema 报 issue →
+// ParamsError。native-router 的通道边界：params/search 属 resolve 前段，
+// 校验失败经路由器 errorHandler（全局 RouterError：Error 标题 + 信息 +
+// Refresh/Home）呈现；errorComponent 只覆盖 data 段失败（文章不存在/
+// 加载失败 → NotFound）。两者都是 painless 既有错误通道，无新造。
+test('invalid slug on /editor/:slug: params schema 拒绝并走全局 errorHandler', async ({page}) => {
+  await mockApi(page, {published: false});
+
+  await page.goto('/');
+  await login(page);
+
+  await page.goto('/editor/%20');
+  await expect(page.getByRole('heading', {name: 'Error'})).toBeVisible();
+  // ParamsError 信息里带上本 schema 的 issue 文案（Text span 与堆栈
+  // <pre> 各渲染一份，取 first）
+  await expect(
+    page.getByText('slug must be a non-empty path segment').first()
+  ).toBeVisible();
+  // 编辑表单未渲染：ParamsError 在 loader 前拦截，没有带着空 slug 发请求
+  await expect(page.getByRole('button', {name: 'Publish Article'})).toHaveCount(0);
+});
+
 // 未保存离开拦截（beforeunload 通道）。导航栏 NavLink as 组合 SPA 化
 // 后，点导航链接不再跨文档卸载（走 in-app 通道，见下一条用例），整页
 // 卸载只剩刷新/关闭两个入口——此处以 location.reload() 触发：dirty 时

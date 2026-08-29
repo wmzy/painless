@@ -14,9 +14,12 @@ import {render, screen, fireEvent, act} from '@testing-library/react';
 
 const state = vi.hoisted(() => ({
   article: undefined as Article | undefined,
-  router: {pathname: '/editor'},
-  // useBlocker 注册的离开拦截谓词：测试同步调用它模拟路由器询问
-  blocker: undefined as ((to: string) => boolean) | undefined
+  // 只需满足视图与 mock 内 navigate 的运行时使用；类型上放宽以匹配
+  // core navigate 的 RouterInstance 形参（真注册不在单测范围，见下）
+  router: {pathname: '/editor'} as any,
+  // useBlocker 注册的离开拦截谓词：测试同步调用它模拟路由器在导航
+  // 头部的询问（veto 时待决导航挂起，state 置位驱动确认框渲染）
+  blocker: undefined as ((to: string, from: string) => boolean) | undefined
 }));
 
 // 保留真实模块，只覆写视图用到的 post/put；422 拒绝值直接用鸭子形状
@@ -26,16 +29,60 @@ vi.mock('@/util/http', async (importOriginal) => ({
   post: vi.fn(),
   put: vi.fn()
 }));
-vi.mock('@native-router/react', () => ({
-  useRouter: () => state.router,
-  // useData<T>() 泛型在 mock 中以类型断言透传即可
-  useData: () => state.article,
-  // 只捕获谓词不真注册（真注册需要 router 实例的 blocker 通道，视图
-  // 单测关心的是谓词行为与确认框交互，POP 回推等由库侧测试覆盖）
-  useBlocker: (fn: (to: string) => boolean) => {
-    state.blocker = fn;
-  }
-}));
+vi.mock('@native-router/react', async () => {
+  const React = await import('react');
+  const {navigate} = await import('@native-router/core');
+  return {
+    useRouter: () => state.router,
+    // useData<T>() 泛型在 mock 中以类型断言透传即可
+    useData: () => state.article,
+    // 与 @native-router/react 1.7 的 useBlocker（dist/use-blocker.js）
+    // 同构的迷你仿真：谓词存 ref 逐渲染同步；veto 把待决导航挂上
+    // state（驱动确认框），proceed 置一次性 bypass 后以 navigate 重放
+    // 被拦目标，reset 仅清待决。真注册需要 router 实例的 blocker
+    // 通道，视图单测关心的是谓词行为与确认框交互，POP 回推等由
+    // 库侧测试覆盖
+    useBlocker: (fn: (to: string, from: string) => boolean) => {
+      const fnRef = React.useRef(fn);
+      fnRef.current = fn;
+      const pending = React.useRef<{location: string; from: string} | null>(null);
+      const bypass = React.useRef(false);
+      const [ask, setAsk] = React.useState<{location: string; from: string} | null>(null);
+      React.useEffect(() => {
+        state.blocker = (to: string, from: string) => {
+          if (bypass.current) {
+            bypass.current = false;
+            return true;
+          }
+          if (fnRef.current(to, from)) return true;
+          const next = {location: to, from};
+          pending.current = next;
+          setAsk(next);
+          return false;
+        };
+      });
+      return {
+        state: ask,
+        proceed: () => {
+          const to = pending.current;
+          if (!to) return;
+          pending.current = null;
+          setAsk(null);
+          bypass.current = true;
+          try {
+            void navigate(state.router, to.location);
+          } finally {
+            bypass.current = false;
+          }
+        },
+        reset: () => {
+          pending.current = null;
+          setAsk(null);
+        }
+      };
+    }
+  };
+});
 vi.mock('@native-router/core', () => ({navigate: vi.fn()}));
 
 import {navigate} from '@native-router/core';
@@ -281,7 +328,7 @@ describe('Editor', () => {
   });
 
   // —— 未保存离开拦截（useBlocker + ConfirmDialog + beforeunload）——
-  // 谓词经 mock 捕获后同步调用（act 包裹：谓词内 setConfirmNav 触发
+  // 谓词经 mock 捕获后同步调用（act 包裹：veto 在 mock 内 setAsk 触发
   // 状态更新），等价于路由器在 navigate 头部询问 blocker。
   it('dirty 导航被拦：弹确认框、否决且未离开', () => {
     render(<Editor />);
@@ -291,7 +338,7 @@ describe('Editor', () => {
 
     let vetoed = true;
     act(() => {
-      vetoed = state.blocker!('/');
+      vetoed = state.blocker!('/', '/editor');
     });
 
     // dirty → 否决 + 弹确认框
@@ -308,7 +355,7 @@ describe('Editor', () => {
     const title = screen.getByPlaceholderText('Article Title');
     fireEvent.change(title, {target: {value: 'New title'}});
     act(() => {
-      state.blocker!('/');
+      state.blocker!('/', '/editor');
     });
 
     fireEvent.click(screen.getByRole('button', {name: 'Leave'}));
@@ -317,7 +364,7 @@ describe('Editor', () => {
     expect((title as HTMLInputElement).value).toBe('');
     expect(screen.queryByText('Unsaved changes')).toBeNull();
     // dirty 已清零：后续导航询问直接放行（无需任何绕过标志）
-    expect(state.blocker!('/about')).toBe(true);
+    expect(state.blocker!('/about', '/editor')).toBe(true);
     // 放行跳转到当初被拦的目标
     expect(navigateMock).toHaveBeenCalledTimes(1);
     expect(navigateMock).toHaveBeenCalledWith(state.router, '/');
@@ -328,7 +375,7 @@ describe('Editor', () => {
     const title = screen.getByPlaceholderText('Article Title');
     fireEvent.change(title, {target: {value: 'New title'}});
     act(() => {
-      state.blocker!('/');
+      state.blocker!('/', '/editor');
     });
 
     fireEvent.click(screen.getByRole('button', {name: 'Stay'}));
@@ -337,14 +384,14 @@ describe('Editor', () => {
     expect(navigateMock).not.toHaveBeenCalled();
     // 修改保留，仍是 dirty 态——再次询问依旧被拦
     expect((title as HTMLInputElement).value).toBe('New title');
-    expect(state.blocker!('/')).toBe(false);
+    expect(state.blocker!('/', '/editor')).toBe(false);
   });
 
   it('干净时导航零拦截：谓词放行且不弹框', () => {
     render(<Editor />);
 
     // 未做任何修改：同步谓词直接 true，确认框不出现
-    expect(state.blocker!('/')).toBe(true);
+    expect(state.blocker!('/', '/editor')).toBe(true);
     expect(screen.queryByText('Unsaved changes')).toBeNull();
     expect(navigateMock).not.toHaveBeenCalled();
   });
@@ -362,6 +409,6 @@ describe('Editor', () => {
     await screen.findByRole('button', {name: 'Publish Article'});
     expect(navigateMock).toHaveBeenCalledWith(state.router, '/');
     // 提交值已是「已保存态」：isDirty 归零，离开询问直接放行
-    expect(state.blocker!('/')).toBe(true);
+    expect(state.blocker!('/', '/editor')).toBe(true);
   });
 });

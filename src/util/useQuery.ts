@@ -2,7 +2,7 @@
 // 【上移计划】本胶水层（useQuery preset + 每实体缓存注册表 + 持久化挂载）
 // 计划在 API 形态稳定后上移为独立包（暂缓，决策记录见 docs/decisions.md）。
 // 把 react-toolroom/async 的 useInjectable / useCache / useRun /
-// useResultSelect / useLoading / useInitialLoading / useError / useRetry /
+// useResultSelect / useLoading / useArgsStatus / useRetry /
 // useFocusRevalidate 组合为单一 hook useQuery(fn, args, opts)，统一：
 // - 模块级共享内存缓存（cacheTime 默认 5min，对齐 TanStack Query 的
 //   gcTime 缺省）：0.12 起 cacheTime 是 per-entry 逐条回收——条目以
@@ -24,9 +24,9 @@
 //   服务层尾参 signal 透传到 fetch；
 // - 可选重试（QueryOptions.retry，默认禁用：retries 0）；
 // - refetch：清掉当前参数的缓存条目后重发（绕过缓存），引用稳定；
-// - loading 仅指初载（useInitialLoading，SWR 语义）：已有结果后的后台
-//   重拉不再置 true，已渲染内容不闪整屏 Spinner；任意 in-flight（含
-//   后台刷新）见 fetching（useLoading）。
+// - loading 仅指初载（useArgsStatus 的 per-args 观测 + SWR 语义重建）：
+//   已有结果后的后台重拉不再置 true，已渲染内容不闪整屏 Spinner；任意
+//   in-flight（含后台刷新）见 fetching（useLoading）。
 // - 结构共享（structural sharing）刻意不做：后台重验证 settle 的新引用
 //   即使内容不变也会重渲染消费者——重验证低频（staleTime 门槛拦截，
 //   新鲜期内连请求都不发）、页级重渲染廉价（reconcile 后通常无 DOM
@@ -41,12 +41,11 @@ import {
   createMemoryCacheProvider,
   isAbortSignal,
   stableHash,
+  useArgsStatus,
   useCache,
-  useError,
   useFocusRevalidate,
   useInject,
   useInjectable,
-  useInitialLoading,
   useLoading,
   useReconnectRevalidate,
   useResultSelect,
@@ -318,10 +317,10 @@ export type QueryResult<T> = {
    */
   data: T;
   /**
-   * 初载中（useInitialLoading，对齐 TanStack Query 的 isLoading / SWR 的
-   * 初载语义）：有请求 in-flight 且尚无任何结果。已有结果后的重拉
-   * （缓存过期后台刷新、invalidate / refetch 触发）不会置 true——
-   * 已渲染内容保持原样，不闪整屏 Spinner。
+   * 初载中（useArgsStatus 的 per-args 观测 + SWR 语义重建，对齐
+   * TanStack Query 的 isLoading）：当前 args 有请求 in-flight 且尚无
+   * 本 args 的结果。已有结果后的重拉（缓存过期后台刷新、invalidate /
+   * refetch 触发）不会置 true——已渲染内容保持原样，不闪整屏 Spinner。
    */
   loading: boolean;
   /** 任意 in-flight（useLoading），含已有结果后的后台重拉；需要细化加载指示时用 */
@@ -438,8 +437,20 @@ export function useQuery<F extends AsyncFunc>(
     initData
   );
   const fetching = useLoading(injectable);
-  const loading = useInitialLoading(injectable);
-  const error = useError(injectable);
+  // 0.14.1 起 loading/error 经 useArgsStatus 按 args key 独立观测（库化
+  // 的 per-args 观测取代 injectable 级 useInitialLoading/useError）：
+  // 同一 injectable 并发服务多组参数时，injectable 级广播是「最新一次
+  // 调用」的全局态，跨 args 互相覆写；keyed 槽各归各。loading 在其上
+  // 重建 SWR 初载语义：keyedLoading 只说「本参数有调用在飞」，叠加
+  // 「本参数尚无结果」（status.data 仅在共享结果的 provenance 匹配当前
+  // args 时非空）才是初载——旧值先行/后台重拉/refetch 期间旧结果仍在
+  // 屏，loading 保持 false，不闪整屏 Spinner；initData 只是本地兜底不
+  // 落 result store，初载仍如实为 true。error 同理按 args 独立：其它
+  // 参数的失败不串到本参数的屏上，同参数成功即清除。（ArgsStatus 的
+  // error/data 字段类型是 any——经成员访问 + 断言收拢，不解构。）
+  const argsStatus = useArgsStatus(injectable, args);
+  const loading = argsStatus.loading && argsStatus.data === undefined;
+  const error = argsStatus.error as Error | undefined;
 
   // 兜底：useError 的中间件在记录错误后会重抛。这里在最外层接住，
   // 让 useRun / refetch 的调用不产生悬空 rejection——错误统一从
