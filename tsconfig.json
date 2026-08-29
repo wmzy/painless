@@ -3,6 +3,10 @@
   "compilerOptions": {
     "lib": ["dom", "esnext"],
     "outDir": "dist/types",
+    // vite 配置以显式 .mts 扩展名导入项目内插件（vite-plugin-haze-css.mts）：
+    // 无扩展名/.ts 形态会被 vite 配置打包器按 CJS 探测告警。要求 noEmit 或
+    // emitDeclarationOnly（基础配置已含后者）。
+    "allowImportingTsExtensions": true,
     "paths": {
       "@/*": ["./src/*"]
     }

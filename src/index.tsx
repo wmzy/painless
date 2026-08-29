@@ -1,6 +1,10 @@
 import {lazy, Suspense} from 'react';
 import {createRoot} from 'react-dom/client';
-import './styles';
+// tokens.css 副作用导入：主题（--haze-* 变量）、spacing、排版基线，其余
+// 组件 css 由 vite 插件（vite-plugin-haze-css.mts）按模块图自动注入，无
+// 需手工清单。此导入同时是 token 供应商注册的时序锚点（见下），不随按
+// 需收集迁移——须保持先于任何路由 data 请求。
+import 'haze-ui/css/tokens.css';
 import {lightTheme, darkTheme, ToastContainer} from 'haze-ui';
 import {useControl} from 'react-use-control';
 

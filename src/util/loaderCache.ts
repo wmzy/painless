@@ -1,4 +1,6 @@
 // 双通道共享缓存：路由 loader 与 useQuery 共用每实体 cache。
+// 【上移计划】本胶水层（withCache/bindRefresh）计划在稳定后上移为独立包
+//（暂缓，决策记录见 docs/decisions.md）。
 // 两个通道的触发时机与阻塞语义不同——loader 在导航 resolve 期运行（可
 // 阻塞视图切换，pendingComponent 兜底），useQuery 在组件挂载后运行
 // （非阻塞，loading/error 状态化）——但缓存与失效是同一份：loader 侧

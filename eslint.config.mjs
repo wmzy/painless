@@ -19,7 +19,8 @@ export default [
       'babel.config.js',
       'eslint.config.js',
       'vitest.config.mts',
-      'vite.config.mts'
+      'vite.config.mts',
+      'vite-plugin-haze-css.mts'
     ]
   },
   ...reactFreeConfig,

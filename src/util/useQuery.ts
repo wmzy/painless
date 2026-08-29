@@ -1,4 +1,6 @@
 // 项目级数据获取 preset（模板示范：每个项目可按自身理念定制这一层）。
+// 【上移计划】本胶水层（useQuery preset + 每实体缓存注册表 + 持久化挂载）
+// 计划在 API 形态稳定后上移为独立包（暂缓，决策记录见 docs/decisions.md）。
 // 把 react-toolroom/async 的 useInjectable / useCache / useRun /
 // useResultSelect / useLoading / useInitialLoading / useError / useRetry /
 // useFocusRevalidate 组合为单一 hook useQuery(fn, args, opts)，统一：
