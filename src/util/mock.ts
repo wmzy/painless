@@ -1,5 +1,6 @@
 // mock 核心（自 components/DevTool.tsx 平移）：mock 配置状态与
-// mockViewData（路由视图 data）/ useMock（useQuery 请求）两类 mock 入口。
+// mockViewData（路由视图 data）/ useMock（场景 query hook 请求）两类
+// mock 入口。
 // 刻意不静态依赖 './faker'——@faker-js/faker + json-schema-faker 体积达数
 // MB，只应在开发模式真正要造数时动态 import， faker 生态才不会被打进
 // 生产 chunk（'./validate' 的 ajv 同理，见 validatedMock）。生产旁路：

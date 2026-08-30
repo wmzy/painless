@@ -38,8 +38,9 @@ const schemas: Record<string, unknown> | undefined = import.meta.env.DEV
     }
   : undefined;
 
-// 只读查询统一接可选尾参 signal：useQuery 的 useRun({signal: true}) 在
-// args 变化/卸载时 abort 上一次请求，透传到 fetch 取消旧响应。
+// 只读查询统一接可选尾参 signal：createQueryHook 场景 hook 的
+// useRun({signal: true}) 在 args 变化/卸载时 abort 上一次请求，透传到
+// fetch 取消旧响应。
 export function query(
   params?: ArticleQuery,
   signal?: AbortSignal

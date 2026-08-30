@@ -1,15 +1,15 @@
-// 双通道共享缓存：路由 loader 与 useQuery 共用每实体 cache。
-// 【上移计划】本胶水层（withCache/bindRefresh）计划在稳定后上移为独立包
-//（暂缓，决策记录见 docs/decisions.md）。
+// 双通道共享缓存：路由 loader 与场景 query hook（createQueryHook 产物）
+// 共用每实体 cache。【上移计划】本胶水层（withCache/bindRefresh）计划在
+// 稳定后上移为独立包（暂缓，决策记录见 docs/decisions.md）。
 // 两个通道的触发时机与阻塞语义不同——loader 在导航 resolve 期运行（可
-// 阻塞视图切换，pendingComponent 兜底），useQuery 在组件挂载后运行
+// 阻塞视图切换，pendingComponent 兜底），场景 hook 在组件挂载后运行
 // （非阻塞，loading/error 状态化）——但缓存与失效是同一份：loader 侧
 // withCache(cache, keyOf, fn) 按 keyOf(ctx) 寻址，视图侧 mutation 写穿
-// 同一 cache，于是「loader 拉过的数据 useQuery 直接命中、mutation 写穿
+// 同一 cache，于是「loader 拉过的数据场景 hook 直接命中、mutation 写穿
 // 的值 loader 新鲜命中」。
 // 条目回收（react-toolroom ≥0.12 per-entry 语义）：cacheTime 按条目的
 // lastUsedAt 逐条计龄——loader 直写（cache.load）的条目即使当时没有
-// useQuery 消费者，闲置满窗口也会被回收（消费即 touch：useQuery 命中、
+// 场景 hook 消费者，闲置满窗口也会被回收（消费即 touch：hook 命中、
 // loader 新鲜/重验证读取都刷新 lastUsedAt），回收后下一次导航按 miss
 // 重新拉取，无泄漏也无「永不回收」的特例。
 // 分层职责：viewStack 管「要不要跑 loader」（POP 命中快照零请求、
@@ -110,7 +110,7 @@ type LoaderValue<F extends (ctx: any) => Promise<any>> = Awaited<ReturnType<F>>;
 // 把路由 loader 接入实体 cache（SWR 语义）：
 // - 新鲜命中（now - cachedAt < staleTime）：直接返回缓存值，不发请求；
 // - stale 命中：立即返回旧值（视图不等待、不闪骨架），后台经 load 重
-//   验证（原子 get-or-insert：与并发 useQuery / PrefetchLink 预取共享
+//   验证（原子 get-or-insert：与并发场景 hook / PrefetchLink 预取共享
 //   同一 in-flight promise，factory 只执行一次；期间任何 set/delete 会
 //   bump 代次，晚到的响应不回写覆盖），settle 的 set 事件经 bindRefresh
 //   自动回写当前视图；失败/被取消则静默保旧；

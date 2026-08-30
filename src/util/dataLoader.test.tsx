@@ -1,8 +1,9 @@
-// 来源：#6 设计落地——createDataLoader 三元组（loader / useData / useQuery
-// preset）的验证。util 下已有 loaderCache.test.ts（withCache 缓存层）与
-// useQuery.test.ts（useQuery 组合层），本文件覆盖其上的工厂收敛层：DEV
-// 来源身份校验（错配 / optional / 箭头重包 / POP 往返）与三元素同 cache
-// 的通道收敛，职责与两个既有文件不重叠。
+// 来源：#6 设计落地——createDataLoader 三元组（loader / useData / queryFn）
+// 的验证。util 下已有 loaderCache.test.ts（withCache 缓存层）与
+// useQuery.test.ts（createQueryHook 场景组装层），本文件覆盖其上的工厂
+// 收敛层：DEV 来源校验（错配 / optional / 箭头重包 / POP 往返）与三元素
+// 同 cache 的通道收敛（queryFn → createQueryHook 的场景组装），职责与
+// 两个既有文件不重叠。
 // 归并建议：dataLoader 若随胶水层上移为独立包（decisions.md 第 2 条），
 // 本文件随迁；机制与应用绑定的分界见 services/dataloaders.ts 文件头。
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
@@ -12,13 +13,13 @@ import {MemoryRouter, View, useMatched} from '@native-router/react';
 import {navigate} from '@native-router/core';
 
 import {createDataLoader} from './dataLoader';
-import {clearAllCaches, createQueryCache} from './useQuery';
+import {clearAllCaches, createQueryCache, createQueryHook} from './useQuery';
 
 // —— 测试专用的两个 triple：值形状 {v: string}，与 Article 等应用实体解耦 ——
 const fetchPage = vi.fn(async (key: string, _signal?: AbortSignal) => ({v: key}));
 const fetchOther = vi.fn(async (key: string, _signal?: AbortSignal) => ({v: key}));
 
-const [pageLoader, usePageData, usePageQuery] = createDataLoader({
+const [pageLoader, usePageData, queryPage] = createDataLoader({
   fetch: fetchPage,
   cache: createQueryCache<{v: string}, [string]>('dl-page'),
   keyOf: ({params}: {params: {slug?: string}}): [string] => [params.slug!]
@@ -165,20 +166,25 @@ describe('createDataLoader：POP 往返（viewStack 快照回放）', () => {
   });
 });
 
-describe('createDataLoader：useQueryPreset（组件通道）', () => {
-  it('initData 兜底 → fetch 结果就位；args 形状即 [...K, signal]', async () => {
-    const {result} = renderHook(() => usePageQuery(['k'], {initData: {v: 'init'}}));
+describe('createDataLoader：queryFn + 场景 hook（组件通道）', () => {
+  it('场景 hook：initData 在声明点闭合 → 首帧兜底，fetch 结果就位；args 形状即 [...K, signal]', async () => {
+    const usePageQuery = createQueryHook({
+      queryFn: queryPage,
+      initData: {v: 'init'}
+    });
+    const {result} = renderHook(() => usePageQuery(['k']));
     expect(result.current.data).toEqual({v: 'init'});
     await waitFor(() => expect(result.current.data).toEqual({v: 'k'}));
     expect(fetchPage).toHaveBeenCalledWith('k', expect.any(AbortSignal));
   });
 
-  it('loader 通道写入的条目 preset 新鲜命中：三元素共享同一 cache', async () => {
+  it('loader 通道写入的条目场景 hook 新鲜命中：三元素共享同一 cache', async () => {
     renderApp('/page/a');
     await screen.findByText('page:a');
 
-    // loader 已把 [a] 写进实体 cache（cache.load）——preset 同 args 消费
-    // 时新鲜命中，fetch 不再执行（staleTime 窗口内）
+    // loader 已把 [a] 写进实体 cache（cache.load）——场景 hook 同 args
+    // 消费时新鲜命中，fetch 不再执行（staleTime 窗口内）
+    const usePageQuery = createQueryHook({queryFn: queryPage});
     const {result} = renderHook(() => usePageQuery(['a']));
     await waitFor(() => expect(result.current.data).toEqual({v: 'a'}));
     expect(fetchPage.mock.calls.filter(([k]) => k === 'a')).toHaveLength(1);

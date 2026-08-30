@@ -9,10 +9,11 @@ import {stableHash} from 'react-toolroom/async';
 
 import {
   articleCache,
+  bindQueryFn,
   clearAllCaches,
   commentsCache,
   createQueryCache,
-  useQuery
+  createQueryHook
 } from '@/util/useQuery';
 import {clearRequestLogs, pushRequestLog} from '@/util/requestLog';
 
@@ -265,7 +266,7 @@ describe('DevTool CacheView', () => {
   it('InjectDevTools renders a per-entity cache snapshot table fed from the registry', () => {
     // devtools 面板的 cache 表：每个 ObservableCache 一张表（Key/Age/
     // Value 三列），行 key 是 hash 后的字符串——种子一条 tag 实体后开
-    // 面板，断言表渲染出该实体条目。本用例没有挂载任何 useQuery，
+    // 面板，断言表渲染出该实体条目。本用例没有挂载任何场景 query hook，
     // 具名注册表为空——面板的调用追踪区显示空态文案（调用追踪断言
     // 见下方 registry 用例）
     const tagsCache = createQueryCache<string[], []>('devtool-test-tags');
@@ -313,21 +314,24 @@ describe('DevTool CacheView', () => {
     expect(screen.getByText(/Cache: \d+/)).toBeDefined();
   });
 
-  it('traces real calls made through useQuery (named registry discovery)', async () => {
-    // react-toolroom ≥0.16 的发现通道：useQuery 内部 useInjectable(fn,
-    // {name}) 把实例发布进具名注册表，<InjectDevTools /> 不传 injectables
-    // 时自动观察全部具名实例——面板应看到 useQuery 发起的真实调用
-    //（Function 列 = fn.name，Args → Result 列 = 参数与结果）。DevTool
-    // open 初值直接给 true：注册表订阅（子组件 useInsertionEffect）先于
-    // Harness（父）里 useRun 发起调用，初始请求被完整记录。
-    // K 用 any（同 useQuery.test 的既有约定）：0 参 fetcher 的 QueryKey
-    // 经 [...K, signal?] 推导为 unknown[]，收窄 [] 会撞元组变差
+  it('traces real calls made through 场景 query hook（named registry discovery）', async () => {
+    // react-toolroom ≥0.16 的发现通道：createQueryHook 内部 useInjectable(
+    // queryFn, {name}) 把实例发布进具名注册表，<InjectDevTools /> 不传
+    // injectables 时自动观察全部具名实例——面板应看到场景 hook 发起的
+    // 真实调用（Function 列 = queryFn.name，Args → Result 列 = 参数与结
+    // 果）。DevTool open 初值直接给 true：注册表订阅（子组件
+    // useInsertionEffect）先于 Harness（父）里 useRun 发起调用，初始请求
+    // 被完整记录。
     const probeCache = createQueryCache<any, any>('devtool-inject-probe');
     async function fetchProbe() {
       return ['probe-ok'];
     }
+    const useProbeQuery = createQueryHook({
+      queryFn: bindQueryFn(fetchProbe, probeCache),
+      initData: []
+    });
     function Harness() {
-      useQuery(fetchProbe, [], {cache: probeCache, initData: []});
+      useProbeQuery([]);
       return (
         <DevTool open>
           <div>content</div>

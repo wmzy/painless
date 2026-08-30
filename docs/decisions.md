@@ -13,19 +13,29 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
 
 ## 2. useQuery / loaderCache 胶水层上移：暂缓
 
-- **背景**：`src/util/useQuery.ts`（useQuery preset + 每实体缓存注册表 + localStorage
+- **背景**：`src/util/useQuery.ts`（场景 hook 工厂 createQueryHook + 每实体缓存注册表 + localStorage
   持久化挂载）与 `src/util/loaderCache.ts`（withCache / bindRefresh 双通道共享缓存）
   是 painless 对 react-toolroom/async 的项目级组合。形态还在随视图需求演化
   （cacheTime 语义、失效扇出、持久化边界），现在固化成库 API 为时过早。
 - **决定**：**暂缓**，等 API 形态稳定后再考虑抽独立包。两文件顶部已加
   「上移计划」注释指向本文件。
-- **补记（2026-08-30）**：`src/util/dataLoader.ts` 的 `createDataLoader` 工厂已把
-  路由 data 三层管道（withCache → mockViewData → 路由 data）收敛为一次声明，
-  返回 `[loader, useData, useQueryPreset]` 三元组——视图层手写
-  `useData<T>()! / ?? undefined` 断言与组件通道三件套全部消失。工厂已在模板内
-  落地验证（三路由 + CommentList 迁移，`src/services/dataloaders.ts` 为应用绑定点，
-  机制层零应用知识），**上移形态的预演完成**：将来抽包时 API 面即这个三元组，
-  应用侧只保留 dataloaders.ts 的绑定声明。
+- **补记（2026-08-30）**：`src/util/dataLoader.ts` 的 `createDataLoader` 工厂把
+  路由 data 三层管道（withCache → mockViewData → 路由 data）收敛为一次声明；
+  同批把「统一 useQuery + option 对象」重构为「场景化 hook」。当前形态：
+  - 三元组 **`[loader, useData, queryFn]`**：第三元素 queryFn 是**绑定 cache
+    的取数函数**（`bindQueryFn(fetch, cache)`：service 函数原样携带其实体
+    cache，Object.assign 保函数身份与 fn.name）——loader/组件双通道共享
+    同一 cache 寻址，mutation 写穿同源。
+  - 场景 hook 组装移到应用绑定层 `src/services/dataloaders.ts`：
+    `createQueryHook(config)`（`src/util/useQuery.ts`，机制部分——每实体
+    缓存注册表 + 持久化挂载——原样保留）把 queryFn/staleTime/initData/mock
+    全量在创建时闭合，**运行时调用点只收 args、零 option 零重载**；声明了
+    initData 的场景 data 类型经条件类型收窄为非空。
+  - 设计哲学：机制/库层不预测用户场景，选项在场景声明点闭合。select/retry
+    等未被调用点使用的 option 按 YAGNI 裁剪未实现（传输层重试归 http 的
+    withRetry）。
+  - **上移形态的预演完成**：将来抽包时 API 面即「createDataLoader 三元组 +
+    createQueryHook 工厂」，应用侧只保留 dataloaders.ts 的绑定声明。
 
 ## 3. native-router beforeLoad context 注入：已解决
 

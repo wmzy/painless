@@ -1,16 +1,17 @@
 // 路由 data 管道的收敛工厂：把「withCache 双通道缓存 → DevTool mock →
-// 路由 data」三层包装、视图侧取数、组件通道三件套收拢为一次
+// 路由 data」三层包装、视图侧取数、组件通道取数入口收拢为一次
 // createDataLoader 声明——路由表只挂 loader 引用，视图不再手写
 // useData<T>()! / ?? undefined 的来源断言与泛型手工标注。
 // 【上移计划】本工厂与 useQuery / loaderCache 同属项目级胶水层（决策见
-// docs/decisions.md 第 2 条）；三元组形态（loader / useData / useQuery
-// preset）即上移包的 API 预演——第 8 条记录了 DEV 来源校验选「声明身份」
-// 而非「结果指纹」的论证。
+// docs/decisions.md 第 2 条）；三元组形态（loader / useData / queryFn）+
+// 场景层组装（createQueryHook，绑定见 services/dataloaders.ts）即上移包
+// 的 API 预演——第 8 条记录了 DEV 来源校验选「声明身份」而非「结果指纹」
+// 的论证。
 import {useData as useRouteData, useMatched} from '@native-router/react';
 
 import {withCache, type LoaderCtx} from './loaderCache';
 import {mockViewData} from './mock';
-import {useQuery, type EntityCache, type QueryOptions, type QueryResult} from './useQuery';
+import {bindQueryFn, type EntityCache, type QueryFn} from './useQuery';
 
 // 路由 data loader：ctx 即 @native-router 的 loader 上下文（search/params/
 // signal/router 按路由异构，宽松形状见 loaderCache 的 LoaderCtx）
@@ -29,26 +30,10 @@ export type UseData<T> = {
   (opts: {optional: true}): T | undefined;
 };
 
-// preset 的可选项：QueryOptions 去掉 cache——cache 已由 loader 声明绑定，
-// 调用点不可（也不需要）覆盖
-type WithoutCache<T, K extends unknown[]> = Omit<QueryOptions<T, K>, 'cache'>;
-
-// 组件通道 preset：useQuery 调用点的「fn + cache」两件套由 loader 声明
-// 收拢，调用点只给 args 与可选项（select/initData/staleTime/mock/retry
-// 透传）。重载与 useQuery 同构——initData/select 的 data 类型收窄语义
-// 原样保留（CommentList 传 initData: [] 后 comments 直接 .map，无需
-// undefined 检查）。
-export type UseQueryPreset<T, K extends unknown[]> = {
-  <S = T>(args: K, opts: WithoutCache<T, K> & {select: (data: T) => S; initData: T}): QueryResult<S>;
-  <S = T>(args: K, opts: WithoutCache<T, K> & {select: (data: T) => S}): QueryResult<S | undefined>;
-  (args: K, opts: WithoutCache<T, K> & {initData: T}): QueryResult<T>;
-  (args: K, opts?: WithoutCache<T, K>): QueryResult<T | undefined>;
-};
-
 export function createDataLoader<T, K extends unknown[]>(
   spec: {
-    // 参数化 service 函数：与 useQuery 的 fn 同形状（尾参可选 signal——
-    // useRun 的 {signal: true} 与路由 ctx.signal 都从这里透传到 fetch）
+    // 参数化 service 函数：与 queryFn 同形状（尾参可选 signal——useRun
+    // 的 {signal: true} 与路由 ctx.signal 都从这里透传到 fetch）
     fetch: (...args: [...K, signal?: AbortSignal]) => Promise<T>;
     // K 的契约源（现状约定）：cache 的 key 元组形状即 K——fetch 的参数
     // 元组、keyOf 的返回形状都向它看齐，错形状编译期暴露
@@ -60,7 +45,7 @@ export function createDataLoader<T, K extends unknown[]>(
     staleTime?: number;
     mock?: {schema: unknown; key: string};
   }
-): [DataLoader<T>, UseData<T>, UseQueryPreset<T, K>] {
+): [DataLoader<T>, UseData<T>, QueryFn<T, K>] {
   const {fetch, cache, keyOf, staleTime, mock} = spec;
 
   // 桥接：路由 ctx → service 参数元组（[...keyOf(ctx), signal]）。三层由
@@ -73,7 +58,7 @@ export function createDataLoader<T, K extends unknown[]>(
     (ctx: LoaderCtx) => fetch(...keyOf(ctx), ctx.signal),
     staleTime !== undefined ? {staleTime} : undefined
   );
-  // loader 即路由表要挂的引用——身份校验与 useQueryPreset 都闭包绑定它
+  // loader 即路由表要挂的引用——身份校验闭包绑定它
   const loader: DataLoader<T> = mock
     ? mockViewData(cached, mock.schema, mock.key)
     : cached;
@@ -113,21 +98,13 @@ export function createDataLoader<T, K extends unknown[]>(
     return value;
   };
 
-  // 组件通道 preset：三件套（fn/cache/opts）在此收拢，调用点只给 args。
-  // 实现体按宽松签名落到 useQuery 的基础重载：F/K 在泛型实现体内是
-  // 延迟条件类型（QueryKey<F> 不可静态求值），与 useQuery 实现体自身
-  // 的处理同款——经 Parameters<typeof useQuery> 收拢调用（tsc 认必要），
-  // 四个收窄重载的语义由返回处的 UseQueryPreset 类型承担，经 unknown
-  // 断言挂回（与 useQuery 实现体保留 as 断言收拢同一先例）。
-  const preset = (args: K, opts: WithoutCache<T, K> = {}) =>
-    useQuery(
-      fetch as unknown as Parameters<typeof useQuery>[0],
-      args as unknown as Parameters<typeof useQuery>[1],
-      {cache, ...opts} as unknown as Parameters<typeof useQuery>[2]
-    );
+  // 组件通道取数入口：fetch × cache 在此绑定（bindQueryFn），场景 hook
+  // 的组装（createQueryHook）移到应用绑定层（services/dataloaders.ts）——
+  // 机制层不预测用户场景，选项（initData/mock/staleTime）在场景声明点
+  // 闭合，运行时调用点零 option。
+  const queryFn = bindQueryFn(fetch, cache);
 
   // useDataHook 的 T | undefined → UseData<T>（optional 重载的语义收窄）
-  // 与 preset 的 QueryResult<any> → UseQueryPreset（四个收窄重载）都需
-  // 断言收拢：泛型实现体内不可静态证明（运行时语义由路由声明保证）
-  return [loader, useDataHook as UseData<T>, preset as UseQueryPreset<T, K>];
+  // 需断言收拢：泛型实现体内不可静态证明（运行时语义由路由声明保证）
+  return [loader, useDataHook as UseData<T>, queryFn];
 }

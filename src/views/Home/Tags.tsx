@@ -4,7 +4,6 @@ import {TagGroup, TagGroupItem, Spinner, Alert, Title} from 'haze-ui';
 
 import {useTagsQuery} from '@/services/dataloaders';
 import {homeSearchSchema, homeSearchWriteSchema} from '@/types/search';
-import {tagListSchema} from '@/types/index.schema';
 
 const tagButton = css`
   padding: 0;
@@ -19,13 +18,10 @@ const staleAside = css`
 `;
 
 export default function Tags() {
-  // useTagsQuery（createDataLoader 第三元素，声明见 dataloaders.ts）：
-  // fetch/cache 由 loader 声明绑定，mock 经 opts 透传（useQuery 的
-  // mock 配置项——DevTool 面板的 tagList 条目行为不变）
-  const {data: tags, loading, error, stale} = useTagsQuery([], {
-    initData: [],
-    mock: {schema: tagListSchema, key: 'tagList'}
-  });
+  // useTagsQuery（场景 hook，声明见 dataloaders.ts）：fetch/cache/initData/
+  // mock 全部在场景声明点闭合，调用点只给 args——DevTool 面板的 tagList
+  // 条目行为不变
+  const {data: tags, loading, error, stale} = useTagsQuery([]);
 
   const {tag: activeTag} = useSearch(homeSearchSchema);
   const setSearch = useSetSearch(homeSearchWriteSchema);

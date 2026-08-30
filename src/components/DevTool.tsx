@@ -21,11 +21,11 @@ import {allCaches, clearAllCaches} from '@/util/useQuery';
 import Popover from './Popover';
 
 // InjectDevTools 不传 injectables：改为观察具名注册表（react-toolroom
-// ≥0.16 的发现通道）——useQuery 内部的 useInjectable(fn, {name}) 已把
-// 实例注册进去（组件卸载自动注销），面板自动发现并追踪 useQuery 发起
-// 的真实调用（时间/函数名/状态/耗时/参数 → 结果）。旧版「面板自建
-// injectable 与 preset 内部实例 per-hook-instance 互不可见」的限制已
-// 由注册表解决。caches 侧照旧：注册表条目的 cache 即
+// ≥0.16 的发现通道）——createQueryHook 内部的 useInjectable(queryFn,
+// {name}) 已把实例注册进去（组件卸载自动注销），面板自动发现并追踪场景
+// query hook 发起的真实调用（时间/函数名/状态/耗时/参数 → 结果）。旧版
+// 「面板自建 injectable 与场景 hook 内部实例 per-hook-instance 互不可见」
+// 的限制已由注册表解决。caches 侧照旧：注册表条目的 cache 即
 // createMemoryCacheProvider 产物，天然满足 ObservableCache 形状
 //（snapshot 返回 {key,value,cachedAt[,pending]}，subscribe 收
 // CacheEvent），结构化兼容直接透传，零字段适配。
@@ -50,7 +50,7 @@ type CacheEntry = {
   value: unknown;
   cachedAt: number;
   pending?: boolean;
-  /** 面板侧附加：条目所属的实体 cache 注册名（useQuery 自动登记） */
+  /** 面板侧附加：条目所属的实体 cache 注册名（createQueryCache 自动登记） */
   cacheName: string;
 };
 
@@ -124,11 +124,12 @@ function DevToolInner({open: openControl}: {open?: Control<boolean> | boolean}) 
           <hr />
           {/* react-toolroom/devtools 面板：cache 快照表复用 allCaches
               注册表逐实体渲染 Key/Age/Value 表；调用追踪经具名注册表观察
-              useQuery 发起的真实调用（见文件头注释）。自研 CacheView
+              场景 query hook 发起的真实调用（见文件头注释）。自研 CacheView
               （聚合 + 事件流 + Clear）保留：面板看逐实体明细与调用追踪，
               CacheView 看注册表全貌与事件流。RequestLogView 仍保留——
               它是 http 层视角（URL/状态码），覆盖路由 loader 通道与一切
-              未走 useQuery 的请求，与 inject 追踪（preset 内视角）互补。 */}
+              未走场景 query hook 的请求，与 inject 追踪（场景 hook 内视角）
+              互补。 */}
           <InjectPanel />
           <hr />
           <RequestLogView />
@@ -187,7 +188,8 @@ function formatEvent(
 }
 
 // 缓存检查器（多实体聚合）：直读 allCaches 注册表（name + cache 成对，
-// 由 useQuery 创建实体时自动登记，无需此处按索引配名）遍历 snapshot()，
+// 由 createQueryCache 创建实体时自动登记，无需此处按索引配名）遍历
+// snapshot()，
 // 订阅每个 cache 的变更事件（含 clear）刷新并追加事件流；面板关闭即
 // 卸载取消全部订阅。条目带 cache 名前缀（article/home/…），Clear 按钮
 // 清空全部实体。

@@ -1,17 +1,24 @@
-// 来源：第 3 批评审任务——useQuery（项目级数据获取 preset）的组合行为验证：
+// 来源：第 3 批评审任务——createQueryHook（场景 hook 工厂）的组合行为验证：
 // loading→data、缓存复用、stale 标记、refetch 与 error。util 下已有测试文件
 // 主题各异（http/faker），不便追加，故新建本文件。
+// 场景化改造（原 useQuery(fn, args, opts) 四重载 → createQueryHook(config)）
+// 后：config 在用例内创建 hook 时全量闭合，renderHook 调用点只给 args——
+// 与生产调用点（Tags/CommentList）同款零 option 形态。select/retry 已按
+// YAGNI 裁剪未实现，对应旧用例随之移除。
 import {describe, it, expect, vi} from 'vitest';
-import {renderHook, render, screen, act, waitFor} from '@testing-library/react';
-import {memo, createElement} from 'react';
+import {renderHook, act, waitFor} from '@testing-library/react';
 
-// useQuery 的 mock 钩子已随 DevTool 拆分迁至 @/util/mock（无 haze-ui
-// 依赖），本测试无需再 mock haze-ui（早期 useQuery → DevTool → haze-ui
-// 链路在 vitest ESM 下无法提供 UMD 命名导出，故曾整体 mock）。
+// mock 钩子在 @/util/mock（无 haze-ui 依赖），本测试无需 mock haze-ui
+//（早期链路在 vitest ESM 下无法提供 UMD 命名导出，故曾整体 mock）。
 
 import {stableHash} from 'react-toolroom/async';
 
-import {clearAllCaches, createQueryCache, useQuery} from './useQuery';
+import {
+  bindQueryFn,
+  clearAllCaches,
+  createQueryCache,
+  createQueryHook
+} from './useQuery';
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -21,15 +28,17 @@ function deferred<T>() {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-describe('useQuery', () => {
+describe('createQueryHook（场景 hook）', () => {
   it('loading → data：初始给 initData，请求完成后 data/loading/stale 就位', async () => {
     const pending = deferred<string[]>();
     const fetchTags = () => pending.promise;
     const cache = createQueryCache<any, any>('loading-data');
+    const useTagsQuery = createQueryHook({
+      queryFn: bindQueryFn(fetchTags, cache),
+      initData: ['init']
+    });
 
-    const {result} = renderHook(() =>
-      useQuery(fetchTags, [], {cache, initData: ['init']})
-    );
+    const {result} = renderHook(() => useTagsQuery([]));
 
     expect(result.current.data).toEqual(['init']);
     expect(result.current.loading).toBe(true);
@@ -47,16 +56,16 @@ describe('useQuery', () => {
   it('同参数重新挂载：新鲜期内命中缓存，不再发请求', async () => {
     const fn = vi.fn().mockResolvedValue(['v1']);
     const cache = createQueryCache<any, any>('fresh-remount');
+    const useQ = createQueryHook({
+      queryFn: bindQueryFn(fn, cache),
+      initData: [] as string[]
+    });
 
-    const first = renderHook(() =>
-      useQuery(fn, [], {cache, initData: [] as string[]})
-    );
+    const first = renderHook(() => useQ([]));
     await waitFor(() => expect(first.result.current.data).toEqual(['v1']));
     first.unmount();
 
-    const second = renderHook(() =>
-      useQuery(fn, [], {cache, initData: [] as string[]})
-    );
+    const second = renderHook(() => useQ([]));
     await waitFor(() => expect(second.result.current.data).toEqual(['v1']));
     expect(fn).toHaveBeenCalledTimes(1);
     second.unmount();
@@ -70,19 +79,20 @@ describe('useQuery', () => {
       .mockReturnValueOnce(pending.promise);
     const cache = createQueryCache<any, any>('stale-swr');
     const staleTime = 20;
+    const useQ = createQueryHook({
+      queryFn: bindQueryFn(fn, cache),
+      initData: [] as string[],
+      staleTime
+    });
 
-    const first = renderHook(() =>
-      useQuery(fn, [], {cache, initData: [] as string[], staleTime})
-    );
+    const first = renderHook(() => useQ([]));
     await waitFor(() => expect(first.result.current.data).toEqual(['old']));
     expect(first.result.current.stale).toBe(false);
     first.unmount();
 
     await sleep(30); // 跨过 staleTime=20，远在 cacheTime(5min) 内
 
-    const second = renderHook(() =>
-      useQuery(fn, [], {cache, initData: [] as string[], staleTime})
-    );
+    const second = renderHook(() => useQ([]));
     await waitFor(() => expect(second.result.current.stale).toBe(true));
     expect(second.result.current.data).toEqual(['old']); // 旧值先行
     expect(fn).toHaveBeenCalledTimes(2); // 已在后台重发
@@ -98,10 +108,12 @@ describe('useQuery', () => {
   it('refetch：绕过新鲜缓存强制重发，且引用稳定', async () => {
     const fn = vi.fn().mockResolvedValueOnce(['v1']).mockResolvedValueOnce(['v2']);
     const cache = createQueryCache<any, any>('refetch-stable');
+    const useQ = createQueryHook({
+      queryFn: bindQueryFn(fn, cache),
+      initData: [] as string[]
+    });
 
-    const {result, rerender} = renderHook(() =>
-      useQuery(fn, [], {cache, initData: [] as string[]})
-    );
+    const {result, rerender} = renderHook(() => useQ([]));
     await waitFor(() => expect(result.current.data).toEqual(['v1']));
 
     const refetch = result.current.refetch;
@@ -118,8 +130,9 @@ describe('useQuery', () => {
   it('请求失败：错误进入 error 状态，loading 复位', async () => {
     const fn = vi.fn().mockRejectedValue(new Error('boom'));
     const cache = createQueryCache<any, any>('error-state');
+    const useQ = createQueryHook({queryFn: bindQueryFn(fn, cache)});
 
-    const {result} = renderHook(() => useQuery(fn, [], {cache}));
+    const {result} = renderHook(() => useQ([]));
 
     await waitFor(() => expect(result.current.error).toBeInstanceOf(Error));
     expect(result.current.error?.message).toBe('boom');
@@ -138,10 +151,12 @@ describe('useQuery', () => {
       .mockRejectedValueOnce(new Error('boom-2'))
       .mockResolvedValueOnce(['ok']);
     const cache = createQueryCache<any, any>('failure-count');
+    const useQ = createQueryHook({
+      queryFn: bindQueryFn(fn, cache),
+      initData: [] as string[]
+    });
 
-    const {result} = renderHook(() =>
-      useQuery(fn, [], {cache, initData: [] as string[]})
-    );
+    const {result} = renderHook(() => useQ([]));
 
     await waitFor(() => expect(result.current.error?.message).toBe('boom-1'));
     expect(result.current.failureCount).toBe(1);
@@ -164,10 +179,12 @@ describe('useQuery', () => {
     const pending = deferred<string[]>();
     const fn = vi.fn().mockResolvedValueOnce(['v1']).mockReturnValueOnce(pending.promise);
     const cache = createQueryCache<any, any>('background-fetching');
+    const useQ = createQueryHook({
+      queryFn: bindQueryFn(fn, cache),
+      initData: [] as string[]
+    });
 
-    const {result} = renderHook(() =>
-      useQuery(fn, [], {cache, initData: [] as string[]})
-    );
+    const {result} = renderHook(() => useQ([]));
     await waitFor(() => expect(result.current.data).toEqual(['v1']));
     expect(result.current.loading).toBe(false);
 
@@ -192,10 +209,12 @@ describe('useQuery', () => {
     const pending = deferred<string[]>();
     const fn = vi.fn().mockReturnValue(pending.promise);
     const cache = createQueryCache<any, any>('initial-loading');
+    const useQ = createQueryHook({
+      queryFn: bindQueryFn(fn, cache),
+      initData: [] as string[]
+    });
 
-    const {result} = renderHook(() =>
-      useQuery(fn, [], {cache, initData: [] as string[]})
-    );
+    const {result} = renderHook(() => useQ([]));
 
     // initData 只是本地兜底，store 中尚无结果：初载语义下 loading 也为 true
     expect(result.current.data).toEqual([]);
@@ -219,10 +238,12 @@ describe('useQuery', () => {
       .mockReturnValueOnce(first.promise)
       .mockReturnValueOnce(second.promise);
     const cache = createQueryCache<any, any>('refetch-inflight');
+    const useQ = createQueryHook({
+      queryFn: bindQueryFn(fn, cache),
+      initData: [] as string[]
+    });
 
-    const {result} = renderHook(() =>
-      useQuery(fn, [], {cache, initData: [] as string[]})
-    );
+    const {result} = renderHook(() => useQ([]));
     await act(async () => {
       first.resolve(['v1']);
     });
@@ -259,9 +280,13 @@ describe('useQuery', () => {
       .mockImplementationOnce(() => forA.promise)
       .mockImplementationOnce(() => forB.promise);
     const cache = createQueryCache<any, any>('args-switch-loading');
+    const useQ = createQueryHook({
+      queryFn: bindQueryFn(fn, cache),
+      initData: [] as string[]
+    });
 
     const {result, rerender} = renderHook(
-      ({key}: {key: string}) => useQuery(fn, [key], {cache, initData: [] as string[]}),
+      ({key}: {key: string}) => useQ([key]),
       {initialProps: {key: 'a'}}
     );
 
@@ -287,16 +312,16 @@ describe('useQuery', () => {
     const pending = deferred<string[]>();
     const fn = vi.fn().mockReturnValue(pending.promise);
     const cache = createQueryCache<any, any>('shared-inflight');
+    const useQ = createQueryHook({
+      queryFn: bindQueryFn(fn, cache),
+      initData: [] as string[]
+    });
 
     // 0.8 形态：useCache 的 miss 走 provider.load——两个组件实例并发首载
     // 同参数，共享同一条 in-flight（fn 只执行一次），双方各自广播拿到
     // 一致数据；跨组件的数据复用由共享 cache 承担（下方重挂载验证）。
-    const first = renderHook(() =>
-      useQuery(fn, [], {cache, initData: [] as string[]})
-    );
-    const second = renderHook(() =>
-      useQuery(fn, [], {cache, initData: [] as string[]})
-    );
+    const first = renderHook(() => useQ([]));
+    const second = renderHook(() => useQ([]));
 
     expect(first.result.current.loading).toBe(true);
     expect(second.result.current.loading).toBe(true);
@@ -312,9 +337,7 @@ describe('useQuery', () => {
     second.unmount();
 
     // 缓存新鲜期内重挂载：不再发请求，直接拿缓存值
-    const third = renderHook(() =>
-      useQuery(fn, [], {cache, initData: [] as string[]})
-    );
+    const third = renderHook(() => useQ([]));
     await waitFor(() => expect(third.result.current.data).toEqual(['shared']));
     expect(fn).toHaveBeenCalledTimes(1);
     third.unmount();
@@ -327,9 +350,10 @@ describe('useQuery', () => {
       return Promise.resolve([id]);
     });
     const cache = createQueryCache<any, any>('signal-abort');
+    const useQ = createQueryHook({queryFn: bindQueryFn(fn, cache)});
 
     const {rerender} = renderHook(
-      ({id}) => useQuery(fn, [id], {cache}),
+      ({id}) => useQ([id]),
       {initialProps: {id: 'a'}}
     );
 
@@ -354,9 +378,13 @@ describe('useQuery', () => {
       () => Promise.resolve(['v1'])
     );
     const cache = createQueryCache<any, any>('hash-normalize');
+    const useQ = createQueryHook({
+      queryFn: bindQueryFn(fn, cache),
+      initData: [] as string[]
+    });
 
     const first = renderHook(
-      ({args}) => useQuery(fn, [args], {cache, initData: [] as string[]}),
+      ({args}) => useQ([args]),
       {initialProps: {args: {page: 1, tab: 'feed'}}}
     );
     await waitFor(() => expect(first.result.current.data).toEqual(['v1']));
@@ -365,99 +393,12 @@ describe('useQuery', () => {
     // 键序颠倒 + 全新对象字面量：stableHash 结构化归一为同一缓存 key
     // （JSON.stringify 会因键序产出两个 key 而重发）
     const second = renderHook(
-      ({args}) => useQuery(fn, [args], {cache, initData: [] as string[]}),
+      ({args}) => useQ([args]),
       {initialProps: {args: {tab: 'feed', page: 1}}}
     );
     await waitFor(() => expect(second.result.current.data).toEqual(['v1']));
     expect(fn).toHaveBeenCalledTimes(1); // 缓存命中，未重发
     second.unmount();
-  });
-
-  // select 选项：透传 useResultSelect，data 变为投影切片；initData 语义
-  // 是「select 之前的原始数据」——注入 init 槽后同样经投影返回
-  it('select：data 为投影切片，initData 以原始数据注入经投影返回', async () => {
-    const pending = deferred<{articlesCount: number; title: string}>();
-    const fn = () => pending.promise;
-    const cache = createQueryCache<any, any>('select-slice');
-
-    const {result} = renderHook(() =>
-      useQuery(fn, [], {
-        cache,
-        select: (r) => r.articlesCount,
-        initData: {articlesCount: 0, title: 'init'}
-      })
-    );
-
-    // 首帧：initData 投影后的切片，而非整个原始对象
-    expect(result.current.data).toBe(0);
-
-    await act(async () => {
-      pending.resolve({articlesCount: 5, title: 'v1'});
-    });
-
-    expect(result.current.data).toBe(5);
-  });
-
-  // 订阅粒度：useResultSelect 按「结果 + select」身份 memo——原始结果换
-  // 新但切片不变时（Object.is），订阅组件不重渲染。用 memo 子组件承接
-  // 切片做 render count spy：父组件因 loading 态等无关 store 仍会重渲染，
-  // memo 屏蔽后子组件只在切片真正变化时渲染。select 用每渲染新建的内联
-  // 箭头（项目不强制 useCallback）：useQuery 内部锁定首个身份，不影响 memo。
-  it('select：切片变化才重渲染，未变切片不触发（memo 子组件 render count）', async () => {
-    const p1 = deferred<{articlesCount: number; title: string}>();
-    const p2 = deferred<{articlesCount: number; title: string}>();
-    const p3 = deferred<{articlesCount: number; title: string}>();
-    const fn = vi
-      .fn()
-      .mockReturnValueOnce(p1.promise)
-      .mockReturnValueOnce(p2.promise)
-      .mockReturnValueOnce(p3.promise);
-    const cache = createQueryCache<any, any>('select-rerender');
-
-    let childRenders = 0;
-    const Slice = memo(({count}: {count: number}) => {
-      childRenders++;
-      return createElement('span', {'data-testid': 'slice'}, count);
-    });
-
-    function Page({id}: {id: string}) {
-      const {data} = useQuery(fn, [id], {
-        cache,
-        select: (r) => r.articlesCount,
-        initData: {articlesCount: 0, title: 'init'}
-      });
-      // 本文件是 .ts（无 JSX）：createElement 等价表达
-      return createElement(Slice, {count: data!});
-    }
-
-    const {rerender} = render(createElement(Page, {id: 'a'}));
-    expect(screen.getByTestId('slice').textContent).toBe('0'); // initData 投影
-    childRenders = 0; // 首帧渲染不计入
-
-    // 首个结果：切片 0 → 3 变化，子组件渲染一次
-    await act(async () => {
-      p1.resolve({articlesCount: 3, title: 'v1'});
-    });
-    expect(screen.getByTestId('slice').textContent).toBe('3');
-    expect(childRenders).toBe(1);
-    childRenders = 0;
-
-    // args 变化重跑：新结果 title 变了但 articlesCount 仍为 3——父组件
-    // 随 loading 态重渲染，切片未变的 memo 子组件不渲染
-    rerender(createElement(Page, {id: 'b'}));
-    await act(async () => {
-      p2.resolve({articlesCount: 3, title: 'v2'});
-    });
-    expect(screen.getByTestId('slice').textContent).toBe('3');
-    expect(childRenders).toBe(0);
-
-    // 切片真正变化（3 → 9）：子组件渲染
-    rerender(createElement(Page, {id: 'c'}));
-    await act(async () => {
-      p3.resolve({articlesCount: 9, title: 'v3'});
-    });
-    expect(screen.getByTestId('slice').textContent).toBe('9');
-    expect(childRenders).toBe(1);
   });
 
   // 断网恢复重验证（useReconnectRevalidate）：toolroom 监听 window 的
@@ -469,10 +410,13 @@ describe('useQuery', () => {
       .mockResolvedValueOnce(['v1'])
       .mockResolvedValueOnce(['v2']);
     const cache = createQueryCache<any, any>('online-revalidate');
+    const useQ = createQueryHook({
+      queryFn: bindQueryFn(fn, cache),
+      initData: [] as string[],
+      staleTime: 20
+    });
 
-    const {result} = renderHook(() =>
-      useQuery(fn, [], {cache, initData: [] as string[], staleTime: 20})
-    );
+    const {result} = renderHook(() => useQ([]));
     await waitFor(() => expect(result.current.data).toEqual(['v1']));
 
     await sleep(30); // 跨过 staleTime=20，条目转为 stale
@@ -488,12 +432,15 @@ describe('useQuery', () => {
   it('断网恢复：新鲜期内 online 事件不重发请求', async () => {
     const fn = vi.fn().mockResolvedValue(['v1']);
     const cache = createQueryCache<any, any>('online-fresh');
+    // staleTime 给宽（waitFor 的轮询本身要耗 ~10ms/次，20ms 会把
+    // dispatch 拖出新鲜窗口——这里只验新鲜语义，不卡毫秒）
+    const useQ = createQueryHook({
+      queryFn: bindQueryFn(fn, cache),
+      initData: [] as string[],
+      staleTime: 1000
+    });
 
-    const {result} = renderHook(() =>
-      // staleTime 给宽（waitFor 的轮询本身要耗 ~10ms/次，20ms 会把
-      // dispatch 拖出新鲜窗口——这里只验新鲜语义，不卡毫秒）
-      useQuery(fn, [], {cache, initData: [] as string[], staleTime: 1000})
-    );
+    const {result} = renderHook(() => useQ([]));
     await waitFor(() => expect(result.current.data).toEqual(['v1']));
 
     await act(async () => {
@@ -505,10 +452,13 @@ describe('useQuery', () => {
   it('断网恢复：卸载后 online 事件不再触发重拉（监听已清理）', async () => {
     const fn = vi.fn().mockResolvedValue(['v1']);
     const cache = createQueryCache<any, any>('online-unmounted');
+    const useQ = createQueryHook({
+      queryFn: bindQueryFn(fn, cache),
+      initData: [] as string[],
+      staleTime: 20
+    });
 
-    const {unmount} = renderHook(() =>
-      useQuery(fn, [], {cache, initData: [] as string[], staleTime: 20})
-    );
+    const {unmount} = renderHook(() => useQ([]));
     await waitFor(() => expect(fn).toHaveBeenCalledTimes(1));
     unmount();
 
@@ -657,15 +607,17 @@ describe('useQuery', () => {
       .fn()
       .mockResolvedValueOnce(['v1'])
       .mockReturnValueOnce(pending.promise);
-    // useQuery 调用点的既有约定：cache 用 <any, any>（QueryKey<F> 对
-    // 零参 fn 推导出 unknown[]，强类型 K=[] 反而逆变不兼容）
+    // cache 用 <any, any>（0 参 fn 的元组推导为 []，显式强类型 K 反而
+    // 与 mock 的调用签名不兼容——同本文件既有约定）
     const cache = createQueryCache<any, any>('crosstab', 60_000, {
       persist: KEY
     });
+    const useQ = createQueryHook({
+      queryFn: bindQueryFn(fn, cache),
+      initData: [] as string[]
+    });
 
-    const {result} = renderHook(() =>
-      useQuery(fn, [], {cache, initData: [] as string[]})
-    );
+    const {result} = renderHook(() => useQ([]));
     await waitFor(() => expect(result.current.data).toEqual(['v1']));
 
     // 模拟另一 tab 清空镜像：写盘 + 广播。jsdom 不会自动跨「文档」广播
