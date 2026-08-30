@@ -23,9 +23,9 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
   路由 data 三层管道（withCache → mockViewData → 路由 data）收敛为一次声明；
   同批把「统一 useQuery + option 对象」重构为「场景化 hook」。当前形态：
   - 三元组 **`[loader, useData, queryFn]`**：第三元素 queryFn 是**绑定 cache
-    的取数函数**（`bindQueryFn(fetch, cache)`：service 函数原样携带其实体
-    cache，Object.assign 保函数身份与 fn.name）——loader/组件双通道共享
-    同一 cache 寻址，mutation 写穿同源。
+    的取数函数**（`bindQueryFn(fetch, cache)`：service 函数与其实体 cache 的
+    配对存模块级 WeakMap，函数本身零改动，见第 9 条）——loader/组件双通道
+    共享同一 cache 寻址，mutation 写穿同源。
   - 场景 hook 组装移到应用绑定层 `src/services/dataloaders.ts`：
     `createQueryHook(config)`（`src/util/useQuery.ts`，机制部分——每实体
     缓存注册表 + 持久化挂载——原样保留）把 queryFn/staleTime/initData/mock
@@ -162,3 +162,35 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
   与 DevTool/faker/mock 同款先例），生产产物不含比较逻辑与报错文案；已被
   否决的还有「错误信息增强」等弱用法，首版只留教学式文案点名两种常见
   case（复制视图忘换 loader / 把 loader 再包一层箭头）。
+
+## 9. useQuery 语义细则与 bindQueryFn 绑定机制
+
+- **背景**：`createQueryHook` 收敛为场景 hook 工厂（第 2 条补记）时定下的
+  几条语义取舍长期只存在于 useQuery.ts 的注释里；2026-08-30 注释按「复述
+  代码的不留、库 README 已表达的不留、决策论证入本文件、只留代码读不出
+  的坑与不变量」大幅删减后，论证移到这里。同批 bindQueryFn 的绑定存储从
+  「Object.assign 往函数上挂 cache 属性」改为模块级 WeakMap。
+- **决定**：
+  - **loading 仅指初载**（per-args 观测 + SWR 语义重建）：后台重拉不置
+    true，已渲染内容不闪整屏 Spinner；任意 in-flight 见 fetching。
+  - **结构共享（structural sharing）刻意不做**：重验证低频（staleTime
+    门槛拦截，新鲜期内连请求都不发）、页级重渲染廉价（reconcile 后通常
+    无 DOM 变更），而 deep-equal 要在每次成功 fetch 付 O(payload)；热点
+    组件用标量 props + React.memo 局部解决（settle 后对象 prop 恒为新
+    引用，memo 边界上比较标量才有效，比较对象等于手写 deep-equal）。
+  - **select 恒等投影是唯一投影**：useResultSelect 只要结果存在就会调
+    select，传 undefined 会在首个结果到达时抛「select is not a
+    function」；模块级常量保证 select 身份稳定（「结果 + select」双重
+    身份的 memo 桶不随渲染击穿），恒等投影下输出即输入。
+  - **bindQueryFn 用 WeakMap 存配对 + phantom brand**：`WeakMap<fn,
+    cache>` 模块级单表，函数本身零改动（不再挂属性，身份/fn.name/可枚
+    举属性都不变，也不会再被枚举出多余成员）；`QueryFn` 类型以模块私有
+    unique symbol 打纯类型品牌（`declare const bound: unique symbol`，
+    零运行时），普通 service 函数缺品牌、编译期就进不了
+    `createQueryHook`。品牌值收 `unknown` 而非 `EntityCache<T, K>`——
+    EntityCache 成员在 K 上逆变，具体 QueryFn 会对 `QueryFn<any, any[]>`
+    （`QueryHookConfig.queryFn` 的字段类型）不可赋值。读取走导出的
+    `getCache(queryFn)`；未绑定（品牌约束被 any 断链绕过时——JS 调用
+    方、测试替身）**抛错**而非返回 undefined：早抛比 react-toolroom 深
+    处的「cache.get is not a function」更快指向「service 函数忘经
+    bindQueryFn 配对」。

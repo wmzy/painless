@@ -17,7 +17,8 @@ import {
   bindQueryFn,
   clearAllCaches,
   createQueryCache,
-  createQueryHook
+  createQueryHook,
+  getCache
 } from './useQuery';
 
 function deferred<T>() {
@@ -673,5 +674,26 @@ describe('createQueryHook（场景 hook）', () => {
     expect(cache.peek!([])).toBeUndefined();
 
     localStorage.removeItem(KEY);
+  });
+});
+
+describe('bindQueryFn / getCache（fetch × cache 配对）', () => {
+  it('getCache 取回绑定的同一 cache；函数身份不变；重复绑定后者覆盖', () => {
+    const fn = vi.fn(async () => ['v']);
+    const first = createQueryCache<any, any>('bind-first');
+    const second = createQueryCache<any, any>('bind-second');
+    const queryFn = bindQueryFn(fn, first);
+
+    // WeakMap 存配对：函数本身零改动（身份、fn.name、可枚举属性都不变）
+    expect(queryFn).toBe(fn);
+    expect(getCache(queryFn)).toBe(first);
+
+    bindQueryFn(fn, second);
+    expect(getCache(queryFn)).toBe(second);
+  });
+
+  it('未绑定的函数抛错并指向 bindQueryFn（模拟品牌约束被 any 断链绕过）', () => {
+    const plain = vi.fn(async () => ['v']) as any;
+    expect(() => getCache(plain)).toThrow(/bindQueryFn/);
   });
 });

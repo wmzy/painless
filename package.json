@@ -85,7 +85,7 @@
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-f0rm": "^0.7.0",
-    "react-toolroom": "^0.17.0",
+    "react-toolroom": "^0.18.0",
     "react-use-control": "^1.3.2"
   }
 }
