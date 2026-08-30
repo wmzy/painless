@@ -1,0 +1,145 @@
+// About 页的无限滚动 feed 演示区块：数据场景在 services/feed.ts（原子
+// hooks 组装），这里只做交互与呈现——IntersectionObserver 哨兵驱动
+// useFeed 的 fetchNextPage，加载/终态反馈渲染在哨兵本体上（滚到底时
+// 它正是视口里的那个元素，反馈与触发点合一）。
+import {css} from '@linaria/core';
+import {useEffect, useRef} from 'react';
+import {TypedLink} from '@native-router/react';
+import {Avatar, Badge, Button, Card, Flex, Text, Title} from 'haze-ui';
+
+import type {AppPaths} from '@/views';
+
+import {useFeed} from '@/services/feed';
+
+// 演示用内部滚动容器：固定高度 + overflow 剪裁。IntersectionObserver
+// 默认视口根会沿祖先链剪裁（overflow: auto 的容器同样把哨兵挡在「不可
+// 见」侧），哨兵因此只在容器滚到底时进入视口——不需要把容器设为
+// observer 的 root。
+const scrollArea = css`
+  max-height: 24rem;
+  overflow-y: auto;
+`;
+
+// 卡片之间留出呼吸位（卡片本体不带外边距）
+const stack = css`
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+`;
+
+// 哨兵/反馈区：滚到底时它在视口内，加载与终态文案就长在这里
+const sentinelArea = css`
+  padding: 0.75rem 0;
+  text-align: center;
+`;
+
+export default function Feed() {
+  const {
+    articles,
+    total,
+    ready,
+    error,
+    reload,
+    fetchNextPage,
+    isFetchingNextPage,
+    hasNextPage
+  } = useFeed();
+
+  // IntersectionObserver 哨兵：尾部哨兵可见即「滚到底」，自动拉下一页。
+  // 观察器随翻页状态重建（依赖里的 isFetchingNextPage/hasNextPage），
+  // 回调读到的永远是当前值；真实 IO 在 observe 时会立即派发一次初始
+  // 通知，因此「哨兵仍可见时翻完一页」会级联续拉直到填满滚动区或触底
+  // ——这正是无限滚动的预期行为。两个守卫挡住重复触发：终态不再拉，
+  // 在飞时不重入。
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (
+        entries.some((entry) => entry.isIntersecting) &&
+        hasNextPage &&
+        !isFetchingNextPage
+      ) {
+        fetchNextPage();
+      }
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [fetchNextPage, hasNextPage, isFetchingNextPage]);
+
+  // 首载占位：!ready 同时覆盖「请求在飞且无结果」（initialLoading 同期
+  // 为真）与 useRun 发起请求前的一帧；空结果集（count=0 的正常响应）
+  // 则以 ready=true 走下方正常终态，不会卡在永久占位。
+  const loadingFirstPage = !ready && error == null;
+
+  return (
+    <section aria-label='Infinite feed demo' className={stack}>
+      <Title level={2}>Infinite Feed</Title>
+      <Text type='secondary'>
+        Scroll to the bottom of the feed below — the next page loads
+        automatically (useInfinite + IntersectionObserver sentinel), with a
+        visible loading state and an end-of-feed marker.
+      </Text>
+
+      {loadingFirstPage ? (
+        <Card>
+          <Text type='muted'>Loading feed…</Text>
+        </Card>
+      ) : error != null && articles.length === 0 ? (
+        // 首页失败：列表为空，聚合里没有可续的页——用 reload 从首页重来
+        <Card>
+          <Text type='secondary'>{error.message}</Text>{' '}
+          <Button variant='outline' size='sm' onClick={reload}>
+            Retry
+          </Button>
+        </Card>
+      ) : (
+        <div
+          role='feed'
+          aria-busy={isFetchingNextPage}
+          aria-label='Articles'
+          className={`${scrollArea} ${stack}`}
+        >
+          {articles.map((a) => (
+            <Card key={a.slug}>
+              <Flex align='center' gap='sm'>
+                <Avatar src={a.author.image} alt={a.author.username} />
+                <Text>{a.author.username}</Text>
+              </Flex>
+              <Title level={3}>
+                <TypedLink<AppPaths> to='/article/:title' params={{title: a.slug}}>
+                  {a.title}
+                </TypedLink>
+              </Title>
+              <Text>{a.description}</Text>
+              <Flex gap='xs' wrap>
+                {a.tagList.map((tag) => (
+                  <Badge key={tag}>{tag}</Badge>
+                ))}
+              </Flex>
+            </Card>
+          ))}
+
+          {/* 哨兵即反馈区（见文件头）：翻页中显示加载态，触底显示终态，
+              翻页失败显示重试（此刻 hasNextPage 仍真，fetchNextPage 即
+              「续拉失败的那一页」） */}
+          <div ref={sentinelRef} role='status' className={sentinelArea}>
+            {isFetchingNextPage ? (
+              <Text type='muted'>Loading more…</Text>
+            ) : error != null ? (
+              <>
+                <Text type='secondary'>{error.message}</Text>{' '}
+                <Button variant='outline' size='sm' onClick={fetchNextPage}>
+                  Retry
+                </Button>
+              </>
+            ) : hasNextPage ? null : (
+              <Text type='muted'>All {total} articles loaded</Text>
+            )}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}

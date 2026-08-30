@@ -578,6 +578,77 @@ test('PreviewLink previews on hover and reuses prefetch on click', async ({
   await expect.poll(() => singleGets[article1.slug]).toBe(1);
 });
 
+// About 页无限滚动 feed（useFeed 场景：react-toolroom/async 原子 hooks
+// 组装——useInfinite + useRun + useInitialLoading/useError，不经过
+// useQuery preset，见 src/services/feed.ts）：IntersectionObserver 哨兵
+// 滚到底自动续页，追平总量进终态。mock 叠加语义同上：分页 handler 注册
+// 在 mockApi 之后（后注册者先被咨询，fulfill 即终结），pattern 必须
+// **/api/articles?* ——列表端点恒带 query string，不带 ?* 的 glob 匹配
+// 不到（见上方行为链路注释）。
+test('about infinite feed: scroll to bottom loads the next page, then stops', async ({page}) => {
+  await mockApi(page, {published: false});
+
+  // 12 篇 fixture × limit 10 → 两页 10 + 2；形状复用 article1 的契约，
+  // 仅 slug/title/描述/时间错开。记账每次列表请求的 offset。
+  const feedArticles: Article[] = Array.from({length: 12}, (_, i) => {
+    const no = String(i + 1).padStart(2, '0');
+    return {
+      ...article1,
+      slug: `e2e-feed-${no}`,
+      title: `Feed Article ${no}`,
+      description: `Fixture article ${no} for the infinite feed demo.`,
+      createdAt: `2026-02-${no}T00:00:00.000Z`,
+      updatedAt: `2026-02-${no}T00:00:00.000Z`,
+      favoritesCount: i
+    };
+  });
+  const feedOffsets: string[] = [];
+  await page.route('**/api/articles?*', async (route) => {
+    const {searchParams} = new URL(route.request().url());
+    const offset = Number(searchParams.get('offset') ?? 0);
+    const limit = Number(searchParams.get('limit') ?? 10);
+    feedOffsets.push(searchParams.get('offset') ?? '0');
+    return json(route, 200, {
+      articles: feedArticles.slice(offset, offset + limit),
+      articlesCount: feedArticles.length
+    });
+  });
+
+  await page.goto('/about');
+
+  // 首页：10 篇渲染，第 11 篇不存在，feed 只发过 offset=0 一次请求
+  //（哨兵在 overflow 容器的裁剪区外，不滚不动）
+  await expect(
+    page.getByRole('heading', {name: 'Feed Article 01'})
+  ).toBeVisible();
+  await expect(
+    page.getByRole('heading', {name: 'Feed Article 10'})
+  ).toBeVisible();
+  await expect(
+    page.getByRole('heading', {name: 'Feed Article 11'})
+  ).toHaveCount(0);
+  expect(feedOffsets).toEqual(['0']);
+
+  // 滚动 feed 容器到底：哨兵进入视口 → 自动发起第二条请求（offset=10）
+  await page.getByRole('feed').evaluate((el) => {
+    el.scrollTop = el.scrollHeight;
+  });
+  await expect(
+    page.getByRole('heading', {name: 'Feed Article 12'})
+  ).toBeVisible();
+  expect(feedOffsets).toEqual(['0', '10']);
+
+  // 终态：追平总量显示结束标记（加载反馈与终态同在哨兵区）；继续滚动
+  // 不再发请求。waitForTimeout 是「负断言的稳定窗」：没有可等待的 UI
+  // 信号能证明「什么都没发生」，只能给 IO 回调一个结算窗口后核对记账。
+  await expect(page.getByRole('status')).toHaveText('All 12 articles loaded');
+  await page.getByRole('feed').evaluate((el) => {
+    el.scrollTop = el.scrollHeight;
+  });
+  await page.waitForTimeout(300);
+  expect(feedOffsets).toEqual(['0', '10']);
+});
+
 // ---------------------------------------------------------------------------
 // a11y：@axe-core/playwright 对 mock 数据渲染出的主要页面做 WCAG 2.0/2.1
 // A/AA 系统化扫描（复用上面的 mockApi/login fixtures，网络层全 mock，
