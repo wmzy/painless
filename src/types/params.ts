@@ -1,4 +1,8 @@
 import type {StandardSchemaV1} from '@native-router/react';
+// Result（Success/Failure 判别）定义在 core 的 namespace 声明里；
+// @native-router/react 1.9 起 StandardSchemaV1 是扁平泛型接口（无
+// namespace 成员），Result 需从 core 侧取。
+import type {StandardSchemaV1 as CoreSchemaV1} from '@native-router/core';
 
 // /editor/:slug 路由的 params 契约（@native-router ≥1.9 的 route.params）。
 // 手写 Standard Schema（与 src/types/search.ts 同风格）——模板不为此引入
@@ -19,7 +23,7 @@ export type EditorParams = {
 // 非法——报 issue 走 ParamsError → NotFound，而不是带空 slug 去请求。
 const parseEditorParams = (
   input: unknown
-): StandardSchemaV1.Result<EditorParams> => {
+): CoreSchemaV1.Result<EditorParams> => {
   const raw = (input ?? {}) as Record<string, unknown>;
   const slug = typeof raw.slug === 'string' ? raw.slug.trim() : '';
   if (slug === '') {
