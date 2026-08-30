@@ -26,7 +26,8 @@
 // - refetch：清掉当前参数的缓存条目后重发（绕过缓存），引用稳定；
 // - loading 仅指初载（useArgsStatus 的 per-args 观测 + SWR 语义重建）：
 //   已有结果后的后台重拉不再置 true，已渲染内容不闪整屏 Spinner；任意
-//   in-flight（含后台刷新）见 fetching（useLoading）。
+//   in-flight（含后台刷新）见 fetching（useLoading）；per-args 失败计
+//   数 failureCount 同源透出（失败 +1、成功归零，重试提示/降级 UI 用）。
 // - 结构共享（structural sharing）刻意不做：后台重验证 settle 的新引用
 //   即使内容不变也会重渲染消费者——重验证低频（staleTime 门槛拦截，
 //   新鲜期内连请求都不发）、页级重渲染廉价（reconcile 后通常无 DOM
@@ -144,15 +145,37 @@ export const allCaches: CacheRegistryEntry[] = [];
 // 内存后逐个执行——下个账号冷启动不得 hydrate 回上个账号的数据。
 const persistWipes = new Map<string, () => void>();
 
+// 持久化载荷版本：{v: PERSIST_VERSION, data: <表>} 形态落盘。v 只在载荷
+// 结构本身演进（条目形状/元数据变化）时才 +1；hydrate 按它门禁——版本
+// 不符（未来格式或手改）与 v 引入前的旧格式（裸表）一律整体丢弃静默
+// 重来，刻意不做跨版本迁移：盘上是可重建的缓存镜像而非事实数据源，
+// 丢弃的代价只是一次冷启动重拉，低于长期维护迁移路径的成本。
+const PERSIST_VERSION = 1;
+
+// 载荷 data 表的形状粗验：Record<string, [unknown, number]>。条目值本身
+// 不深检——类型由写侧的 T 保证，这里拦的是结构性坏数据（手改/截断/旧
+// schema），不合格整体丢弃而非逐条抢救。
+const isPersistTable = (v: unknown): v is Record<string, [unknown, number]> =>
+  v !== null &&
+  typeof v === 'object' &&
+  !Array.isArray(v) &&
+  Object.values(v).every(
+    (e) => Array.isArray(e) && e.length === 2 && typeof e[1] === 'number'
+  );
+
 // 冷启动持久化挂载：localStorage 单键镜像（整表快照，一次序列化）。
-// - 启动时（cache 创建处）同步 hydrate：读盘 → JSON.parse → 形状粗验，
-//   坏 JSON / 结构性坏数据 / 隐私模式异常一律静默丢弃，模块加载路径上
-//   不允许存储层炸掉。hydrate 保留条目原 cachedAt——重启后条目的
-//   「年龄」是真实年龄，天然越过 staleTime，首次消费旧值先行 + 后台
-//   重验证（SWR 语义），不会把陈旧数据当新鲜用。
+// - 启动时（cache 创建处）同步 hydrate：读盘 → JSON.parse → 版本门禁
+//   （{v, data} 包，见 PERSIST_VERSION）+ 形状粗验，坏 JSON / 版本或
+//   结构不符 / 隐私模式异常一律静默丢弃，模块加载路径上不允许存储层
+//   炸掉。hydrate 保留条目原 cachedAt——重启后条目的「年龄」是真实
+//   年龄，天然越过 staleTime，首次消费旧值先行 + 后台重验证（SWR
+//   语义），不会把陈旧数据当新鲜用。
 // - 落盘：订阅 cache 事件（set/delete/clear/deletePrefix/过期统一触
-//   发），每次变更后把 dehydrate 快照（仅 settled 条目）写回；配额
-//   超限/非 JSON 安全值吞掉，内存 cache 仍是权威。
+//   发），每次变更后把 dehydrate 快照（仅 settled 条目）包进版本包
+//   写回（写前 diff 盘上现值，相同跳过——跨 tab 回环防护，见实现注
+//   释）；配额超限/非 JSON 安全值吞掉，内存 cache 仍是权威。
+// - 跨 tab 同步：监听 storage 事件，其它 tab 改动本键即清本 tab 内存
+//   ——消费者 miss/stale 重拉，服务端是唯一真相（见实现注释）。
 // - 擦盘：回调登记进 persistWipes，由 clearAllCaches 统一执行（见其
 //   注释：先清内存后擦盘的顺序约束）。
 const attachPersistence = (cache: EntityCache<any, any[]>, key: string) => {
@@ -173,19 +196,16 @@ const attachPersistence = (cache: EntityCache<any, any[]>, key: string) => {
   try {
     const raw = storage.getItem(key);
     if (raw) {
-      const data: unknown = JSON.parse(raw);
-      // 形状粗验：Record<string, [unknown, number]>。条目值本身不深检
-      // ——类型由写侧的 T 保证，这里拦的是结构性坏数据（手改/截断/
-      // 旧 schema），不合格整体丢弃而非逐条抢救。
+      const parsed: unknown = JSON.parse(raw);
+      // 版本门禁：只认当前版本的 {v, data} 包。旧格式（v 引入前的裸
+      // dehydrate 表）与版本不符的载荷都走「静默丢弃 + 空开始」。
       if (
-        data !== null &&
-        typeof data === 'object' &&
-        !Array.isArray(data) &&
-        Object.values(data).every(
-          (e) => Array.isArray(e) && e.length === 2 && typeof e[1] === 'number'
-        )
+        typeof parsed === 'object' &&
+        parsed !== null &&
+        (parsed as {v?: unknown}).v === PERSIST_VERSION &&
+        isPersistTable((parsed as {data?: unknown}).data)
       ) {
-        cache.hydrate?.(data as Record<string, [any, number]>);
+        cache.hydrate?.((parsed as {data: Record<string, [any, number]>}).data);
       }
     }
   } catch {
@@ -194,11 +214,38 @@ const attachPersistence = (cache: EntityCache<any, any[]>, key: string) => {
 
   cache.subscribe?.(() => {
     try {
-      storage.setItem(key, JSON.stringify(cache.dehydrate?.() ?? {}));
+      // 版本包写盘 + 回环防护：本 tab 收到其它 tab 的 storage 事件后
+      // clear 内存（见下方监听），clear 的 delete 事件会驱动这里把空
+      // 表写回——若不 diff 直接 setItem，其它 tab 又会收到事件再 clear，
+      // 形成 tab 间乒乓。写前比对盘上现值，逐字节相同即跳过：收到事
+      // 件的一方 clear 后算出的空表与盘上值相同时写盘不再发生，链路
+      // 一轮收敛（浏览器对「同值 setItem 不再广播」并无一致保证，故
+      // 以显式 diff 收敛，不依赖该实现细节）。比对用实时 getItem 而
+      // 非缓存的上次写值：跨 tab 写盘随时改掉盘面，只有盘上现值才是
+      // 「写不写都是同一结果」的判据。
+      const next = JSON.stringify({
+        v: PERSIST_VERSION,
+        data: cache.dehydrate?.() ?? {}
+      });
+      if (next !== storage.getItem(key)) storage.setItem(key, next);
     } catch {
       // 静默降级：配额超限或非 JSON 安全值；内存 cache 保持正确。
     }
   });
+
+  // 跨 tab 同步：storage 事件只在「其它文档」改动本键时派发到本 tab
+  // （同 tab 自己的 setItem/removeItem 不触发自己的 storage 事件），
+  // 因此监听到即意味着别的 tab 动了镜像。newValue 有值（别 tab 的新
+  // 镜像）与 null（removeItem，登出擦盘）两种情形的正确动作相同：清
+  // 本 tab 内存，消费者 miss/stale 重拉、由服务端重建真相——不
+  // hydrate 事件载荷，跨 tab 信任盘上字节不如信任服务端。监听与
+  // cache 同生命周期，不随登出摘除（clearAllCaches 只擦盘；登出后
+  // 公共实体照常跨 tab 同步）。
+  const onStorage = (ev: StorageEvent) => {
+    if (ev.key === key) cache.clear();
+  };
+  window.addEventListener('storage', onStorage);
+
   persistWipes.set(key, () => storage.removeItem(key));
 };
 
@@ -326,6 +373,15 @@ export type QueryResult<T> = {
   /** 任意 in-flight（useLoading），含已有结果后的后台重拉；需要细化加载指示时用 */
   fetching: boolean;
   error: Error | undefined;
+  /**
+   * 本参数自上次成功以来的失败次数（useArgsStatus 的 per-args 观测）：
+   * 每次失败 +1，同参数成功即归零，无需调用方手动清零。用于重试提示
+   * （「第 N 次失败」）与失败降级 UI 的阈值判断。与 retry 选项正交：
+   * retry 的内部重试循环对外是单次 in-flight（重试在 cache 内层），
+   * failureCount 记录的是整次调用最终 settle 失败的次数，不数循环内
+   * 的单次尝试。
+   */
+  failureCount: number;
   stale: boolean;
   /** 删除当前 args 的缓存条目后重新请求 */
   refetch: () => void;
@@ -367,7 +423,13 @@ export function useQuery<F extends AsyncFunc>(
     retry
   }: QueryOptions<R<F>, QueryKey<F>>
 ): QueryResult<R<F> | undefined> {
-  const injectable = useInjectable(fn);
+  // 具名注册（react-toolroom ≥0.16）：useInjectable(fn, {name}) 把实例
+  // 发布进模块级具名注册表（组件卸载自动注销，重名实例共存）——
+  // <InjectDevTools /> 不传 injectables 时观察全部具名实例，DevTool
+  // 面板借此看到 useQuery 发起的真实调用。名字取 fn.name：面板行的
+  // Function 列即被调服务函数，与 Args → Result 组成完整追踪（本仓库
+  // 调用点全是具名 service 函数）；匿名箭头函数兜底 'query'。
+  const injectable = useInjectable(fn, {name: fn.name || 'query'});
 
   if (mock) {
     useMock(
@@ -451,6 +513,9 @@ export function useQuery<F extends AsyncFunc>(
   const argsStatus = useArgsStatus(injectable, args);
   const loading = argsStatus.loading && argsStatus.data === undefined;
   const error = argsStatus.error as Error | undefined;
+  // per-args 失败计数（失败 +1、同参数成功归零）：与 loading/error 同
+  // 源同槽，别的参数的失败不串到本参数的计数上。
+  const failureCount = argsStatus.failureCount;
 
   // 兜底：useError 的中间件在记录错误后会重抛。这里在最外层接住，
   // 让 useRun / refetch 的调用不产生悬空 rejection——错误统一从
@@ -472,5 +537,5 @@ export function useQuery<F extends AsyncFunc>(
     void injectable(...args);
   }, args as DependencyList);
 
-  return {data, loading, fetching, error, stale, refetch};
+  return {data, loading, fetching, error, failureCount, stale, refetch};
 }

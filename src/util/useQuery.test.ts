@@ -127,6 +127,39 @@ describe('useQuery', () => {
     expect(result.current.data).toBeUndefined();
   });
 
+  // failureCount（useArgsStatus 的 per-args 观测透出）：失败递增、同参
+  // 数成功归零。验证序列 fail → fail → success：两个失败各 +1，最终成
+  // 功既清 error 也清零计数——调用方做「第 N 次失败」提示/降级时无需
+  // 自己维护计数器，也不存在成功后忘清零的残留。
+  it('failureCount：每次失败递增，同参数成功后归零', async () => {
+    const fn = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('boom-1'))
+      .mockRejectedValueOnce(new Error('boom-2'))
+      .mockResolvedValueOnce(['ok']);
+    const cache = createQueryCache<any, any>('failure-count');
+
+    const {result} = renderHook(() =>
+      useQuery(fn, [], {cache, initData: [] as string[]})
+    );
+
+    await waitFor(() => expect(result.current.error?.message).toBe('boom-1'));
+    expect(result.current.failureCount).toBe(1);
+
+    await act(async () => {
+      result.current.refetch();
+    });
+    await waitFor(() => expect(result.current.error?.message).toBe('boom-2'));
+    expect(result.current.failureCount).toBe(2);
+
+    await act(async () => {
+      result.current.refetch();
+    });
+    await waitFor(() => expect(result.current.data).toEqual(['ok']));
+    expect(result.current.failureCount).toBe(0); // 成功即归零
+    expect(result.current.error).toBeUndefined();
+  });
+
   it('已有结果后的重拉：loading 保持 false，fetching 如实为 true', async () => {
     const pending = deferred<string[]>();
     const fn = vi.fn().mockResolvedValueOnce(['v1']).mockReturnValueOnce(pending.promise);
@@ -504,14 +537,16 @@ describe('useQuery', () => {
     // set 事件同步驱动镜像落盘
     const raw = localStorage.getItem(KEY);
     expect(raw).toBeDefined();
-    // 盘上是 dehydrate 形状：hashed key → [value, cachedAt]，cachedAt 为
-    // 写入毫秒时间戳—— staleness 计算的原材料
+    // 盘上是版本包 {v, data}：v 是 hydrate 门禁（版本不符整体丢弃），
+    // data 才是 dehydrate 表（hashed key → [value, cachedAt]，cachedAt
+    // 为写入毫秒时间戳——staleness 计算的原材料）
     const stored = JSON.parse(raw!);
-    expect(stored[stableHash([])]).toEqual([
+    expect(stored.v).toBe(1);
+    expect(stored.data[stableHash([])]).toEqual([
       ['tag-a', 'tag-b'],
       expect.any(Number)
     ]);
-    const cachedAt = stored[stableHash([])][1] as number;
+    const cachedAt = stored.data[stableHash([])][1] as number;
 
     // 模拟重启：全新 cache 读同一键。hydrate 合并语义保留盘上 cachedAt
     // ——重启后条目年龄按真实年龄计，条目天然 stale，消费侧旧值先行 +
@@ -566,5 +601,125 @@ describe('useQuery', () => {
 
     localStorage.removeItem(BAD1);
     localStorage.removeItem(BAD2);
+  });
+
+  it('版本门禁：{v, data} 才 hydrate；旧格式（裸表）与版本不符整体丢弃且不清盘', () => {
+    // 旧格式：v 引入前的裸 dehydrate 表（历史版本模板写入的镜像）。
+    // 版本门禁不认 → 整体丢弃静默重来，不做跨版本迁移（缓存可随时
+    // 重建，迁移路径的维护成本高于一次冷启动重拉）
+    const OLD = 'painless.test.persist-old';
+    const oldPayload = JSON.stringify({
+      [stableHash([])]: [['legacy-tag'], Date.now()]
+    });
+    localStorage.setItem(OLD, oldPayload);
+    const cOld = createQueryCache<string[], []>('persist-old', 60_000, {
+      persist: OLD
+    });
+    expect(cOld.peek!([])).toBeUndefined(); // 未 hydrate 进内存
+
+    // 读侧丢弃 ≠ 写侧擦除：盘上旧数据原样保留，等下次真实 set 覆写
+    expect(localStorage.getItem(OLD)).toBe(oldPayload);
+
+    // 版本不符：未来/未知版本的载荷同样整体丢弃（手改或前滚后回滚）
+    const FUTURE = 'painless.test.persist-future';
+    localStorage.setItem(
+      FUTURE,
+      JSON.stringify({v: 99, data: {[stableHash([])]: [['x'], Date.now()]}})
+    );
+    const cFuture = createQueryCache<string[], []>('persist-future', 60_000, {
+      persist: FUTURE
+    });
+    expect(cFuture.peek!([])).toBeUndefined();
+
+    // 当前版本 {v: 1, data}：hydrate 生效，value 与 cachedAt 均保留
+    const CUR = 'painless.test.persist-v1';
+    const cachedAt = Date.now();
+    localStorage.setItem(
+      CUR,
+      JSON.stringify({v: 1, data: {[stableHash([])]: [['tag'], cachedAt]}})
+    );
+    const cCur = createQueryCache<string[], []>('persist-v1', 60_000, {
+      persist: CUR
+    });
+    expect(cCur.peek!([])?.value).toEqual(['tag']);
+    expect(cCur.peek!([])?.cachedAt).toBe(cachedAt);
+
+    localStorage.removeItem(OLD);
+    localStorage.removeItem(FUTURE);
+    localStorage.removeItem(CUR);
+  });
+
+  it('跨 tab 同步：storage 事件清本 tab 内存，消费者 miss 重拉服务端真相', async () => {
+    const KEY = 'painless.test.crosstab';
+    localStorage.clear();
+    const pending = deferred<string[]>();
+    const fn = vi
+      .fn()
+      .mockResolvedValueOnce(['v1'])
+      .mockReturnValueOnce(pending.promise);
+    // useQuery 调用点的既有约定：cache 用 <any, any>（QueryKey<F> 对
+    // 零参 fn 推导出 unknown[]，强类型 K=[] 反而逆变不兼容）
+    const cache = createQueryCache<any, any>('crosstab', 60_000, {
+      persist: KEY
+    });
+
+    const {result} = renderHook(() =>
+      useQuery(fn, [], {cache, initData: [] as string[]})
+    );
+    await waitFor(() => expect(result.current.data).toEqual(['v1']));
+
+    // 模拟另一 tab 清空镜像：写盘 + 广播。jsdom 不会自动跨「文档」广播
+    // storage 事件，手动派发 StorageEvent 还原浏览器行为（storageArea
+    // 指明来源是 localStorage）。
+    const emptyMirror = JSON.stringify({v: 1, data: {}});
+    localStorage.setItem(KEY, emptyMirror);
+    const setItemSpy = vi.spyOn(Storage.prototype, 'setItem');
+    await act(async () => {
+      window.dispatchEvent(
+        new StorageEvent('storage', {
+          key: KEY,
+          newValue: emptyMirror,
+          storageArea: localStorage
+        })
+      );
+    });
+
+    // 事件 → 本 tab 内存清空 → useCache 被动重验证（delete 事件重跑）
+    expect(cache.peek!([])).toBeUndefined();
+    await waitFor(() => expect(fn).toHaveBeenCalledTimes(2));
+
+    // 回环防护：clear 的 delete 事件驱动镜像写回，但写前 diff 发现盘上
+    // 已是同一份空表 → 跳过写盘（不依赖浏览器「同值不广播」的实现细
+    // 节，链路一轮收敛，不再给其它 tab 制造新事件源）
+    expect(setItemSpy).not.toHaveBeenCalled();
+    setItemSpy.mockRestore();
+
+    // 消费者从服务端重建真相（不是 hydrate 别 tab 的盘上字节）
+    await act(async () => {
+      pending.resolve(['v2']);
+    });
+    await waitFor(() => expect(result.current.data).toEqual(['v2']));
+
+    localStorage.removeItem(KEY);
+  });
+
+  it('跨 tab 登出擦盘（newValue=null）：本 tab 内存同样清空', () => {
+    const KEY = 'painless.test.crosstab-null';
+    localStorage.clear();
+    const cache = createQueryCache<string[], []>('crosstab-null', 60_000, {
+      persist: KEY
+    });
+    cache.set([], ['v1']);
+    expect(cache.peek!([])?.value).toEqual(['v1']);
+
+    // 另一 tab 登出擦盘：removeItem 广播 newValue=null——本 tab 不能继续
+    // 用旧会话留在内存里的镜像（与冷启动「不得 hydrate 回上个账号数
+    // 据」同一语义的会话内对偶）
+    window.dispatchEvent(
+      new StorageEvent('storage', {key: KEY, newValue: null, storageArea: localStorage})
+    );
+    expect(cache.peek!([])).toBeUndefined();
+
+    localStorage.removeItem(KEY);
   });
 });

@@ -30,7 +30,9 @@ const DEFAULT_STALE_TIME = 2000;
 // 显式带返回值，规避 no-empty-function；语义即吞掉后台重验证的拒绝
 const noop = () => undefined;
 
-type LoaderCtx = {
+// 导出供 dataLoader 工厂复用：loader 的公开类型（DataLoader<T>）以它为
+// ctx 形状——各成员可选，容纳按路由异构的 search/params/signal/router
+export type LoaderCtx = {
   search?: unknown;
   params?: unknown;
   router?: unknown;

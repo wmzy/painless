@@ -1,5 +1,3 @@
-import type {Article} from '@/types';
-
 import {useState, useEffect} from 'react';
 // react-f0rm ≥0.4：onSubmit / onValidSubmit 都在校验通过后触发且被
 // await（isSubmitting 覆盖整个异步提交，finally 复位），二者已无行为
@@ -10,11 +8,12 @@ import {useState, useEffect} from 'react';
 // 这两个同步 API 上。
 import {Form, useForm, useIsSubmitting, isDirty, reset, setInitialValues} from 'react-f0rm';
 import {Card, Title, Input, Textarea, TagInput, Alert, ConfirmDialog, FormItem} from 'haze-ui';
-import {useRouter, useData, useBlocker} from '@native-router/react';
+import {useRouter, useBlocker} from '@native-router/react';
 import {navigate} from '@native-router/core';
 import {useMutation} from 'react-toolroom/async';
 
 import * as articleService from '@/services/article';
+import {useEditorData} from '@/services/dataloaders';
 import {articleCache, homeCache} from '@/util/useQuery';
 import {required, applyApiFieldErrors} from '@/util/validators';
 
@@ -28,10 +27,13 @@ type EditorValues = {
 
 export default function Editor() {
   const router = useRouter();
-  // useData 约定：/editor（新建）无 loader、/editor/:slug（编辑）挂
-  // loader——共用本组件，文章可能不存在（新建态），用 ?? undefined 收窄
-  // 为可选；有 loader 保证有值的路由（如 Article）用 !
-  const article = useData<Article>() ?? undefined;
+  // useEditorData（createDataLoader 第二元素，optional 形态）：/editor
+  //（新建）无 loader、/editor/:slug（编辑）挂 editorLoader——共用本组件，
+  // 文章可能不存在。optional 语义由工厂类型收拢（返回 Article |
+  // undefined），原 useData<Article>() ?? undefined 的泛型手工标注消失；
+  // DEV 下 route.data === editorLoader 或 === undefined 均合法，失配
+  // throw（见 src/util/dataLoader.ts）
+  const article = useEditorData({optional: true});
   const [error, setError] = useState<string | null>(null);
   // react-f0rm 0.5.0：setInitialValues 已改为内容比较——引用变化但内容
   // 相同不再 values.clear() 清空 live values，inline 对象即可，无需

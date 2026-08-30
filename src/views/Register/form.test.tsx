@@ -25,10 +25,13 @@ import Register from './index';
 
 const registerMock = vi.mocked(auth.register);
 
-function fill(username: string, email: string, password: string) {
+// 第 4 参确认密码默认与密码一致：既有用例不关心一致性校验，保持
+// 「填完即可过字段校验」的原语义；一致性差异场景由新用例显式传入。
+function fill(username: string, email: string, password: string, confirm = password) {
   fireEvent.change(screen.getByPlaceholderText('Username'), {target: {value: username}});
   fireEvent.change(screen.getByPlaceholderText('Email'), {target: {value: email}});
   fireEvent.change(screen.getByPlaceholderText('Password'), {target: {value: password}});
+  fireEvent.change(screen.getByPlaceholderText('Confirm password'), {target: {value: confirm}});
 }
 
 beforeEach(() => {
@@ -47,9 +50,10 @@ describe('Register 表单', () => {
     expect(registerMock).not.toHaveBeenCalled();
 
     // 'a@b' 原生合法但不过应用正则（见 Login/form.test.tsx 同款注释），
-    // 避开 type='email' 原生约束早退，精确断言自定义验证器
+    // 避开 type='email' 原生约束早退，精确断言自定义验证器。
+    // 复验走逐键触发（默认档 reValidateMode='onChange'，桥写值即用户
+    // 变更——见 Login/form.test.tsx 的回归锚点用例）——改值即复验换文案
     fill('alice', 'a@b', '123');
-    fireEvent.click(screen.getByRole('button', {name: 'Register'}));
     expect(await screen.findByText('Invalid email')).toBeDefined();
     expect(screen.getByText('Password must be at least 8 characters')).toBeDefined();
     expect(registerMock).not.toHaveBeenCalled();
@@ -156,6 +160,71 @@ describe('Register 表单', () => {
 
       expect(screen.getByText("'root' is already taken")).toBeDefined();
       expect(screen.queryByText("'admin' is already taken")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // #11 确认密码：跨字段一致性走 useForm 的 form 级 validate，错误挂到
+  // confirmPassword 字段（与其它字段同一条 FormItem role='alert' 链路）；
+  // 提交体剔除确认字段（RealWorld 契约只有 username/email/password）。
+  it('确认密码不一致：提交报错挂确认字段（aria 链路）、按钮压下；改一致后清除并放行，提交体不含确认字段', async () => {
+    // 注册成功路径只关心放行与提交体，返回值用 undefined 占位（视图
+    // 只在 navigate 前使用返回值与否无关紧要）
+    type RegisterResult = Awaited<ReturnType<typeof auth.register>>;
+    registerMock.mockResolvedValue(undefined as unknown as RegisterResult);
+    vi.useFakeTimers();
+    try {
+      render(<Register />);
+      const submit = screen.getByRole<HTMLButtonElement>('button', {
+        name: 'Register'
+      });
+
+      // 初始可点（mode='onSubmit'：首次校验由提交触发，见视图注释）
+      expect(submit.disabled).toBe(false);
+
+      // 一致时不报错、正常放行（对照组在用例末尾，先走不一致路径）
+      fill('alice', 'alice@example.com', 'password123', 'password12');
+      fireEvent.click(submit);
+      // 提交先等 username 异步查重（300ms debounce + 400ms 延迟）走完，
+      // 字段级全过后才跑 form 级一致性校验
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(300 + 400);
+      });
+
+      expect(screen.getByText('Passwords do not match')).toBeDefined();
+      // 确认字段的错误走现有 FormItem 链路：aria-invalid + 指向
+      // role='alert' 的 error span
+      const confirmInput = screen.getByPlaceholderText('Confirm password');
+      expect(confirmInput.getAttribute('aria-invalid')).toBe('true');
+      const errorEl = document.getElementById(
+        confirmInput.getAttribute('aria-describedby')!
+      );
+      expect(errorEl?.getAttribute('role')).toBe('alert');
+      expect(errorEl?.textContent).toBe('Passwords do not match');
+      // 无效提交被拦：不发请求，按钮因 hasErrors 压下
+      expect(registerMock).not.toHaveBeenCalled();
+      expect(submit.disabled).toBe(true);
+
+      // 改一致（无失焦）：逐键复验清错 → 按钮弹起。
+      // 确认字段 validator 是同步的，fireEvent（内含 act）返回时状态已
+      // 落定，无需 waitFor（fake timers 下 waitFor 的轮询不会走表）
+      fireEvent.change(confirmInput, {target: {value: 'password123'}});
+      expect(screen.queryByText('Passwords do not match')).toBeNull();
+      expect(submit.disabled).toBe(false);
+
+      // 再次提交：form 级校验通过，注册放行；提交体只有契约三元组，
+      // 确认字段不随 values 透传（toHaveBeenCalledWith 断言精确实参）
+      fireEvent.click(submit);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(300 + 400);
+      });
+      expect(registerMock).toHaveBeenCalledTimes(1);
+      expect(registerMock).toHaveBeenCalledWith(
+        'alice',
+        'alice@example.com',
+        'password123'
+      );
     } finally {
       vi.useRealTimers();
     }

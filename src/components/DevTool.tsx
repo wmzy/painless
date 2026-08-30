@@ -20,16 +20,15 @@ import {allCaches, clearAllCaches} from '@/util/useQuery';
 
 import Popover from './Popover';
 
-// InjectDevTools 的 injectables 传空：调用追踪（subscribeInjectEvents）
-// 只认 useInjectable(fn) 产物，且 store 是 per-hook-instance 的——本面板
-// 自建的 injectable 与 useQuery 内部 useInjectable(fn) 互不可见，观察不
-// 到真实调用，恒显 'No calls settled yet.'。真实请求观察由
-// fetch-fun withLogging → RequestLogView 承担（见下方 RequestLogView），
-// 重复且不可用的 inject 追踪不留。caches 侧保留：注册表条目的 cache 即
+// InjectDevTools 不传 injectables：改为观察具名注册表（react-toolroom
+// ≥0.16 的发现通道）——useQuery 内部的 useInjectable(fn, {name}) 已把
+// 实例注册进去（组件卸载自动注销），面板自动发现并追踪 useQuery 发起
+// 的真实调用（时间/函数名/状态/耗时/参数 → 结果）。旧版「面板自建
+// injectable 与 preset 内部实例 per-hook-instance 互不可见」的限制已
+// 由注册表解决。caches 侧照旧：注册表条目的 cache 即
 // createMemoryCacheProvider 产物，天然满足 ObservableCache 形状
 //（snapshot 返回 {key,value,cachedAt[,pending]}，subscribe 收
 // CacheEvent），结构化兼容直接透传，零字段适配。
-const NO_INJECTABLES: readonly never[] = [];
 
 type Props = {
   children: ReactNode;
@@ -70,21 +69,16 @@ type CacheEvent = {
 // 事件流保留的最近条数：够回看一轮典型交互，又不让 300px 面板被撑爆
 const MAX_EVENTS = 8;
 
-// InjectDevTools 的挂载小节：只挂 cache 快照表（injectables 恒空数组，
-// 见 NO_INJECTABLES 注释）。模块常量身份恒稳定，满足 InjectDevTools 对
-// injectables/caches「身份恒稳定，否则观察者重挂」的要求；caches 用
-// 打开面板时的注册表快照（allCaches 只增不减，收起再开重新收集）。
+// InjectDevTools 的挂载小节：cache 快照表（caches）+ 具名注册表调用追踪
+//（不传 injectables 即观察全部具名 injectable，见文件头注释）。caches
+// 用打开面板时的注册表快照（allCaches 只增不减，收起再开重新收集），
+// 模块常量身份恒稳定，满足 InjectDevTools 对 caches「身份恒稳定，否则
+// 观察者重挂」的要求。
 function InjectPanel() {
   const [caches] = useState<ObservableCache[]>(() =>
     allCaches.map(({cache}) => cache)
   );
-  return (
-    <InjectDevTools
-      injectables={NO_INJECTABLES}
-      caches={caches}
-      title='Cache'
-    />
-  );
+  return <InjectDevTools caches={caches} title='Cache & Calls' />;
 }
 
 function DevToolInner({open: openControl}: {open?: Control<boolean> | boolean}) {
@@ -128,11 +122,13 @@ function DevToolInner({open: openControl}: {open?: Control<boolean> | boolean}) 
           <hr />
           <CacheView />
           <hr />
-          {/* react-toolroom/devtools 的 cache 快照表面板：复用 allCaches
-              注册表逐实体渲染 Key/Age/Value 表。自研 CacheView（聚合 +
-              事件流 + Clear）保留：面板看逐实体明细，CacheView 看注册表
-              全貌与事件流。injectables 观察不留——useQuery 的真实请求流
-              已由 RequestLogView 承担（见 NO_INJECTABLES 注释）。 */}
+          {/* react-toolroom/devtools 面板：cache 快照表复用 allCaches
+              注册表逐实体渲染 Key/Age/Value 表；调用追踪经具名注册表观察
+              useQuery 发起的真实调用（见文件头注释）。自研 CacheView
+              （聚合 + 事件流 + Clear）保留：面板看逐实体明细与调用追踪，
+              CacheView 看注册表全貌与事件流。RequestLogView 仍保留——
+              它是 http 层视角（URL/状态码），覆盖路由 loader 通道与一切
+              未走 useQuery 的请求，与 inject 追踪（preset 内视角）互补。 */}
           <InjectPanel />
           <hr />
           <RequestLogView />

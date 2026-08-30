@@ -659,3 +659,70 @@ test('a11y: Article 详情页通过 WCAG A/AA 扫描', async ({page}) => {
 
   expect(await scanA11y(page)).toEqual([]);
 });
+
+// 交互态扫描（区别于上面的静态页面态）：预览浮层 / DevTool 面板这类
+// 只在交互后才出现的 portal 内容。
+//
+// 预览浮层的覆盖边界（读 axe-core 4.13 源码确认）：浮层 aria-hidden
+// 后多数规则直接跳过其子树，唯一仍作用于它的 A/AA 规则是
+// aria-hidden-focus（隐藏子树内不得有可聚焦元素）；该规则的三个检查
+// 在「存在 fixed 全屏元素 / pointer-events:none」等场景会退化为
+// pass/incomplete——本例浮层 pointer-events:none + scale(0.2)，实测
+// 返回 incomplete（不进 violations）。因此本用例对浮层是「回归网」
+// 而非充分判定：浮层内可聚焦内容的真缺陷（键盘 Tab 落进对 AT 不可见
+// 的 0.2 倍缩放视图——浮层渲染的是含链接/按钮/表单的完整目标页面）已
+// 作为模板侧缺陷修复（Preview 浮层加 inert，Popover 撤销非模态却声明
+// aria-modal="true"），此处扫描守住其余规则不回归。
+
+test('a11y: PreviewLink 预览浮层打开态通过 WCAG A/AA 扫描', async ({
+  page
+}) => {
+  await mockApi(page, {published: false});
+
+  await page.goto('/');
+  await expect(
+    page.getByRole('heading', {name: article1.title})
+  ).toBeVisible();
+
+  // hover 打开预览浮层（定位同上方 PreviewLink 行为用例：浮层
+  // aria-hidden，getByRole 匹配不到，用 [role=dialog] 属性选择器）
+  await page.getByRole('heading', {name: article1.title}).hover();
+  await expect(
+    page
+      .locator('[role="dialog"]')
+      .getByText('Paragraphs of the first fixture article.')
+  ).toBeVisible();
+  // 浮层必须 inert：把整棵预览树移出 Tab 序（见用例头注释的缺陷说明）
+  await expect(page.locator('[role="dialog"][inert]')).toBeAttached();
+  // 键盘链路实证：inert 子树不可聚焦（focus() 落空、activeElement 不变）
+  // ——修复前浮层内链接可被焦点穿透（Tab 落进对 AT 不可见的 0.2 倍视图）
+  const focusEnteredOverlay = await page.evaluate(() => {
+    const link = document.querySelector('[role="dialog"][inert] a[href]');
+    if (!link) return true;
+    (link as HTMLElement).focus();
+    return document.activeElement === link;
+  });
+  expect(focusEnteredOverlay).toBe(false);
+
+  expect(await scanA11y(page)).toEqual([]);
+});
+
+// DevTool 面板（dev-only，e2e 的 webServer 是 vite dev，面板必然存在）：
+// 点击 DEV 角标展开 300×300 面板——mock 配置/CacheView（含 Clear 按钮）/
+// react-toolroom 的 'Cache & Calls' 调用追踪表/请求日志。面板与页面
+// 背景内容同扫：面板本体是 Popover（role=dialog，未 aria-hidden），
+// 其内容在无障碍树内，接受完整规则集。
+test('a11y: DevTool 面板打开态通过 WCAG A/AA 扫描', async ({page}) => {
+  await mockApi(page, {published: false});
+
+  await page.goto('/');
+  await expect(
+    page.getByRole('heading', {name: article1.title})
+  ).toBeVisible();
+
+  await page.getByRole('button', {name: 'DEV'}).click();
+  // 'Cache & Calls'（react-toolroom 面板标题）可见即面板内容挂载完成
+  await expect(page.getByText('Cache & Calls')).toBeVisible();
+
+  expect(await scanA11y(page)).toEqual([]);
+});

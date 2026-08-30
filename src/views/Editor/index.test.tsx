@@ -19,7 +19,12 @@ const state = vi.hoisted(() => ({
   router: {pathname: '/editor'} as any,
   // useBlocker 注册的离开拦截谓词：测试同步调用它模拟路由器在导航
   // 头部的询问（veto 时待决导航挂起，state 置位驱动确认框渲染）
-  blocker: undefined as ((to: string, from: string) => boolean) | undefined
+  blocker: undefined as ((to: string, from: string) => boolean) | undefined,
+  // createDataLoader 的 DEV 来源校验（src/util/dataLoader.ts）要求
+  // useMatched 提供 matched[index].route.data：模块加载后由测试体把
+  // editorLoader 填进来（mock 工厂内 import dataloaders 会与被 mock 的
+  // '@native-router/react' 循环，故走 hoisted state 中转）
+  matchedRoute: {route: {}} as {route: {data: unknown}}
 }));
 
 // 保留真实模块，只覆写视图用到的 post/put；422 拒绝值直接用鸭子形状
@@ -36,6 +41,14 @@ vi.mock('@native-router/react', async () => {
     useRouter: () => state.router,
     // useData<T>() 泛型在 mock 中以类型断言透传即可
     useData: () => state.article,
+    // useEditorData 的 DEV 来源校验读 matched[index].route.data——见
+    // state.matchedRoute 注释（optional 形态下 undefined 亦合法，填
+    // editorLoader 对编辑态更保真）
+    useMatched: () => ({
+      router: state.router,
+      matched: [state.matchedRoute],
+      index: 0
+    }),
     // 与 @native-router/react 1.7 的 useBlocker（dist/use-blocker.js）
     // 同构的迷你仿真：谓词存 ref 逐渲染同步；veto 把待决导航挂上
     // state（驱动确认框），proceed 置一次性 bypass 后以 navigate 重放
@@ -89,8 +102,13 @@ import {navigate} from '@native-router/core';
 
 import * as http from '@/util/http';
 import {articleCache, clearAllCaches, homeCache} from '@/util/useQuery';
+import {editorLoader} from '@/services/dataloaders';
 
 import Editor from './index';
+
+// DEV 来源校验的路由声明（见 state.matchedRoute 注释）：编辑态路由挂
+// editorLoader——与 src/views/index.tsx 的真实路由表同源
+state.matchedRoute.route.data = editorLoader;
 
 const postMock = vi.mocked(http.post);
 const putMock = vi.mocked(http.put);

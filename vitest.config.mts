@@ -1,7 +1,13 @@
 import { defineConfig } from 'vitest/config';
 import path from 'path';
+import rollupPluginTypeAsJsonSchema from 'rollup-plugin-type-as-json-schema';
 
 export default defineConfig({
+  // '@/types/*.schema' 是 rollup-plugin-type-as-json-schema 的虚拟模块
+  //（vite.config.mts 同款注册）：服务层（services/article.ts）现直接引用
+  // 生成 schema 做 dev 响应校验，vitest 管线必须同样能解析它，测试才能
+  // 覆盖「schema 前挂→失配报错」全链。
+  plugins: [rollupPluginTypeAsJsonSchema()],
   test: {    environment: 'jsdom',
     globals: true,
     include: ['src/**/*.test.{ts,tsx}'],

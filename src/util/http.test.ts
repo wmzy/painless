@@ -491,4 +491,101 @@ describe('http utilities', () => {
       expect(fetchMock).toHaveBeenCalledTimes(3);
     });
   });
+
+  // dev-only 响应校验（init.schema → fetch-fun validate → util/validate）：
+  // vitest 环境 import.meta.env.DEV 为 true，走真实管线（含 ajv 动态
+  // import）。schema 与 services/article.ts 的用法同构（生成 schema +
+  // envelope 组合），并带 mock 造数口径注解（minItems）验证剔除逻辑。
+  describe('response validation', () => {
+    const pageSchema = {
+      type: 'object',
+      properties: {
+        articles: {
+          type: 'array',
+          minItems: 10,
+          items: {
+            type: 'object',
+            properties: {
+              title: {type: 'string'},
+              favoritesCount: {type: 'integer', minimum: 0}
+            },
+            required: ['title']
+          }
+        },
+        articlesCount: {type: 'integer'}
+      },
+      required: ['articles', 'articlesCount']
+    };
+
+    it('should reject with a located ValidationError when a 2xx body violates the schema', async () => {
+      fetchMock.mockResolvedValue(
+        mockResponse({articles: [{title: 42}], articlesCount: 1})
+      );
+
+      const error = await get('articles', undefined, {schema: pageSchema}).then(
+        () => undefined,
+        (e: unknown) => e
+      );
+
+      expect(error).toBeInstanceOf(ff.ValidationError);
+      const validation = error as ff.ValidationError;
+      // message 一行可定位：请求标签 + 实例指针 + 期望 + 实际值
+      expect(validation.message).toContain('GET articles');
+      expect(validation.message).toContain('/articles/0/title');
+      expect(validation.message).toContain('must be string');
+      expect(validation.message).toContain('42');
+      // issues 携带结构化定位字段，data 保留失配的原始响应
+      const issue = validation.issues[0] as {label: string; path: string};
+      expect(issue.label).toBe('GET articles');
+      expect(issue.path).toBe('/articles/0/title');
+      expect(validation.data).toEqual({articles: [{title: 42}], articlesCount: 1});
+    });
+
+    it('should resolve untouched when the body matches the schema', async () => {
+      const page = {
+        articles: [{title: 'a', favoritesCount: 1}],
+        articlesCount: 1
+      };
+      fetchMock.mockResolvedValue(mockResponse(page));
+
+      await expect(
+        get('articles', undefined, {schema: pageSchema})
+      ).resolves.toEqual(page);
+    });
+
+    it('should strip mock-sizing keywords so a short-but-valid page passes', async () => {
+      // minItems:10 是「每页 10 条」的造数口径，真实 API 的最后一页可以
+      // 更短——校验侧剔除该注解后必须放行（未剔除则本用例会抛错）。
+      const lastPage = {
+        articles: [{title: 'a'}, {title: 'b'}],
+        articlesCount: 2
+      };
+      fetchMock.mockResolvedValue(mockResponse(lastPage));
+
+      await expect(
+        get('articles', undefined, {schema: pageSchema})
+      ).resolves.toEqual(lastPage);
+    });
+
+    it('should skip validation for non-2xx responses', async () => {
+      // 非 2xx 保持 HTTPError 语义（mapError 换写 message），不触发校验
+      fetchMock.mockResolvedValue(
+        mockResponse({errors: {body: ['is invalid']}}, false)
+      );
+
+      const error = await post('articles', {}, {schema: pageSchema}).then(
+        () => undefined,
+        (e: unknown) => e
+      );
+
+      expect(error).toBeInstanceOf(ff.HTTPError);
+      expect((error as ff.HTTPError).message).toBe('body is invalid');
+    });
+
+    it('should not validate when no schema is provided', async () => {
+      fetchMock.mockResolvedValue(mockResponse({whatever: 1}));
+
+      await expect(get('articles')).resolves.toEqual({whatever: 1});
+    });
+  });
 });

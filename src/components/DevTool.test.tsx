@@ -1,13 +1,19 @@
 import type {Article, Comment} from '@/types';
 
 import {describe, it, expect, vi, beforeEach} from 'vitest';
-import {render, screen, fireEvent, act} from '@testing-library/react';
+import {render, screen, fireEvent, act, waitFor} from '@testing-library/react';
 import {useControl} from 'react-use-control';
 
 import {stableHash} from 'react-toolroom/async';
 
 
-import {articleCache, clearAllCaches, commentsCache, createQueryCache} from '@/util/useQuery';
+import {
+  articleCache,
+  clearAllCaches,
+  commentsCache,
+  createQueryCache,
+  useQuery
+} from '@/util/useQuery';
 import {clearRequestLogs, pushRequestLog} from '@/util/requestLog';
 
 import DevTool, {truncateKey, ageSeconds} from './DevTool';
@@ -259,16 +265,16 @@ describe('DevTool CacheView', () => {
   it('InjectDevTools renders a per-entity cache snapshot table fed from the registry', () => {
     // devtools 面板的 cache 表：每个 ObservableCache 一张表（Key/Age/
     // Value 三列），行 key 是 hash 后的字符串——种子一条 tag 实体后开
-    // 面板，断言表渲染出该实体条目。injectables 恒空（观察不到 useQuery
-    // 侧调用，见 DevTool.tsx NO_INJECTABLES 注释），面板应显示空态文案
-    // 而非调用记录；cache 快照表断言保留
+    // 面板，断言表渲染出该实体条目。本用例没有挂载任何 useQuery，
+    // 具名注册表为空——面板的调用追踪区显示空态文案（调用追踪断言
+    // 见下方 registry 用例）
     const tagsCache = createQueryCache<string[], []>('devtool-test-tags');
     tagsCache.set([], ['react', 'redux']);
     seedA('inject-probe', 1);
     openPanel();
 
     // 面板标题（title prop）与空态注入追踪都在
-    expect(screen.getByText('Cache')).toBeDefined();
+    expect(screen.getByText('Cache & Calls')).toBeDefined();
     expect(screen.getByText('No calls settled yet.')).toBeDefined();
     // article 实体条目经自研 CacheView（带实体名前缀的行）可见
     expect(screen.getByTitle(stableHash(['inject-probe']))).toBeDefined();
@@ -294,7 +300,7 @@ describe('DevTool CacheView', () => {
       </DevTool>
     );
     fireEvent.click(screen.getByText('DEV'));
-    expect(screen.getByText('Cache')).toBeDefined();
+    expect(screen.getByText('Cache & Calls')).toBeDefined();
 
     rerender(
       <DevTool>
@@ -302,8 +308,37 @@ describe('DevTool CacheView', () => {
       </DevTool>
     );
     // 面板仍开着且内容完好：标题、cache 表、自研 CacheView 计数都在
-    expect(screen.getByText('Cache')).toBeDefined();
+    expect(screen.getByText('Cache & Calls')).toBeDefined();
     expect(screen.getAllByText(stableHash([])).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/Cache: \d+/)).toBeDefined();
+  });
+
+  it('traces real calls made through useQuery (named registry discovery)', async () => {
+    // react-toolroom ≥0.16 的发现通道：useQuery 内部 useInjectable(fn,
+    // {name}) 把实例发布进具名注册表，<InjectDevTools /> 不传 injectables
+    // 时自动观察全部具名实例——面板应看到 useQuery 发起的真实调用
+    //（Function 列 = fn.name，Args → Result 列 = 参数与结果）。DevTool
+    // open 初值直接给 true：注册表订阅（子组件 useInsertionEffect）先于
+    // Harness（父）里 useRun 发起调用，初始请求被完整记录。
+    // K 用 any（同 useQuery.test 的既有约定）：0 参 fetcher 的 QueryKey
+    // 经 [...K, signal?] 推导为 unknown[]，收窄 [] 会撞元组变差
+    const probeCache = createQueryCache<any, any>('devtool-inject-probe');
+    async function fetchProbe() {
+      return ['probe-ok'];
+    }
+    function Harness() {
+      useQuery(fetchProbe, [], {cache: probeCache, initData: []});
+      return (
+        <DevTool open>
+          <div>content</div>
+        </DevTool>
+      );
+    }
+    render(<Harness />);
+
+    // 调用 settle 后面板出现该行：函数名 / ok 状态 / 结果 JSON 摘要
+    await waitFor(() => expect(screen.getByText('fetchProbe')).toBeDefined());
+    expect(screen.getByText('ok')).toBeDefined();
+    expect(screen.getByText('["probe-ok"]')).toBeDefined();
   });
 });

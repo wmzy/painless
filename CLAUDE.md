@@ -101,6 +101,8 @@ These are allowed by ESLint (no `react/no-unknown-property` rule).
 | `@linaria/core` | Zero-runtime CSS-in-JS |
 | `@for-fun/event-emitter` | Tiny emitter — auth change events, DevTool mock-config changes |
 | `json-schema-faker` + `@faker-js/faker` | Mock data from JSON Schema |
+| `ajv` | dev-only runtime response validation (`src/util/validate.ts`, dynamically imported inside `import.meta.env.DEV` branches — never in prod chunks) |
+| `openapi-typescript` | Generates `src/types/openapi.d.ts` from `openapi/realworld.yml` (`npm run openapi`) — types for the `src/services/article.openapi.ts` demo |
 | `rollup-plugin-type-as-json-schema` | Build-time TS types → `.schema` JSON |
 | `ramda` | FP utilities (used in faker.ts, dev-only) |
 | `date-fns` | Registers the `date-string` format with json-schema-faker |

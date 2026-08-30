@@ -6,6 +6,7 @@
   "scripts": {
     "start": "vite",
     "build": "vite build",
+    "openapi": "openapi-typescript openapi/realworld.yml -o src/types/openapi.d.ts",
     "commit": "lint-staged && git-cz -n",
     "coverage": "vitest run --coverage",
     "lint": "eslint --fix .",
@@ -48,6 +49,7 @@
     "@vitest/coverage-v8": "^4.1.11",
     "@vitest/ui": "^4.1.11",
     "@wyw-in-js/vite": "^2.4.3",
+    "ajv": "^8.20.0",
     "babel-plugin-transform-jsx-class": "^0.1.3",
     "babel-plugin-transform-jsx-condition": "^0.1.3",
     "babel-runtime-jsx-plus": "^0.1.5",
@@ -62,6 +64,7 @@
     "jsdom": "^30.0.1",
     "json-schema-faker": "^0.6.3",
     "lint-staged": "^17.3.0",
+    "openapi-typescript": "^7.13.0",
     "prettier": "^3.9.6",
     "ramda": "^0.32.0",
     "rollup-plugin-type-as-json-schema": "^0.2.6",
@@ -75,14 +78,14 @@
   "dependencies": {
     "@for-fun/event-emitter": "^1.0.1",
     "@linaria/core": "^8.2.0",
-    "@native-router/core": "^1.9.1",
-    "@native-router/react": "^1.7.1",
+    "@native-router/core": "^1.10.0",
+    "@native-router/react": "^1.8.0",
     "fetch-fun": "^0.10.0",
-    "haze-ui": "^1.12.0",
+    "haze-ui": "^1.12.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "react-f0rm": "^0.6.1",
-    "react-toolroom": "^0.15.0",
+    "react-f0rm": "^0.7.0",
+    "react-toolroom": "^0.16.0",
     "react-use-control": "^1.3.2"
   }
 }

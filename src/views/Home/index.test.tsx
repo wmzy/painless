@@ -50,7 +50,12 @@ const state = vi.hoisted(() => ({
       offset: num(raw.offset) ?? 0,
       limit: num(raw.limit) ?? 10
     };
-  }
+  },
+  // createDataLoader 的 DEV 来源校验（src/util/dataLoader.ts）要求
+  // useMatched 提供 matched[index].route.data：模块加载后由测试体把
+  // homeLoader 填进来（mock 工厂内 import dataloaders 会与被 mock 的
+  // '@native-router/react' 循环，故走 hoisted state 中转）
+  matchedRoute: {route: {}} as {route: {data: unknown}},
 }));
 
 // haze-ui 依赖 UMD 版 babel-runtime-jsx-plus，在 vitest 的 ESM 环境下无法
@@ -123,10 +128,14 @@ vi.mock('@native-router/react', async () => {
     },
     useSearch: () => state.parseSearch(state.search),
     useSetSearch: () => state.setSearch,
+    // useHomeData 的 DEV 来源校验读 matched[index].route.data——见
+    // state.matchedRoute 注释
     useMatched: () => ({
       location: {pathname: '/', search: state.search, hash: ''},
       params: {},
-      router: state.router
+      router: state.router,
+      matched: [state.matchedRoute],
+      index: 0
     })
   };
 });
@@ -154,8 +163,13 @@ import * as articleService from '@/services/article';
 import {getCurrentUser} from '@/services/auth';
 import {bindCacheRefresh} from '@/util/loaderCache';
 import {clearAllCaches, homeCache} from '@/util/useQuery';
+import {homeLoader} from '@/services/dataloaders';
 
 import Home from './index';
+
+// DEV 来源校验的路由声明（见 state.matchedRoute 注释）：与
+// src/views/index.tsx 的真实路由表同源
+state.matchedRoute.route.data = homeLoader;
 
 const navigateMock = vi.mocked(navigate);
 const refreshMock = vi.mocked(refresh);

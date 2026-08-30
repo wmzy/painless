@@ -6,14 +6,13 @@ import {createRoot} from 'react-dom/client';
 // 需收集迁移——须保持先于任何路由 data 请求。
 import 'haze-ui/css/tokens.css';
 import {lightTheme, darkTheme, ToastContainer} from 'haze-ui';
-import {useControl} from 'react-use-control';
 
 // 副作用导入：尽早注册 token 供应商，保证冷刷新时的首个路由 data
 // 请求（早于 Layout chunk 加载）也能带上 Authorization。
 import '@/services/auth';
 
 import App from '@/views';
-import {ThemeControlCtx} from '@/util/theme';
+import {ThemeControlCtx, useAppTheme} from '@/util/theme';
 
 // DevTool 仅开发模式可用，且经 React.lazy 独立成 chunk：生产构建里
 // import.meta.env.DEV 被替换为 false，整个分支（含动态 import）随常量
@@ -22,23 +21,16 @@ const DevTool = import.meta.env.DEV
   ? lazy(() => import('./components/DevTool'))
   : null;
 
-// 应用根：主题 control 的唯一创建点。初始值跟随系统 prefers-color-scheme
-// （仅首渲染求值一次），此后由用户经 ThemeToggle 写控。className 在
-// lightTheme/darkTheme 间切换，haze-ui 的 --haze-* CSS 变量整体换肤。
+// 应用根：主题状态挂在真实组件上才能驱动根重渲染。创建/跟随逻辑收敛
+// 在 useAppTheme（util/theme.tsx）：初始值跟随系统 prefers-color-scheme，
+// 手动干预（ThemeToggle 写 control）前持续跟随系统切换。className 在
+// lightTheme/darkTheme 间切换，haze-ui 的 --haze-* CSS 变量整体换肤；
 // control 经 ThemeControlCtx 下发（index.tsx 不是组件树内的 hook 调用点，
-// 状态必须挂在一个真实组件上才能驱动根重渲染）。
+// 消费方统一从 context 取）。
 // ToastContainer 也挂根：provider 覆盖全部视图（含 Layout 之外），任何
 // 视图的 useToast 都有宿主；测试渲染单个视图时同样可用。
 function Root() {
-  // useControl 首参是「外部 control 或初始值」：实现里 null 会被当成
-  // 初始值本身（dark 恒为 null，lazy 函数被丢弃），「新建 control +
-  // lazy 初始」要显式传 undefined——这也让 ThemeToggle 的 Switch 状态
-  // 链拿到 boolean（role="switch" 的 aria-checked 由 Switch 按 checked
-  // 渲染，null 会被 React 省略，axe 报 aria-required-attr）。
-  const [dark, , themeControl] = useControl<boolean>(
-    undefined,
-    () => window.matchMedia('(prefers-color-scheme: dark)').matches
-  );
+  const [dark, themeControl] = useAppTheme();
 
   return (
     <div className={dark ? darkTheme : lightTheme}>

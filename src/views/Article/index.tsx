@@ -1,9 +1,7 @@
-import type {Article} from '@/types';
-
 import {useState} from 'react';
 import {css} from '@linaria/core';
 import {navigate} from '@native-router/core';
-import {useData, useMatched} from '@native-router/react';
+import {useMatched} from '@native-router/react';
 import {Form, useForm, reset, useIsSubmitting} from 'react-f0rm';
 import {useMutation} from 'react-toolroom/async';
 import {Card, Title, Text, Avatar, Divider, Textarea, Alert, Button, Badge, Flex, useToast, FormItem} from 'haze-ui';
@@ -11,6 +9,7 @@ import {Card, Title, Text, Avatar, Divider, Textarea, Alert, Button, Badge, Flex
 import * as articleService from '@/services/article';
 import {favoriteOnArticle, followOnArticle} from '@/services/mutations';
 import {getCurrentUser} from '@/services/auth';
+import {useArticleData} from '@/services/dataloaders';
 import {commentsCache} from '@/util/useQuery';
 
 import CommentList from './CommentList';
@@ -25,9 +24,11 @@ const pushRight = css`
 `;
 
 export default function ArticleView() {
-  // useData 约定：本路由挂了 loader，进组件前数据必有值，用 ! 收窄；
-  // 无 loader 的可选数据路由（如 Editor）则用 ?? undefined
-  const article = useData<Article>()!;
+  // useArticleData（createDataLoader 第二元素）：路由声明了 articleLoader
+  //（见 views/index.tsx / dataloaders.ts），进组件前数据必已 resolve——
+  // 原 useData<Article>()! 的泛型与断言都收敛进工厂；共用组件的路由若
+  // 可能不挂 data（如 Editor 的新建态）则用 {optional: true} 形态
+  const article = useArticleData();
   const {router} = useMatched();
   const commentForm = useForm();
   // 同 Editor：react-f0rm ≥0.4 的 onSubmit 被 await，isSubmitting 覆盖整个异步提交

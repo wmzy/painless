@@ -1,5 +1,7 @@
+import type {AppPaths} from '@/views';
+
 import {useEffect, useState} from 'react';
-import {View, useRouter, ScrollRestoration, NavLink} from '@native-router/react';
+import {View, useRouter, ScrollRestoration, TypedNavLink} from '@native-router/react';
 import {navigate, invalidate, refresh} from '@native-router/core';
 import {NavigationBar, NavLink as HazeNavLink, Container, Title} from 'haze-ui';
 
@@ -37,33 +39,36 @@ export default function Layout() {
       {/* back/forward 恢复滚动位置；push 回到顶部（POP 始终恢复） */}
       <ScrollRestoration />
       <NavigationBar>
-        {/* 品牌 + 导航链接统一走 native-router NavLink：in-app 导航（点击
-            preventDefault + navigate，不再整页刷新），as={HazeNavLink} 把
-            计算出的 href / 组合 onClick 注入 haze-ui NavLink（其 forwardRef
-            + rest 透传接住注入）。active 高亮无需手传：native 侧命中当前
-            路由时注 aria-current='page'，haze-ui 侧 active 缺省兜底读
+        {/* 品牌 + 导航链接统一走 native-router TypedNavLink：in-app 导航
+            （点击 preventDefault + navigate，不再整页刷新），as={HazeNavLink}
+            把计算出的 href / 组合 onClick 注入 haze-ui NavLink（其
+            forwardRef + rest 透传接住注入）。单类型实参 + as 是官方支持
+            的组合形态：to 收窄到 AppPaths（路径拼写错误编译期暴露），
+            as 组件自身 props 松检查（TS 无法在首个实参显式后推断第二
+            泛型）。active 高亮无需手传：native 侧命中当前路由时注
+            aria-current='page'，haze-ui 侧 active 缺省兜底读
             aria-current，两段标准 aria 链路自动点亮。根路径链接（品牌/
             Home）须加 end：不加时 to='/' 按前缀规则对所有路径 active，
             任何页面都会点亮，高亮语义被稀释（react-router 同款惯例）。 */}
-        <NavLink as={HazeNavLink} to='/' end>
+        <TypedNavLink<AppPaths> as={HazeNavLink} to='/' end>
           <Title level={3}>Painless</Title>
-        </NavLink>
-        <NavLink as={HazeNavLink} to='/' end>
+        </TypedNavLink>
+        <TypedNavLink<AppPaths> as={HazeNavLink} to='/' end>
           Home
-        </NavLink>
-        <NavLink as={HazeNavLink} to='/help'>
+        </TypedNavLink>
+        <TypedNavLink<AppPaths> as={HazeNavLink} to='/help'>
           Help
-        </NavLink>
-        <NavLink as={HazeNavLink} to='/about'>
+        </TypedNavLink>
+        <TypedNavLink<AppPaths> as={HazeNavLink} to='/about'>
           About
-        </NavLink>
+        </TypedNavLink>
         <ThemeToggle />
         {user ? (
           <>
             <span>{user.username}</span>
-            <NavLink as={HazeNavLink} to='/editor'>
+            <TypedNavLink<AppPaths> as={HazeNavLink} to='/editor'>
               New Article
-            </NavLink>
+            </TypedNavLink>
             {/* Logout 不是导航：保持 haze-ui NavLink 的按钮语义（href 缺省
                 落 '#' + preventDefault），onClick 里的登出链路原样 */}
             <HazeNavLink
@@ -83,12 +88,12 @@ export default function Layout() {
           </>
         ) : (
           <>
-            <NavLink as={HazeNavLink} to='/login'>
+            <TypedNavLink<AppPaths> as={HazeNavLink} to='/login'>
               Login
-            </NavLink>
-            <NavLink as={HazeNavLink} to='/register'>
+            </TypedNavLink>
+            <TypedNavLink<AppPaths> as={HazeNavLink} to='/register'>
               Register
-            </NavLink>
+            </TypedNavLink>
           </>
         )}
       </NavigationBar>

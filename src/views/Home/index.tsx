@@ -1,13 +1,14 @@
 import {css} from '@linaria/core';
 import {navigate} from '@native-router/core';
-import {useData, useMatched, useSearch, useSetSearch} from '@native-router/react';
+import {useMatched, useSearch, useSetSearch} from '@native-router/react';
 import {Card, Title, Text, Badge, Avatar, Flex, Chip, Button,useToast} from 'haze-ui';
 import {useMutation} from 'react-toolroom/async';
 
-import {Article, ArticlePage} from '@/types';
+import {Article} from '@/types';
 import {homeSearchSchema, homeSearchWriteSchema} from '@/types/search';
 import {favoriteOnHome} from '@/services/mutations';
 import {getCurrentUser} from '@/services/auth';
+import {useHomeData} from '@/services/dataloaders';
 import PreviewLink from '@/components/PreviewLink';
 
 import Tags from './Tags';
@@ -18,10 +19,11 @@ const pushRight = css`
 `;
 
 export default function Home() {
-  const {articles, articlesCount} = useData<ArticlePage>() ?? {
-    articles: [],
-    articlesCount: 0
-  };
+  // useHomeData（createDataLoader 第二元素）：类型与来源校验都在工厂内
+  // 收拢——路由声明了 homeLoader，进组件前数据必已 resolve，不再写
+  // useData<ArticlePage>()! / ?? 空值兜底（DEV 下失配即 throw，见
+  // src/util/dataLoader.ts）
+  const {articles, articlesCount} = useHomeData();
   const {router} = useMatched();
   // 路由级 search schema（见 views/index.tsx）解析：coerce 与缺省都在
   // schema 里完成，组件拿到的 tag/offset/limit 直接可用

@@ -442,6 +442,62 @@ export function fetchTags(): Promise<string[]> {
 }
 ```
 
+### Dev-Only Runtime Response Validation
+
+Types claim a shape; the wire can disagree. In dev builds, every service call also carries the JSON Schema generated from the same domain types (the same module the mock pipeline uses — one contract, three consumers: types, mocks, validation). A 2xx body that violates it rejects with `fetch-fun`'s `ValidationError`, whose message locates the drift in one line — which request, which JSON pointer, what was expected, what arrived:
+
+```text
+GET articles: 响应失配于 /articles/0/title — must be string（实际值: 42）
+```
+
+```ts
+// src/util/http.ts (excerpt) — init.schema is the opt-in hook
+function responseSchema(schema: unknown, label: string): ff.StandardSchema {
+  return {
+    '~standard': {
+      version: 1,
+      vendor: 'painless/json-schema',
+      validate: async (value) => {
+        const {check} = await import('./validate'); // ajv, dynamic
+        return check(schema, value, label);
+      }
+    }
+  };
+}
+
+// src/services/article.ts (excerpt) — schemas fold away in production
+const schemas = import.meta.env.DEV
+  ? {list: articlePageSchema, article: envelope('article', articleSchema), /* … */}
+  : undefined;
+
+export function query(params?: ArticleQuery, signal?: AbortSignal) {
+  return http.get<ArticlePage>('articles', params, {signal, schema: schemas?.list});
+}
+```
+
+Non-2xx responses skip validation (`HTTPError` semantics untouched). Mock-sizing annotations (`@minItems`/`@maxItems`/`@unique`/`@faker` — "10 per page" is a generation directive, and a real last page can be shorter) are stripped before checking. Production pays nothing: `import.meta.env.DEV` folds the branch, `ajv` is a devDependency loaded via dynamic import inside it — verified absent from built chunks (same treatment as the faker stack).
+
+The mock pipeline gets the same check (`mock.ts` validates `always`-mode output against the same schema) but downgrades failure to a located `console.error` instead of throwing — known `json-schema-faker` 0.6 quirks (deep `$ref` nesting drops `@faker` annotations, e.g. `articles[].author.image` comes out `null`) shouldn't brick DevTool's mock mode; see `docs/decisions.md` §7.
+
+### OpenAPI-Typed Client (Demo)
+
+When the backend publishes an OpenAPI spec, `openapi-typescript` (devDependency, zero runtime) turns it into pure types and a thin graft constrains the whole `fetch-fun` pipe at compile time — path, method, request body, and 2xx response. `src/services/article.openapi.ts` is a working demo against the official RealWorld spec (committed at `openapi/realworld.yml`; regenerate types with `npm run openapi`):
+
+```ts
+// src/services/article.openapi.ts (excerpt) — full compile-time constraints
+export function findBySlug(slug: string, signal?: AbortSignal) {
+  return ff.fetchData(
+    api
+      .pipe(typedPath, '/articles/{slug}', {slug}) // must be a real spec path + params
+      .pipe(typedMethod, 'get')                    // must exist under that path
+      .pipe(queryAndSignal(undefined, signal))
+      .pipe(typedJson, 'get')                      // response typed by the spec
+  );
+}
+```
+
+Typos fail loudly: `'/article'` is not a key of `paths`; `'post'` doesn't exist under `/tags`; `{nome: 'Ada'}` doesn't satisfy `NewArticleRequest`; a `'post'` reader after a `'get'` method is a type error. The demo coexists with the handwritten `services/article.ts` (they differ on purpose: the handwritten one unwraps `{article}` → `Article`, the demo returns the spec's raw response shape). It's referenced by no view, so it never enters a production chunk. Boundaries and known spec-vs-handwritten drift are recorded in `docs/decisions.md` §6.
+
 ### Auth with Token Injection
 
 `src/services/auth.ts` persists the current user to `localStorage` (`painless.user`), restores it on load, and registers a token supplier with the HTTP layer — so login/logout never requires rebuilding the client pipeline. `src/index.tsx` imports `@/services/auth` for its side effect, ensuring even the first route-`data` request after a cold refresh carries `Authorization`:
@@ -562,6 +618,7 @@ painless/
 | `pnpm test:run` | Run tests once (CI mode) |
 | `pnpm test:ui` | Run tests in the Vitest UI |
 | `pnpm coverage` | Run tests with coverage |
+| `pnpm openapi` | Regenerate `src/types/openapi.d.ts` from `openapi/realworld.yml` |
 | `pnpm deploy` | Build the demo and publish to GitHub Pages |
 | `pnpm commit` | Run lint-staged, then an interactive commitizen prompt |
 

@@ -1,7 +1,7 @@
 import type {AppPaths} from '@/views';
 
 import {useState} from 'react';
-import {Form, useForm} from 'react-f0rm';
+import {Form, useForm, useHasErrors, useIsSubmitting} from 'react-f0rm';
 import {Card, Title, Input, Text, Alert, FormItem} from 'haze-ui';
 // FormItem（haze-ui 1.8 引入、1.11 起随 form 层并入主 barrel）：接管字段
 // id/错误 span/aria 链路——首条错误渲染为 <span role='alert'>，control
@@ -19,6 +19,11 @@ export default function Login() {
   // 触发 React 的 uncontrolled→controlled 警告）
   type LoginValues = {email: string; password: string};
   const form = useForm<LoginValues>({initialValues: {email: '', password: ''}});
+  // 提交按钮的 disabled 组合（react-f0rm 0.6 无 canSubmit 复合 flag，
+  // 由两个订阅 hook 组出）：isSubmitting 覆盖整个异步提交期；
+  // hasErrors 在任一字段带错（客户端校验或 422 回填）时为 true。
+  const hasErrors = useHasErrors(form);
+  const isSubmitting = useIsSubmitting(form);
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
 
@@ -64,12 +69,16 @@ export default function Login() {
             />
           )}
         </FormItem>
+        {/* password 无字段级 mode（提交时才首验）。onBlur 仍由 FormItem
+            binding 提供并显式传给 Input：blur 档校验（mode='onBlur'/
+            'onTouched'/'all' 或 reValidateMode='onBlur'）只经它可达，
+            删掉会窄化触发面 */}
         <FormItem
           form={form}
           name='password'
           validate={required('Password is required')}
         >
-          {({id, errorId, invalid, control}) => (
+          {({id, errorId, invalid, control, onBlur}) => (
             <Input
               id={id}
               value={control}
@@ -77,10 +86,20 @@ export default function Login() {
               placeholder='Password'
               aria-invalid={invalid}
               aria-describedby={invalid ? errorId : undefined}
+              onBlur={onBlur}
             />
           )}
         </FormItem>
-        <button type='submit'>Login</button>
+        {/* 防重复/防无效提交。初始可点是刻意语义：表单默认
+            mode='onSubmit'，首次校验由提交触发，errors 初始为空集
+            （useHasErrors 只读错误 Map 的 size，不预跑校验）——若初始
+            就 disabled，提交永远不会发生。首次失败后按钮压下；提交失败
+            后修改字段即逐键复验（默认档 reValidateMode='onChange'，
+            react-f0rm 0.7 起 FormItem control 桥的写值等价
+            useField.onChange），错误清即弹起，422 回填的字段错误同理。 */}
+        <button type='submit' disabled={isSubmitting || hasErrors}>
+          Login
+        </button>
       </Form>
       <Text>
         Don't have an account? <TypedLink<AppPaths> to='/register'>Register</TypedLink>

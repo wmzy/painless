@@ -1,6 +1,7 @@
 // 来源：双通道缓存落地——Layout 登出链路（logout → invalidate(viewStack)
 // → navigate）与 bfcache 恢复补偿（pageshow persisted → refresh）；
-// as 组合批——导航栏 NavLink as={HazeNavLink} 的 SPA 化与 active 高亮。
+// as 组合批——导航栏 TypedNavLink as={HazeNavLink} 的 SPA 化与 active 高亮
+//（TypedNavLink 运行时同 NavLink，替身共用同一实现）。
 // 路由与 UI 库均 mock（同 Home/Article 测试约定），@native-router/core
 // 的 navigate/invalidate/refresh 以 spy 替身断言调用与顺序。
 import type {ReactNode} from 'react';
@@ -76,45 +77,48 @@ vi.mock('@native-router/react', async () => {
   // 与 core 的 mock 共享同一批 spy：替身 NavLink 的点击必须落到测试里
   // 断言的同一个 navigate 实例上
   const {navigate} = await import('@native-router/core');
+  // NavLink 替身复刻库的可观测契约：href 取 to、命中当前路由注
+  // aria-current='page'（to='/' 尾斜杠对所有路径 active，end 时只认
+  // 精确相等）、点击 preventDefault + in-app navigate、注入 props 全部
+  // 交 as 组件承接。TypedNavLink 运行时同款（只是类型化 to/params 的
+  // 包装），同一实现以两个名字导出
+  const NavLike = ({
+    to,
+    end,
+    children,
+    as: As,
+    ...rest
+  }: {
+    to: string;
+    end?: boolean;
+    children?: ReactNode;
+    as?: React.ElementType;
+  } & Record<string, unknown>) => {
+    const {pathname} = state.router.history.location;
+    const isActive =
+      pathname === to ||
+      (!end && pathname.startsWith(to.endsWith('/') ? to : `${to}/`));
+    const A = As ?? 'a';
+    return React.createElement(
+      A,
+      {
+        ...rest,
+        href: to,
+        'aria-current': isActive ? 'page' : undefined,
+        onClick: (e: React.MouseEvent<HTMLAnchorElement>) => {
+          e.preventDefault();
+          void navigate(state.router, to);
+        }
+      },
+      children
+    );
+  };
   return {
     useRouter: () => state.router,
     View: () => null,
     ScrollRestoration: () => null,
-    // NavLink 替身复刻库的可观测契约：href 取 to、命中当前路由注
-    // aria-current='page'（to='/' 尾斜杠对所有路径 active，end 时只认
-    // 精确相等）、点击 preventDefault + in-app navigate、注入 props 全部
-    // 交 as 组件承接
-    NavLink: ({
-      to,
-      end,
-      children,
-      as: As,
-      ...rest
-    }: {
-      to: string;
-      end?: boolean;
-      children?: ReactNode;
-      as?: React.ElementType;
-    } & Record<string, unknown>) => {
-      const {pathname} = state.router.history.location;
-      const isActive =
-        pathname === to ||
-        (!end && pathname.startsWith(to.endsWith('/') ? to : `${to}/`));
-      const A = As ?? 'a';
-      return React.createElement(
-        A,
-        {
-          ...rest,
-          href: to,
-          'aria-current': isActive ? 'page' : undefined,
-          onClick: (e: React.MouseEvent<HTMLAnchorElement>) => {
-            e.preventDefault();
-            void navigate(state.router, to);
-          }
-        },
-        children
-      );
-    }
+    NavLink: NavLike,
+    TypedNavLink: NavLike
   };
 });
 

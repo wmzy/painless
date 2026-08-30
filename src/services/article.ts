@@ -9,6 +9,34 @@ import type {
 import {fillPath} from 'fetch-fun';
 
 import * as http from '@/util/http';
+import {envelope} from '@/util/jsonSchema';
+// 虚拟模块（rollup-plugin-type-as-json-schema）：与 mock 管道共用的同一
+// 份生成 schema——「类型→schema→mock→运行时校验」全链单点契约。
+import {
+  articlePageSchema,
+  articleSchema,
+  authorSchema,
+  commentListSchema,
+  commentSchema,
+  tagListSchema
+} from '@/types/index.schema';
+
+// dev-only 响应校验 schema：整组包在 import.meta.env.DEV 三元里，生产
+// 构建折叠后 envelope/生成 schema 的引用一并被摇出——服务层零新增生产
+// 成本；http 侧（init.schema → withSchema）同样只在 DEV 生效。列表/
+// 单实体的 mock 口径注解（@minItems 等）由校验侧剔除，见 util/validate。
+// 值类型 unknown：虚拟模块的导出是 any，unknown 槽位承接（校验侧自行
+// 收窄），避免 any 沿着对象字面量扩散。
+const schemas: Record<string, unknown> | undefined = import.meta.env.DEV
+  ? {
+      list: articlePageSchema,
+      article: envelope('article', articleSchema),
+      comments: envelope('comments', commentListSchema),
+      tags: envelope('tags', tagListSchema),
+      profile: envelope('profile', authorSchema),
+      comment: envelope('comment', commentSchema)
+    }
+  : undefined;
 
 // 只读查询统一接可选尾参 signal：useQuery 的 useRun({signal: true}) 在
 // args 变化/卸载时 abort 上一次请求，透传到 fetch 取消旧响应。
@@ -16,7 +44,10 @@ export function query(
   params?: ArticleQuery,
   signal?: AbortSignal
 ): Promise<ArticlePage> {
-  return http.get<ArticlePage>('articles', params, {signal});
+  return http.get<ArticlePage>('articles', params, {
+    signal,
+    schema: schemas?.list
+  });
 }
 
 // 路径参数统一经 fillPath（fetch-fun 0.10）：模板 `{name}` 占位符在编译
@@ -30,7 +61,7 @@ export function findByTitle(
     .get<{article: Article}>(
       fillPath('articles/{title}', {title}),
       undefined,
-      {signal}
+      {signal, schema: schemas?.article}
     )
     .then(({article}) => article);
 }
@@ -43,14 +74,14 @@ export function fetchCommentsByTitle(
     .get<{comments: Comment[]}>(
       fillPath('articles/{title}/comments', {title}),
       undefined,
-      {signal}
+      {signal, schema: schemas?.comments}
     )
     .then(({comments}) => comments);
 }
 
 export function fetchTags(signal?: AbortSignal): Promise<string[]> {
   return http
-    .get<{tags: string[]}>('tags', undefined, {signal})
+    .get<{tags: string[]}>('tags', undefined, {signal, schema: schemas?.tags})
     .then(({tags}) => tags);
 }
 
@@ -68,8 +99,8 @@ export function favoriteArticle(
 ): Promise<Article> {
   const url = fillPath('articles/{slug}/favorite', {slug});
   const request = favorited
-    ? http.post<{article: Article}>(url, {}, {signal})
-    : http.del<{article: Article}>(url, {signal});
+    ? http.post<{article: Article}>(url, {}, {signal, schema: schemas?.article})
+    : http.del<{article: Article}>(url, {signal, schema: schemas?.article});
   return request.then(({article}) => article);
 }
 
@@ -80,8 +111,8 @@ export function followAuthor(
 ): Promise<Author> {
   const url = fillPath('profiles/{username}/follow', {username});
   const request = following
-    ? http.post<{profile: Author}>(url, {}, {signal})
-    : http.del<{profile: Author}>(url, {signal});
+    ? http.post<{profile: Author}>(url, {}, {signal, schema: schemas?.profile})
+    : http.del<{profile: Author}>(url, {signal, schema: schemas?.profile});
   return request.then(({profile}) => profile);
 }
 
@@ -94,7 +125,7 @@ export function addComment(
     .post<{comment: Comment}>(
       fillPath('articles/{slug}/comments', {slug}),
       {comment: {body}},
-      {signal}
+      {signal, schema: schemas?.comment}
     )
     .then(({comment}) => comment);
 }
@@ -111,8 +142,8 @@ export function saveArticle(
     ? http.put<{article: Article}>(
         fillPath('articles/{slug}', {slug}),
         {article},
-        {signal}
+        {signal, schema: schemas?.article}
       )
-    : http.post<{article: Article}>('articles', {article}, {signal});
+    : http.post<{article: Article}>('articles', {article}, {signal, schema: schemas?.article});
   return request.then(({article: saved}) => saved);
 }

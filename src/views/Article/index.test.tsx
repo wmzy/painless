@@ -29,6 +29,11 @@ const state = vi.hoisted(() => ({
     favorited: false
   },
   router: {history: {}},
+  // createDataLoader 的 DEV 来源校验（src/util/dataLoader.ts）要求
+  // useMatched 提供 matched[index].route.data：模块加载后由测试体把
+  // articleLoader 填进来（mock 工厂内 import dataloaders 会与被 mock 的
+  // '@native-router/react' 循环，故走 hoisted state 中转）
+  matchedRoute: {route: {}} as {route: {data: unknown}},
   // refresh mock 的重渲染广播：视图写穿缓存后调 refresh(router)，真实
   // 链路是「loader 重跑 → withCache 新鲜命中 → useData 换新」，这里用
   // bump 回调近似——useData mock 每次渲染直读 articleCache 的最新 settled
@@ -59,7 +64,11 @@ vi.mock('@native-router/react', async () => {
     useMatched: () => ({
       location: {pathname: '/article/some-title-1', search: '', hash: ''},
       params: {title: 'some-title-1'},
-      router: state.router
+      router: state.router,
+      // useArticleData 的 DEV 来源校验读 matched[index].route.data——见
+      // state.matchedRoute 注释
+      matched: [state.matchedRoute],
+      index: 0
     })
   };
 });
@@ -85,8 +94,13 @@ import {getCurrentUser} from '@/services/auth';
 import * as articleService from '@/services/article';
 import {withCache} from '@/util/loaderCache';
 import {articleCache, clearAllCaches} from '@/util/useQuery';
+import {articleLoader} from '@/services/dataloaders';
 
 import ArticleView from './index';
+
+// DEV 来源校验的路由声明（见 state.matchedRoute 注释）：与
+// src/views/index.tsx 的真实路由表同源
+state.matchedRoute.route.data = articleLoader;
 
 const navigateMock = vi.mocked(navigate);
 const refreshMock = vi.mocked(refresh);

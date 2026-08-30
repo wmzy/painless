@@ -2,24 +2,35 @@ import {View, HistoryRouter as Router, createRoutes, type Route, type RoutePaths
 
 import Loading from '@/components/Loading';
 import RouterError from '@/components/RouterError';
-import * as articleService from '@/services/article';
-import {getCurrentUser} from '@/services/auth';
-import {mockViewData} from '@/util/mock';
-import {withCache} from '@/util/loaderCache';
-import {articleCache, homeCache} from '@/util/useQuery';
-import {articlePageSchema} from '@/types/index.schema';
+import {getCurrentUser, type User} from '@/services/auth';
+import {articleLoader, editorLoader, homeLoader} from '@/services/dataloaders';
 import {homeSearchSchema} from '@/types/search';
 import {editorParamsSchema} from '@/types/params';
 
 import NotFound from './Article/NotFound';
 import HomeSkeleton from './Home/Skeleton';
 
+// 应用级 router context（@native-router ≥1.10）：一个同步值随 router
+// 实例注入，data loader 与 beforeLoad 守卫经 ctx.context 取用。auth
+// 模块仍是登录态的事实源，context 只包 getter——守卫不再直接 import
+// auth 模块状态：测试守卫换一份 context 即可驱动（每实例独立，无需
+// 重置模块单例），微前端同页多 router 也不串数据。值是创建时的快照，
+// 不是响应式源——登录态变化由 auth 的 change 事件驱动 UI，守卫每次
+// 导航重新求值，天然拿到最新用户。
+export type RouterContext = {getUser: () => User | null};
+const routerContext: RouterContext = {getUser: getCurrentUser};
+
 // 路由守卫：@native-router ≥1.2 的 beforeLoad。返回路径即由路由器在
 // resolve 期重定向（导航提交前生效，URL 不落守卫路由）；返回 undefined
 // 放行。preload/PrefetchLink 预取也走同一守卫，预取受守卫路由只会解析
-// 到重定向目标的视图，无副作用。
-const requireLogin: Route['beforeLoad'] = () => {
-  if (!getCurrentUser()) return '/login';
+// 到重定向目标的视图，无副作用。当前用户经 ctx.context（Router 的
+// context prop）取——Route 第三泛型（同 search 泛型的套路）让守卫的
+// ctx.context 类型化，无需手写注解。NonNullable 收掉可选成员的
+// undefined：const 本体恒为已定义函数，直接调用（测试）不报警。
+export const requireLogin: NonNullable<
+  Route<string, any, RouterContext>['beforeLoad']
+> = ({context}) => {
+  if (!context.getUser()) return '/login';
 };
 
 // createRoutes（satisfies 语义）：表按 Route 检查，同时每个 path 保留
@@ -32,33 +43,15 @@ const routes = createRoutes({
       path: '/',
       // search 变化即重跑 data（native-router 的视图缓存 key 含 search）；
       // schema 在 resolve 期解析+校验，loader 拿到的已是 coerce 后的值。
-      // signal：导航被新导航取代/cancel/POP 取消时 abort，透传给 service
-      // 停掉被丢弃导航的请求（mockViewData 包装层原样传 ctx，信号不丢）。
-      // withCache(homeCache)：与 useQuery 共享实体 cache（双通道，
-      // 见 src/util/loaderCache.ts）——新鲜命中零请求，stale 旧值先行+
-      // 后台重验证后 refresh 回写，miss 照旧走 pendingComponent 骨架；
-      // PrefetchLink 预取与正式导航经 provider.load 共享同一 in-flight，
-      // hover 过的链接点击不再重复发请求。mock 在外层：只有透传的真实
-      // 数据才进缓存，faker 造数不污染缓存。
+      // data 管道已收敛为 createDataLoader 三元组（声明见
+      // services/dataloaders.ts 的 homeLoader）：withCache(homeCache) 双
+      // 通道缓存 + DevTool mock + 视图侧 useHomeData 的 DEV 来源校验——
+      // 新鲜命中零请求，stale 旧值先行+后台重验证后 refresh 回写，miss
+      // 照旧走 pendingComponent 骨架；PrefetchLink 预取与正式导航经
+      // provider.load 共享同一 in-flight；signal 透传给 service，被新
+      // 导航取代/cancel/POP 取消的请求随 ctx.signal abort。
       search: homeSearchSchema,
-      // ctx.search 不再手写注解：createRoutes 返回表按本层 search
-      // schema（homeSearchSchema）推导 loader/守卫的 search 类型，
-      // HomeSearch 只在 schema 处定义一次
-      data: mockViewData(
-        withCache(
-          homeCache,
-          // key 只此一处定义：[search]（schema coerce 后的形状，hash 侧
-          // 剥 undefined 键归一），mutation 侧经 homeCache 寻址同一批条目
-          ({search}) => [search],
-          // ctx.search 作者期是 any：TS 无法用同级属性（本层 search
-          // schema）做回调的上下文类型，精确类型在 createRoutes 返回表
-          // 上闭环；值本身经 schema 校验/coerce，运行时形状有保证
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-          ({search, signal}) => articleService.query(search, signal)
-        ),
-        articlePageSchema,
-        'articlePage'
-      ),
+      data: homeLoader,
       // 冷启动/刷新（无前视图可保留）时渲染文章卡片骨架；应用内导航
       // 保持旧视图 + 全局 Loading，不进这里
       pendingComponent: HomeSkeleton,
@@ -67,17 +60,11 @@ const routes = createRoutes({
     {
       path: '/article/:title',
       component: () => import('./Article'),
-      // signal 同上：findByTitle 的请求随导航取消而取消。withCache
-      // (articleCache)：Article 视图的乐观写穿（favorite/follow 经
-      // cache.mutation）与 loader 共用同一 key（[title]），写穿后
-      // set 事件订阅自动 refresh，loader 纯本地更新（见
-      // services/mutations.ts 与 src/views/Article/index.tsx）
-      data: withCache(
-        articleCache,
-        ({params}: {params: {title?: string}}): [string] => [params.title!],
-        ({params: {title}, signal}: {params: {title?: string}; signal: AbortSignal}) =>
-          articleService.findByTitle(title!, signal)
-      ),
+      // withCache(articleCache) 双通道见 articleLoader（dataloaders.ts）：
+      // Article 视图的乐观写穿（favorite/follow 经 cache.mutation）与
+      // loader 共用同一 key（[title]），写穿后 set 事件订阅自动 refresh，
+      // loader 纯本地更新（见 services/mutations.ts 与 Article 视图）
+      data: articleLoader,
       // 路由级错误组件：文章不存在/加载失败渲染页面级提示（含返回首页），
       // 其它路由仍走全局 errorHandler → RouterError
       errorComponent: NotFound
@@ -116,19 +103,13 @@ const routes = createRoutes({
       // 声明 params，schema 只作用于本层，行为不变。
       params: editorParamsSchema,
       // 编辑既有文章的取数：与 /article/:title 同构的 withCache 管道
-      //（findByTitle 的路径参数即 slug），Editor 经 useData 读到文章后
-      // 进「Edit Article」态（PUT articles/{slug}）。与 Article 视图共用
+      //（editorLoader，dataloaders.ts；findByTitle 的路径参数即 slug），
+      // Editor 经 useEditorData({optional: true}) 读到文章后进
+      // 「Edit Article」态（PUT articles/{slug}）。与 Article 视图共用
       // articleCache 的 [slug] 寻址：编辑提交后的整实体失效对两个通道
-      // 同时生效。注解沿 /article/:title 的可选属性 + ! 模式：literal
-      // 内回调按 Route 宽松检查（params 为 Record<string, string>），
-      // 收窄注解必须兼容之；slug 运行时必有值——上面的 params schema
-      // 已在 loader 前完成 coerce（trim 后的非空 EditorParams）。
-      data: withCache(
-        articleCache,
-        ({params}: {params: {slug?: string}}): [string] => [params.slug!],
-        ({params: {slug}, signal}: {params: {slug?: string}; signal: AbortSignal}) =>
-          articleService.findByTitle(slug!, signal)
-      ),
+      // 同时生效。无参的 /editor（新建）不声明 params、不挂 data，本
+      // schema 只作用于本层，行为不变。
+      data: editorLoader,
       errorComponent: NotFound,
       component: () => import('./Editor')
     }
@@ -143,6 +124,7 @@ export default function App() {
   return (
     <Router
       routes={routes}
+      context={routerContext}
       // baseUrl={import.meta.env.BASE_URL.slice(0, -1)}
       errorHandler={(e) => <RouterError error={e} />}
     >

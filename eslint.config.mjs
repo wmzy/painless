@@ -20,7 +20,9 @@ export default [
       'eslint.config.js',
       'vitest.config.mts',
       'vite.config.mts',
-      'vite-plugin-haze-css.mts'
+      'vite-plugin-haze-css.mts',
+      // openapi-typescript 生成物（npm run openapi），不参与 lint
+      'src/types/openapi.d.ts'
     ]
   },
   ...reactFreeConfig,

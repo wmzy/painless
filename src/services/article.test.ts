@@ -23,7 +23,7 @@ describe('article service', () => {
       const result = await article.query();
 
       expect(http.get).toHaveBeenCalledWith('articles', undefined, {
-        signal: undefined
+        signal: undefined, schema: expect.any(Object)
       });
       expect(result).toEqual(mockData);
     });
@@ -36,7 +36,7 @@ describe('article service', () => {
       await article.query(params);
 
       expect(http.get).toHaveBeenCalledWith('articles', params, {
-        signal: undefined
+        signal: undefined, schema: expect.any(Object)
       });
     });
 
@@ -47,7 +47,7 @@ describe('article service', () => {
       await article.query({limit: 10}, controller.signal);
 
       expect(http.get).toHaveBeenCalledWith('articles', {limit: 10}, {
-        signal: controller.signal
+        signal: controller.signal, schema: expect.any(Object)
       });
     });
   });
@@ -62,7 +62,7 @@ describe('article service', () => {
       expect(http.get).toHaveBeenCalledWith(
         'articles/test-article',
         undefined,
-        {signal: undefined}
+        {signal: undefined, schema: expect.any(Object)}
       );
       expect(result).toEqual(mockArticle);
     });
@@ -76,7 +76,7 @@ describe('article service', () => {
       await article.findByTitle('a', controller.signal);
 
       expect(http.get).toHaveBeenCalledWith('articles/a', undefined, {
-        signal: controller.signal
+        signal: controller.signal, schema: expect.any(Object)
       });
     });
   });
@@ -94,7 +94,7 @@ describe('article service', () => {
       expect(http.get).toHaveBeenCalledWith(
         'articles/test-article/comments',
         undefined,
-        {signal: undefined}
+        {signal: undefined, schema: expect.any(Object)}
       );
       expect(result).toEqual(mockComments);
     });
@@ -108,7 +108,7 @@ describe('article service', () => {
       const result = await article.fetchTags();
 
       expect(http.get).toHaveBeenCalledWith('tags', undefined, {
-        signal: undefined
+        signal: undefined, schema: expect.any(Object)
       });
       expect(result).toEqual(mockTags);
     });
@@ -120,7 +120,7 @@ describe('article service', () => {
       await article.fetchTags(controller.signal);
 
       expect(http.get).toHaveBeenCalledWith('tags', undefined, {
-        signal: controller.signal
+        signal: controller.signal, schema: expect.any(Object)
       });
     });
   });
@@ -137,7 +137,7 @@ describe('article service', () => {
       expect(http.post).toHaveBeenCalledWith(
         'articles/a/favorite',
         {},
-        {signal: undefined}
+        {signal: undefined, schema: expect.any(Object)}
       );
       expect(result).toEqual(mockArticle);
     });
@@ -148,7 +148,7 @@ describe('article service', () => {
       const result = await article.favoriteArticle('a', false);
 
       expect(http.del).toHaveBeenCalledWith('articles/a/favorite', {
-        signal: undefined
+        signal: undefined, schema: expect.any(Object)
       });
       expect(result).toEqual(mockArticle);
     });
@@ -161,7 +161,7 @@ describe('article service', () => {
       expect(http.post).toHaveBeenCalledWith(
         'profiles/jake/follow',
         {},
-        {signal: undefined}
+        {signal: undefined, schema: expect.any(Object)}
       );
       expect(result).toEqual(mockAuthor);
     });
@@ -172,7 +172,7 @@ describe('article service', () => {
       const result = await article.followAuthor('jake', false);
 
       expect(http.del).toHaveBeenCalledWith('profiles/jake/follow', {
-        signal: undefined
+        signal: undefined, schema: expect.any(Object)
       });
       expect(result).toEqual(mockAuthor);
     });
@@ -186,7 +186,7 @@ describe('article service', () => {
       expect(http.post).toHaveBeenCalledWith(
         'articles/a/comments',
         {comment: {body: 'Nice'}},
-        {signal: undefined}
+        {signal: undefined, schema: expect.any(Object)}
       );
       expect(result).toEqual(mockComment);
     });
@@ -200,7 +200,7 @@ describe('article service', () => {
       expect(http.post).toHaveBeenCalledWith(
         'articles/a/comments',
         {comment: {body: 'Nice'}},
-        {signal: controller.signal}
+        {signal: controller.signal, schema: expect.any(Object)}
       );
     });
   });

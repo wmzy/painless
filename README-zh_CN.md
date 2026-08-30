@@ -379,6 +379,83 @@ export function fetchTags(): Promise<string[]> {
 }
 ```
 
+### dev-only 运行时响应校验
+
+类型声明了形状，线上的数据未必答应。dev 构建下，每个服务层调用同时携带
+由同一份领域类型生成的 JSON Schema（与 mock 管道共用同一模块——单点
+契约，三处消费：类型、mock、校验）。2xx 响应体失配时以 fetch-fun 的
+`ValidationError` 拒绝，message 一行定位漂移——哪个请求、哪条 JSON
+指针、期望什么、实际收到什么：
+
+```text
+GET articles: 响应失配于 /articles/0/title — must be string（实际值: 42）
+```
+
+```ts
+// src/util/http.ts（节选）——init.schema 是 opt-in 挂点
+function responseSchema(schema: unknown, label: string): ff.StandardSchema {
+  return {
+    '~standard': {
+      version: 1,
+      vendor: 'painless/json-schema',
+      validate: async (value) => {
+        const {check} = await import('./validate'); // ajv，动态加载
+        return check(schema, value, label);
+      }
+    }
+  };
+}
+
+// src/services/article.ts（节选）——schema 组在生产整体折叠
+const schemas = import.meta.env.DEV
+  ? {list: articlePageSchema, article: envelope('article', articleSchema), /* … */}
+  : undefined;
+
+export function query(params?: ArticleQuery, signal?: AbortSignal) {
+  return http.get<ArticlePage>('articles', params, {signal, schema: schemas?.list});
+}
+```
+
+非 2xx 响应跳过校验（`HTTPError` 语义不受影响）。造数口径注解
+（`@minItems`/`@maxItems`/`@unique`/`@faker`——「每页 10 条」是生成指令，
+真实 API 的最后一页可以更短）在校验前剔除。生产零成本：
+`import.meta.env.DEV` 折叠分支，`ajv` 是 devDependency、只经分支内
+动态 import 加载——构建产物已验证不含 ajv（与 faker 栈同款处理）。
+
+mock 管道吃到同一套校验（`mock.ts` 对 always 模式产物按同一 schema
+校验），但失败降级为带定位的 `console.error` 而非抛错——json-schema-
+faker 0.6 的已知怪癖（深层 `$ref` 嵌套会丢 `@faker` 注解，如
+`articles[].author.image` 生成 `null`）不该把 DevTool 的 mock 模式直接
+打死；见 `docs/decisions.md` 第 7 条。
+
+### OpenAPI 类型化客户端（演示）
+
+后端发布 OpenAPI spec 时，openapi-typescript（devDependency，零运行时）
+把它变成纯类型，一层薄嫁接让整条 `fetch-fun` 管道在编译期受约束——
+路径、方法、请求体、2xx 响应。`src/services/article.openapi.ts` 是对
+RealWorld 官方 spec 的可运行演示（spec 随库提交在
+`openapi/realworld.yml`，`npm run openapi` 重新生成类型）：
+
+```ts
+// src/services/article.openapi.ts（节选）——全编译期约束
+export function findBySlug(slug: string, signal?: AbortSignal) {
+  return ff.fetchData(
+    api
+      .pipe(typedPath, '/articles/{slug}', {slug}) // 必须是 spec 真实路径 + 参数
+      .pipe(typedMethod, 'get')                    // 必须是该路径下的方法
+      .pipe(queryAndSignal(undefined, signal))
+      .pipe(typedJson, 'get')                      // 响应类型由 spec 决定
+  );
+}
+```
+
+拼写错误立刻报错：`'/article'` 不是 `paths` 的键；`'/tags'` 下没有
+`'post'`；`{nome: 'Ada'}` 不满足 `NewArticleRequest`；method 是 `'get'`
+却用 `'post'` 的 reader 也是类型错误。演示与手写 `services/article.ts`
+并存（刻意保持差异：手写版解包 `{article}` → `Article`，演示版返回
+spec 原始响应形状）。它未被任何视图引用，不进生产 chunk。边界与已知的
+spec/手写类型漂移记录在 `docs/decisions.md` 第 6 条。
+
 ### 带令牌注入的认证
 
 `src/services/auth.ts` 把当前用户持久化到 `localStorage`（`painless.user`），加载时恢复，并向 HTTP 层注册 token 供应商——登录/登出无需重建客户端管道。`src/index.tsx` 以副作用方式导入 `@/services/auth`，保证冷刷新后第一个路由 `data` 请求也带 `Authorization`：
@@ -490,6 +567,7 @@ painless/
 | `pnpm test:run` | 单次运行测试（CI 模式） |
 | `pnpm test:ui` | 在 Vitest UI 中运行测试 |
 | `pnpm coverage` | 运行测试并输出覆盖率 |
+| `pnpm openapi` | 从 `openapi/realworld.yml` 重新生成 `src/types/openapi.d.ts` |
 | `pnpm deploy` | 构建 demo 并发布到 GitHub Pages |
 | `pnpm commit` | 运行 lint-staged，随后进入 commitizen 交互式提交 |
 

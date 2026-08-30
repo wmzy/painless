@@ -2,8 +2,7 @@ import {css} from '@linaria/core';
 import {useSearch, useSetSearch} from '@native-router/react';
 import {TagGroup, TagGroupItem, Spinner, Alert, Title} from 'haze-ui';
 
-import {tagsCache, useQuery} from '@/util/useQuery';
-import * as articleService from '@/services/article';
+import {useTagsQuery} from '@/services/dataloaders';
 import {homeSearchSchema, homeSearchWriteSchema} from '@/types/search';
 import {tagListSchema} from '@/types/index.schema';
 
@@ -20,8 +19,10 @@ const staleAside = css`
 `;
 
 export default function Tags() {
-  const {data: tags, loading, error, stale} = useQuery(articleService.fetchTags, [], {
-    cache: tagsCache,
+  // useTagsQuery（createDataLoader 第三元素，声明见 dataloaders.ts）：
+  // fetch/cache 由 loader 声明绑定，mock 经 opts 透传（useQuery 的
+  // mock 配置项——DevTool 面板的 tagList 条目行为不变）
+  const {data: tags, loading, error, stale} = useTagsQuery([], {
     initData: [],
     mock: {schema: tagListSchema, key: 'tagList'}
   });

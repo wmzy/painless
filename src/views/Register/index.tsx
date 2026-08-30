@@ -1,7 +1,7 @@
 import type {AppPaths} from '@/views';
 
 import {useState} from 'react';
-import {Form, useForm} from 'react-f0rm';
+import {Form, useForm, useHasErrors, useIsSubmitting} from 'react-f0rm';
 import {Card, Title, Input, Text, Alert, FormItem} from 'haze-ui';
 // FormItem（haze-ui 1.8 引入、1.11 起随 form 层并入主 barrel）：接管字段
 // id/错误 span/aria 链路——首条错误渲染为 <span role='alert'>，control
@@ -80,17 +80,51 @@ const validateUsername = (value: string, meta: {signal: AbortSignal}) => {
 export default function Register() {
   // 类型化表单：validate 参数与 handleSubmit 的 values 均由此推断。
   // 空字符串 initialValues 让字段从首帧就是受控输入（undefined 起始会
-  // 触发 React 的 uncontrolled→controlled 警告）
-  type RegisterValues = {username: string; email: string; password: string};
+  // 触发 React 的 uncontrolled→controlled 警告）。confirmPassword 是纯
+  // 客户端闸门：RealWorld 注册契约只有 username/email/password，提交
+  // 映射时剔除（见 handleSubmit）。
+  type RegisterValues = {
+    username: string;
+    email: string;
+    password: string;
+    confirmPassword: string;
+  };
   const form = useForm<RegisterValues>({
-    initialValues: {username: '', email: '', password: ''}
+    initialValues: {username: '', email: '', password: '', confirmPassword: ''},
+    // form 级校验：跨字段一致性（密码 vs 确认密码）——字段级 validate
+    // 只收单字段值，比较另一字段要走 useForm 的 validate 选项（收全量
+    // values、返回按字段挂错的 record，react-f0rm 官方跨字段形态，见
+    // README「Form-level validation」同款示例）。错误挂到
+    // confirmPassword，经该字段 FormItem 的 role='alert' span 渲染，
+    // 与其它字段同一条 a11y 链路。
+    // 时序：提交时字段级校验全过才会跑 form 级（ensureValidate 先等
+    // 字段轮 settle、有错即早退），所以「确认为空」先报字段级
+    // required，「确认非空但不一致」才轮到 mismatch。
+    // 已知显示局限（跨字段校验的通病）：mismatch 挂上后，改 password
+    // 不会重跑 form 级校验（复验只打确认字段自身的 validator）；改
+    // confirmPassword 逐键复验清错也可能「仍不一致却已清空」——安全
+    // 边界不受影响：提交永远重跑 form 级校验，错误至多「早消失」，
+    // 不会放行无效提交。一致时返回空 record（falsy 结果被跳过，
+    // 空 record 展开无键、等价无错）。
+    validate: (values) =>
+      values.password === values.confirmPassword
+        ? {}
+        : {confirmPassword: 'Passwords do not match'}
   });
+  // 提交按钮的 disabled 组合（react-f0rm 0.6 无 canSubmit 复合 flag，
+  // 由两个订阅 hook 组出）：isSubmitting 覆盖整个异步提交期（含用户名
+  // 查重的 debounce 窗口）；hasErrors 在任一字段带错（客户端校验、
+  // 一致性 mismatch 或 422 回填）时为 true。
+  const hasErrors = useHasErrors(form);
+  const isSubmitting = useIsSubmitting(form);
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = async (values: {username: string; email: string; password: string}) => {
+  const handleSubmit = async (values: RegisterValues) => {
     try {
-      await auth.register(values.username, values.email, values.password);
+      // RealWorld 契约只有 username/email/password：确认字段不进提交体
+      const {username, email, password} = values;
+      await auth.register(username, email, password);
       void navigate(router, '/');
     } catch (e: unknown) {
       // 422 字段错误经 applyApiFieldErrors（validators.ts 单通道）回填到
@@ -148,6 +182,9 @@ export default function Register() {
             />
           )}
         </FormItem>
+        {/* 同 Login：password 无字段级 mode（提交时首验）。onBlur 仍由
+            FormItem binding 提供并显式传给 Input：blur 档校验只经它
+            可达，删掉会窄化触发面 */}
         <FormItem
           form={form}
           name='password'
@@ -156,7 +193,7 @@ export default function Register() {
             minLength(8, 'Password must be at least 8 characters')
           )}
         >
-          {({id, errorId, invalid, control}) => (
+          {({id, errorId, invalid, control, onBlur}) => (
             <Input
               id={id}
               value={control}
@@ -164,10 +201,44 @@ export default function Register() {
               placeholder='Password'
               aria-invalid={invalid}
               aria-describedby={invalid ? errorId : undefined}
+              onBlur={onBlur}
             />
           )}
         </FormItem>
-        <button type='submit'>Register</button>
+        {/* 确认密码：一致性校验在 form 级 validate（跨字段，见 useForm
+            注释），这里的字段级 validate 只报必填——它同时承担复验
+            （默认档 reValidateMode='onChange'，桥写值即触发）的清错
+            职责：字段带错后修改即重跑，通过即清（含 form 级挂上来的
+            mismatch，见 useForm 注释里的显示局限）。onBlur 接线与其它
+            字段一致（blur 档校验只经它可达）。a11y 链路与 password
+            字段完全一致。 */}
+        <FormItem
+          form={form}
+          name='confirmPassword'
+          validate={required('Confirm password is required')}
+        >
+          {({id, errorId, invalid, control, onBlur}) => (
+            <Input
+              id={id}
+              value={control}
+              type='password'
+              placeholder='Confirm password'
+              aria-invalid={invalid}
+              aria-describedby={invalid ? errorId : undefined}
+              onBlur={onBlur}
+            />
+          )}
+        </FormItem>
+        {/* 防重复/防无效提交。初始可点是刻意语义：表单默认
+            mode='onSubmit'，首次校验由提交触发，errors 初始为空集
+            （useHasErrors 只读错误 Map 的 size，不预跑校验）——若初始
+            就 disabled，提交永远不会发生。首次失败后按钮压下；提交失败
+            后修改字段即逐键复验（默认档 reValidateMode='onChange'，
+            react-f0rm 0.7 起 FormItem control 桥的写值等价
+            useField.onChange），错误清即弹起，422 回填的字段错误同理。 */}
+        <button type='submit' disabled={isSubmitting || hasErrors}>
+          Register
+        </button>
       </Form>
       <Text>
         Already have an account? <TypedLink<AppPaths> to='/login'>Login</TypedLink>

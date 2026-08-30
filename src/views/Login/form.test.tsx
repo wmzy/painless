@@ -2,7 +2,7 @@
 // 422 错误回填。Login 视图此前无测试文件，按测试放置规则新建本文件。
 // 归并建议：后续若建 src/views/Login/index.test.tsx，可直接把用例并入。
 import {describe, it, expect, vi, beforeEach} from 'vitest';
-import {render, screen, fireEvent} from '@testing-library/react';
+import {render, screen, fireEvent, waitFor, act} from '@testing-library/react';
 
 const state = vi.hoisted(() => ({router: {pathname: '/login'}}));
 
@@ -46,8 +46,10 @@ describe('Login 表单', () => {
     // 注意：type='email' 的原生约束会先于 f0rm 验证器（formEl.checkValidity
     // 失败时 f0rm 直接早退走原生提示）。'a@b' 原生合法但不过应用正则
     // /\S+@\S+\.\S+/（域名无点号），恰好精确断言自定义验证器生效。
+    // 复验走逐键触发（默认档 reValidateMode='onChange'：react-f0rm 0.7 +
+    // haze-ui 1.12.1 起 FormItem control 桥的写值等价 useField.onChange）
+    // ——改值即复验换文案，无需失焦
     fill('a@b', 'secret');
-    fireEvent.click(screen.getByRole('button', {name: 'Login'}));
     expect(await screen.findByText('Invalid email')).toBeDefined();
     expect(loginMock).not.toHaveBeenCalled();
   });
@@ -117,5 +119,71 @@ describe('Login 表单', () => {
     fireEvent.click(screen.getByRole('button', {name: 'Login'}));
 
     expect(await screen.findByText('Network down')).toBeDefined();
+  });
+
+  // #11 防重复/防无效提交：disabled 组合 isSubmitting + hasErrors。
+  // 初始可点是刻意语义（mode='onSubmit' 下首次校验由提交触发，errors
+  // 初始为空集）——见视图按钮处的 why 注释。复验走逐键触发（默认档
+  // reValidateMode='onChange'，桥写值即用户变更）。
+  it('提交按钮状态迁移：初始可点→无效提交压下→修复即弹起→提交期再压下', async () => {
+    // 手动控制 resolve：让 isSubmitting 覆盖整个异步提交期的窗口可控
+    type LoginResult = Awaited<ReturnType<typeof auth.login>>;
+    let resolveLogin!: (value: LoginResult) => void;
+    loginMock.mockImplementation(
+      () => new Promise<LoginResult>((resolve) => (resolveLogin = resolve))
+    );
+    render(<Login />);
+    const submit = screen.getByRole<HTMLButtonElement>('button', {name: 'Login'});
+
+    // 初始可点：尚未校验，errors 为空集
+    expect(submit.disabled).toBe(false);
+
+    // 空提交：校验失败落错 → hasErrors 压下按钮
+    fireEvent.click(submit);
+    expect(await screen.findByText('Email is required')).toBeDefined();
+    expect(submit.disabled).toBe(true);
+
+    // 修复两个字段（无失焦）：逐键复验清错，全部清空后按钮弹起
+    fill('alice@example.com', 'secret');
+    await waitFor(() => expect(submit.disabled).toBe(false));
+
+    // 提交期：isSubmitting 压下（请求在途，防重复提交）
+    fireEvent.click(submit);
+    await waitFor(() => expect(submit.disabled).toBe(true));
+    expect(loginMock).toHaveBeenCalledTimes(1);
+
+    // 请求完成：isSubmitting 归位，无错误 → 弹起
+    await act(async () => {
+      resolveLogin(undefined as unknown as LoginResult);
+    });
+    await waitFor(() => expect(submit.disabled).toBe(false));
+  });
+
+  // 回归锚点（react-f0rm 0.7.0 + haze-ui 1.12.1 组合行为）：FormItem
+  // control 桥的写值等价 useField.onChange——默认档（mode='onSubmit' +
+  // reValidateMode='onChange'）下提交失败后直接输入合法值即逐键复验，
+  // 错误 span 消失、按钮弹起，全程无失焦、无重提交。0.6.x 时代桥写值
+  // 不经 onChange，此场景必须失焦才能复验（曾靠 reValidateMode:'onBlur'
+  // 绕过）；该绕过已随升级回收，本用例守住「桥写值即用户变更」不再回退。
+  it('桥写值即用户变更：提交失败后直接输入合法值，错误清除、按钮恢复可点（无失焦）', async () => {
+    render(<Login />);
+    const submit = screen.getByRole<HTMLButtonElement>('button', {name: 'Login'});
+    const email = screen.getByPlaceholderText('Email');
+
+    // 空提交：email 落必填错误（role='alert' span），按钮压下
+    fireEvent.click(submit);
+    expect(await screen.findByText('Email is required')).toBeDefined();
+    expect(submit.disabled).toBe(true);
+
+    // 直接输入合法值（不经 blur）：桥写值触发逐键复验，错误 span 消失，
+    // aria 链路同步复位
+    fireEvent.change(email, {target: {value: 'alice@example.com'}});
+    await waitFor(() => expect(screen.queryByText('Email is required')).toBeNull());
+    expect(email.getAttribute('aria-invalid')).toBe('false');
+
+    // password 仍带错：按钮保持压下；补齐后弹起（按钮弹起不依赖失焦）
+    expect(submit.disabled).toBe(true);
+    fireEvent.change(screen.getByPlaceholderText('Password'), {target: {value: 'secret'}});
+    await waitFor(() => expect(submit.disabled).toBe(false));
   });
 });

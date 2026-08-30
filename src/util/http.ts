@@ -63,6 +63,13 @@ function fireUnauthorized() {
 // 字段直通原生 fetch；headers 单独挑出做逐个合并（覆盖同名默认头）。
 export type RequestInitish = RequestInit & {
   headers?: Record<string, string>;
+  /**
+   * dev-only 响应校验的 JSON Schema（@/types/index.schema 生成的对象，
+   * 或 envelope() 组合的单实体包裹层）。2xx 响应体失配时抛
+   * fetch-fun 的 ValidationError（message 定位到路径与期望/实际），
+   * 非 2xx 跳过校验（HTTPError 语义不变）；生产构建忽略该字段。
+   */
+  schema?: unknown;
 };
 
 const client = ff
@@ -105,8 +112,10 @@ const baseClient = import.meta.env.DEV
   : client;
 
 // init 的其余字段直接合入 Options，自定义 headers 逐个合并以覆盖默认头。
+// schema 是校验指令不是请求参数：在这里剥掉，由出口处的 withSchema 消费。
 function withInit(o: ff.Options, init?: RequestInitish) {
   const {headers, ...rest} = init ?? {};
+  delete (rest as RequestInitish).schema;
   let result = {...o, ...rest} as ff.Options;
   for (const [name, value] of Object.entries(headers ?? {})) {
     result = ff.header(result, name, value);
@@ -114,11 +123,55 @@ function withInit(o: ff.Options, init?: RequestInitish) {
   return result;
 }
 
+// dev-only 响应校验（类型→schema→运行时校验闭环的最后一环）：
+// init.schema 携带的 JSON Schema 经 Standard Schema v1 鸭子适配挂上
+// fetch-fun 的 validate 中间件（fetch-fun 0.10 自带，对任何标准实现
+// 鸭子探测）。校验实现（ajv 动态加载 + 错误定位格式化）在 ./validate，
+// 只经这里分支内的动态 import 进入——生产构建 import.meta.env.DEV
+// 折叠为 false，适配器、动态 import 与 ajv 全部不进生产 chunk
+//（与 mock/faker 同款处理）。
+function responseSchema(schema: unknown, label: string): ff.StandardSchema {
+  return {
+    '~standard': {
+      version: 1,
+      vendor: 'painless/json-schema',
+      validate: async (value: unknown) => {
+        const {check} = await import('./validate');
+        return check(schema, value, label);
+      }
+    }
+  };
+}
+
+function withSchema<T extends ff.Options>(
+  o: T,
+  init: RequestInitish | undefined,
+  label: string
+): T {
+  const schema = init?.schema;
+  if (!import.meta.env.DEV || !schema) return o;
+  return ff.validate(o, responseSchema(schema, label)) as unknown as T;
+}
+
+// dev-only 请求日志之后的管道出口（baseClient）同时导出为 api：供
+// services/article.openapi.ts 的类型化客户端演示复用同一中间件链
+//（超时/重试/鉴权/错误映射），演示与手写服务看到完全一致的运行时行为。
+// 显式标注可命名的类型（baseClient 的推断类型含 fetch-fun 内部的
+// symbol 槽位，declaration 输出命名不了）。
+export const api: ff.Options & ff.Pipe = baseClient;
+
 export function fetchJSON<T = unknown>(
   url: string,
   init?: RequestInitish
 ): Promise<T> {
-  return ff.fetchJSON<T>(ff.url(withInit(baseClient, init), url)) as Promise<T>;
+  const o = withSchema(
+    ff.url(withInit(baseClient, init), url),
+    init,
+    `${init?.method ?? 'GET'} ${url}`.toUpperCase()
+  );
+  // 双重断言：泛型 T 与 ResolveData 互不可证（其余出口的单断言因 o 的
+  // 具体类型可直转，这里经 unknown 中转），eslint 与 tsc 同时接受。
+  return ff.fetchJSON<T>(o) as unknown as Promise<T>;
 }
 
 // signal 为只读查询的取消通道：经 withInit 合入 Options 后直通 fetch；
@@ -136,12 +189,16 @@ export function get<T = unknown>(
     ) as Record<string, string | number | boolean>;
     o = ff.query(o, defined);
   }
-  return ff.fetchJSON<T>(o) as Promise<T>;
+  return ff.fetchJSON<T>(withSchema(o, init, `GET ${url}`)) as Promise<T>;
 }
 
 export function del<T = unknown>(url: string, init?: RequestInitish) {
   return ff.fetchJSON<T>(
-    ff.url(ff.method(withInit(baseClient, init), 'delete'), url)
+    withSchema(
+      ff.url(ff.method(withInit(baseClient, init), 'delete'), url),
+      init,
+      `DELETE ${url}`
+    )
   ) as Promise<T>;
 }
 
@@ -168,9 +225,13 @@ function sendJSON<T>(
   init?: RequestInitish
 ): Promise<T> {
   return ff.fetchJSON<T>(
-    ff.body(
-      ff.method(ff.url(withInit(baseClient, init), url), m),
-      JSON.stringify(data)
+    withSchema(
+      ff.body(
+        ff.method(ff.url(withInit(baseClient, init), url), m),
+        JSON.stringify(data)
+      ),
+      init,
+      `${m.toUpperCase()} ${url}`
     )
   ) as Promise<T>;
 }
