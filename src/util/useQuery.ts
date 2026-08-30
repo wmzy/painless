@@ -19,7 +19,6 @@ import {
   useRefresh,
   useResultSelect,
   useRun,
-  useSwallowErrors,
   type BoundMutation,
   type CacheProvider,
   type MutationSpec
@@ -338,15 +337,13 @@ export function createQueryHook(
     // per-args 观测：loading/error/failureCount 按 args key 独立——同一
     // queryFn 并发服务多组参数时互不串扰；loading 在其上重建 SWR 初载语
     // 义（「本参数有调用在飞」叠加「本参数尚无结果」——status.data 仅在
-    // 共享结果的 provenance 匹配当前 args 时非空）。
+    // 共享结果的 provenance 匹配当前 args 时非空）。挂载即认领实例错误
+    //（读即认领，0.18.1）：调用失败在边界 resolve undefined，错误统一
+    // 从返回值 error 读，useRun / refetch 不产生悬空 rejection。
     const argsStatus = useArgsStatus(injectable, args);
     const loading = argsStatus.loading && argsStatus.data === undefined;
     const error: Error | undefined = argsStatus.error;
     const failureCount = argsStatus.failureCount;
-
-    // 兜底：useError 记录错误后重抛，useSwallowErrors 在整链后接住——错误
-    // 统一从返回值 error 读，useRun / refetch 不产生悬空 rejection。
-    useSwallowErrors(injectable);
 
     // signal: true：每次 run 在 args 尾部附加 AbortSignal，args 变化或卸载
     // 时 abort 上一次（经服务层尾参透传到 fetch）；hash 让「结构变化」取代
