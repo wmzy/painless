@@ -1,15 +1,16 @@
 // 来源：P1 表单层收敛（评审任务）——Login 的共享验证器接线与服务端
 // 422 错误回填。Login 视图此前无测试文件，按测试放置规则新建本文件。
 // 归并建议：后续若建 src/views/Login/index.test.tsx，可直接把用例并入。
+import type {StandardSchemaV1} from '@native-router/react';
+
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import {render, screen, fireEvent, waitFor, act} from '@testing-library/react';
-import type {StandardSchemaV1} from '@native-router/react';
 
 const state = vi.hoisted(() => ({
   router: {pathname: '/login'},
   // /login 的 search 输入（useSearch 的 mock 数据源）：redirect 场景
   // 用例按需注入
-  search: {} as Record<string, unknown>
+  search: {}
 }));
 
 // Login 视图只调 auth.login，整体 mock 服务层；422 拒绝值用鸭子形状
@@ -28,8 +29,9 @@ vi.mock('@native-router/react', () => ({
 }));
 vi.mock('@native-router/core', () => ({navigate: vi.fn()}));
 
-import * as auth from '@/services/auth';
 import {navigate} from '@native-router/core';
+
+import * as auth from '@/services/auth';
 
 import Login from './index';
 

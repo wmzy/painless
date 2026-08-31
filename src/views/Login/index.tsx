@@ -2,10 +2,12 @@ import type {AppPaths} from '@/views';
 
 import {useState} from 'react';
 import {Form, useForm, useHasErrors, useIsSubmitting} from 'react-f0rm';
-import {Card, Title, Input, Text, Alert, FormItem} from 'haze-ui';
+import {Card, Title, InputCore, Text, Alert, FormItem} from 'haze-ui';
 // FormItem（haze-ui 1.8 引入、1.11 起随 form 层并入主 barrel）：接管字段
-// id/错误 span/aria 链路——首条错误渲染为 <span role='alert'>，control
-// 桥直接驱动 haze-ui 控件，取代 Field + FieldError 的手工挂接
+// id/错误 span/aria 链路——首条错误渲染为 <span role='alert'>。1.12.2
+// 起 binding 改为 value/onChange 直出（react-f0rm useField 通道），配
+// 纯受控的 InputCore/TextareaCore/TagInputCore 使用；旧的 control 桥
+//（react-use-control Control）已移除
 import {
   useRouter,
   TypedLink,
@@ -93,17 +95,18 @@ export default function Login() {
             避免指向不存在元素的悬空 id */}
         {/* mode='onBlur'（react-f0rm 0.6 字段级覆盖 + haze-ui 1.9 FormItem
             透传）：表单默认 onSubmit 提交时才校验，email 单字段失焦即校验。
-            onBlur 由 FormItem binding 提供，接给 Input 才触发失焦钩子 */}
+            onBlur 由 FormItem binding 提供，接给 InputCore 才触发失焦钩子 */}
         <FormItem
           form={form}
           name='email'
           mode='onBlur'
           validate={compose(required('Email is required'), email('Invalid email'))}
         >
-          {({id, errorId, invalid, control, onBlur}) => (
-            <Input
+          {({id, errorId, invalid, value, onChange, onBlur}) => (
+            <InputCore
               id={id}
-              value={control}
+              value={value}
+              onChange={onChange}
               type='email'
               placeholder='Email'
               aria-invalid={invalid}
@@ -113,7 +116,7 @@ export default function Login() {
           )}
         </FormItem>
         {/* password 无字段级 mode（提交时才首验）。onBlur 仍由 FormItem
-            binding 提供并显式传给 Input：blur 档校验（mode='onBlur'/
+            binding 提供并显式传给 InputCore：blur 档校验（mode='onBlur'/
             'onTouched'/'all' 或 reValidateMode='onBlur'）只经它可达，
             删掉会窄化触发面 */}
         <FormItem
@@ -121,10 +124,11 @@ export default function Login() {
           name='password'
           validate={required('Password is required')}
         >
-          {({id, errorId, invalid, control, onBlur}) => (
-            <Input
+          {({id, errorId, invalid, value, onChange, onBlur}) => (
+            <InputCore
               id={id}
-              value={control}
+              value={value}
+              onChange={onChange}
               type='password'
               placeholder='Password'
               aria-invalid={invalid}
@@ -138,8 +142,8 @@ export default function Login() {
             （useHasErrors 只读错误 Map 的 size，不预跑校验）——若初始
             就 disabled，提交永远不会发生。首次失败后按钮压下；提交失败
             后修改字段即逐键复验（默认档 reValidateMode='onChange'，
-            react-f0rm 0.7 起 FormItem control 桥的写值等价
-            useField.onChange），错误清即弹起，422 回填的字段错误同理。 */}
+            FormItem 的 onChange 即 useField.onChange），错误清即弹起，
+            422 回填的字段错误同理。 */}
         <button type='submit' disabled={isSubmitting || hasErrors}>
           Login
         </button>

@@ -4,7 +4,7 @@ import {navigate} from '@native-router/core';
 import {useMatched} from '@native-router/react';
 import {Form, useForm, reset, useIsSubmitting} from 'react-f0rm';
 import {useMutation} from 'react-toolroom/async';
-import {Card, Title, Text, Avatar, Divider, Textarea, Alert, Button, Badge, Flex, useToast, FormItem} from 'haze-ui';
+import {Card, Title, Text, Avatar, Divider, TextareaCore, Alert, Button, Badge, Flex, useToast, FormItem} from 'haze-ui';
 
 import * as articleService from '@/services/article';
 import {favoriteOnArticle, followOnArticle} from '@/services/mutations';
@@ -34,7 +34,8 @@ export default function ArticleView() {
   // 首帧即有，无「先默认后换」的闪烁；离开恢复入口默认
   useTitle(`${article.title} · Painless`);
   const {router} = useMatched();
-  const commentForm = useForm();
+  // 表单值形状：handleCommentSubmit 的 values 与此泛型一致
+  const commentForm = useForm<{body: string}>();
   // 同 Editor：react-f0rm ≥0.4 的 onSubmit 被 await，isSubmitting 覆盖整个异步提交
   const commentSubmitting = useIsSubmitting(commentForm);
   const [error, setError] = useState<string | null>(null);
@@ -101,8 +102,8 @@ export default function ArticleView() {
   const handleCommentSubmit = async (values: {body: string}) => {
     try {
       await mutateAddComment(article.slug, values.body);
-      // 评论字段的 Textarea 经 FormItem 的 control 桥接后是受控语义
-      //（control 每次渲染读取 useValueByPath 订阅的实时表单值），reset
+      // 评论字段的 TextareaCore 经 FormItem value 直出后是受控语义
+      //（value 每次渲染读取 useValueByPath 订阅的实时表单值），reset
       // 改写表单值即可同步清空显存文本——不再需要 key 递增重挂子树。
       // 评论列表刷新由 invalidates 声明式负责（见上）。
       reset(commentForm, {body: ''});
@@ -143,18 +144,20 @@ export default function ArticleView() {
       </div>
       <Divider />
       <Title level={3}>Comments</Title>
-      {/* 同 Editor：FormItem 桥接字段与控件（control 受控 + aria 链路），
-          首条错误由 FormItem 渲染为字段下方的 <span role='alert'> */}
+      {/* 同 Editor：FormItem 桥接字段与受控核心（value/onChange 直出 +
+          aria 链路），首条错误由 FormItem 渲染为字段下方的
+          <span role='alert'> */}
       <Form form={commentForm} onSubmit={handleCommentSubmit} aria-label='Comment form'>
         <FormItem
           form={commentForm}
           name='body'
           validate={(v: unknown) => (!v ? 'Comment is required' : undefined)}
         >
-          {({id, errorId, invalid, control}) => (
-            <Textarea
+          {({id, errorId, invalid, value, onChange}) => (
+            <TextareaCore
               id={id}
-              value={control}
+              value={value}
+              onChange={onChange}
               placeholder='Write a comment...'
               aria-describedby={invalid ? errorId : undefined}
               aria-invalid={invalid}

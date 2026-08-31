@@ -15,7 +15,7 @@ importers:
         specifier: ^8.2.0
         version: 8.2.0(supports-color@10.2.2)
       '@native-router/core':
-        specifier: ^1.10.0
+        specifier: ^1.11.0
         version: 1.11.0
       '@native-router/react':
         specifier: ^1.10.1
@@ -24,8 +24,8 @@ importers:
         specifier: ^0.11.0
         version: 0.11.0
       haze-ui:
-        specifier: ^1.12.1
-        version: 1.12.1(@linaria/core@8.2.0(supports-color@10.2.2))(react-dom@19.2.8(react@19.2.8))(react-f0rm@0.7.0(react@19.2.8)(zod@4.5.2))(react@19.2.8)
+        specifier: ^1.12.2
+        version: 1.12.2(@linaria/core@8.2.0(supports-color@10.2.2))(react-dom@19.2.8(react@19.2.8))(react-f0rm@0.7.0(react@19.2.8)(zod@4.5.4))(react@19.2.8)
       react:
         specifier: ^19.2.8
         version: 19.2.8
@@ -34,7 +34,7 @@ importers:
         version: 19.2.8(react@19.2.8)
       react-f0rm:
         specifier: ^0.7.0
-        version: 0.7.0(react@19.2.8)(zod@4.5.2)
+        version: 0.7.0(react@19.2.8)(zod@4.5.4)
       react-toolroom:
         specifier: ^0.18.4
         version: 0.18.4(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -154,8 +154,8 @@ importers:
         specifier: ^5.51.2
         version: 5.51.2
       tools-config:
-        specifier: ^0.3.0
-        version: 0.3.0(@typescript-eslint/utils@8.68.0(eslint@10.9.1(jiti@2.6.1)(supports-color@10.2.2))(supports-color@10.2.2)(typescript@6.0.3))(eslint-import-resolver-node@0.3.10(supports-color@10.2.2))(eslint-plugin-import@2.32.0)(eslint@10.9.1(jiti@2.6.1)(supports-color@10.2.2))(prettier@3.9.6)(stylelint@16.26.1(supports-color@10.2.2)(typescript@6.0.3))(supports-color@10.2.2)(typescript@6.0.3)
+        specifier: ^0.3.1
+        version: 0.3.1(@typescript-eslint/utils@8.68.0(eslint@10.9.1(jiti@2.6.1)(supports-color@10.2.2))(supports-color@10.2.2)(typescript@6.0.3))(eslint-import-resolver-node@0.3.10(supports-color@10.2.2))(eslint-plugin-import@2.32.0)(eslint@10.9.1(jiti@2.6.1)(supports-color@10.2.2))(prettier@3.9.6)(stylelint@16.26.1(supports-color@10.2.2)(typescript@6.0.3))(supports-color@10.2.2)(typescript@6.0.3)
       tsc-alias:
         specifier: ^1.9.2
         version: 1.9.2
@@ -167,7 +167,7 @@ importers:
         version: 8.2.2(@types/node@26.4.0)(jiti@2.6.1)(terser@5.51.2)(yaml@2.9.0)
       vitest:
         specifier: ^4.1.11
-        version: 4.1.11(@types/node@26.4.0)(@vitest/coverage-v8@4.1.11)(@vitest/ui@4.1.11)(happy-dom@20.11.15)(jsdom@30.0.1)(vite@8.2.2(@types/node@26.4.0)(jiti@2.6.1)(terser@5.51.2)(yaml@2.9.0))
+        version: 4.1.11(@types/node@26.4.0)(@vitest/coverage-v8@4.1.11)(@vitest/ui@4.1.11)(happy-dom@20.12.0)(jsdom@30.0.1)(vite@8.2.2(@types/node@26.4.0)(jiti@2.6.1)(terser@5.51.2)(yaml@2.9.0))
 
 packages:
 
@@ -2821,8 +2821,8 @@ packages:
   graceful-fs@4.2.11:
     resolution: {integrity: sha512-RbJ5/jmFcNNCcDV5o9eTnBLJ/HszWV0P73bc+Ff4nS/rJj+YaS6IGyiOL0VoBYX+l1Wrl3k63h/KrH+nhJ0XvQ==}
 
-  happy-dom@20.11.15:
-    resolution: {integrity: sha512-bj2gQIKzOYB6GAAJ/jrN/IFHQe79MhEOiMAspRRWiKebRoegvGDv2B6eUt8KiZMTEDvx6ri0fAF7Xh/umAUUZA==}
+  happy-dom@20.12.0:
+    resolution: {integrity: sha512-7uMYJu2SEwwL8vVcKp0C0lnt6d2LSGGe+T+oY79PiCJNNSgFpbxW8n5KuzpDQvrU4mt+fYiK1+Jy7Z2v39YR6g==}
     engines: {node: '>=20.0.0'}
 
   has-bigints@1.1.0:
@@ -2860,8 +2860,8 @@ packages:
     resolution: {integrity: sha512-T2UbfbBEF32wiepXIsMlTW9+dDYC6wMh/t/vYA4tuOMKqWz/n3vr1NFSxQiyP+zk2mXsoMA/i/7qV6LKut1t1A==}
     engines: {node: '>= 0.4'}
 
-  haze-ui@1.12.1:
-    resolution: {integrity: sha512-DIKhF+qevrED0AJT0wOsxvFFQ2fFeV4xPkiU7acdONfrmIrFLiqc0Ygs6f2LXx41WTtDx0ecxyyjXqYE5sR5Mw==}
+  haze-ui@1.12.2:
+    resolution: {integrity: sha512-xYCAkXMCAPaSAkrq1SR0uSQECiH4j07RR+B+aWtUs+4kXIFHne2D4XLmjz+hdlofzqHQWkEoLYkhvRQzADpAPg==}
     peerDependencies:
       '@linaria/core': ^7.0.0 || ^8.0.0
       react: ^19.0.0
@@ -3745,12 +3745,6 @@ packages:
   react-is@17.0.2:
     resolution: {integrity: sha512-w2GsyukL62IJnlaff/nRegPQR94C/XXamvMWmSHRJ4y7Ts/4ocGRmTHvOs8PSE6pB3dWOrD/nueuU5sduBsQ4w==}
 
-  react-toolroom@0.11.0:
-    resolution: {integrity: sha512-r4EggNyWJJbq4w13VU7mVcfJLaXz0DNtjgyeOq3MQ96iSxqTZaTjwEW/N2VDqo4X96N878vZEun/qYANbF8tWQ==}
-    peerDependencies:
-      react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
-      react-dom: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
-
   react-toolroom@0.18.4:
     resolution: {integrity: sha512-4h4XHzREIVM1iG9hyuiYkI508DnVw9h1XM4eVoSlAV8YKTgexYT3BB6ZDraCxOZVMtX0Qg0euCdS/dsSTj9/kg==}
     peerDependencies:
@@ -4123,8 +4117,8 @@ packages:
     resolution: {integrity: sha512-65P7iz6X5yEr1cwcgvQxbbIw7Uk3gOy5dIdtZ4rDveLqhrdJP+Li/Hx6tyK0NEb+2GCyneCMJiGqrADCSNk8sQ==}
     engines: {node: '>=8.0'}
 
-  tools-config@0.3.0:
-    resolution: {integrity: sha512-ASQ4lqtq/+pkGK7QGIu6sHFs0vZIGqRExUHb/25W7TQ/lk3HVyWuXp7MFUlFlTsiA16UOfhkqWi38f9ZqAidiQ==}
+  tools-config@0.3.1:
+    resolution: {integrity: sha512-G8Vc12+PV0mslFHB3BduDk/a4vx08ap6ZamgWA7U3d6f8rRnHjcJS+FissUWw36Q9rkbGHSVri33WnZ1dOfNkw==}
     peerDependencies:
       eslint: ^10.0.0
       prettier: ^3.0.0 || ^4.0.0
@@ -4496,8 +4490,8 @@ packages:
     peerDependencies:
       zod: ^3.25.0 || ^4.0.0
 
-  zod@4.5.2:
-    resolution: {integrity: sha512-XkYXCol10+ba/6F/cueWV+TezUeOqXW0hdeJt5CdXjTYeAgAQg5N03RQdJ80mhfFE72+pblvYMW4wy2Qp4Qbrg==}
+  zod@4.5.4:
+    resolution: {integrity: sha512-sC95tT5iHHH9gtpj6A81kh+NEaRAUFN+qlUPDUbRfOMvNf5QCBqsb3WgvnpVtK5Y+4UfA6KqufotuTvMGiTlsA==}
 
 snapshots:
 
@@ -5805,7 +5799,7 @@ snapshots:
       picocolors: 1.1.1
       redent: 3.0.0
     optionalDependencies:
-      vitest: 4.1.11(@types/node@26.4.0)(@vitest/coverage-v8@4.1.11)(@vitest/ui@4.1.11)(happy-dom@20.11.15)(jsdom@30.0.1)(vite@8.2.2(@types/node@26.4.0)(jiti@2.6.1)(terser@5.51.2)(yaml@2.9.0))
+      vitest: 4.1.11(@types/node@26.4.0)(@vitest/coverage-v8@4.1.11)(@vitest/ui@4.1.11)(happy-dom@20.12.0)(jsdom@30.0.1)(vite@8.2.2(@types/node@26.4.0)(jiti@2.6.1)(terser@5.51.2)(yaml@2.9.0))
 
   '@testing-library/react@16.3.3(@testing-library/dom@10.4.1)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
     dependencies:
@@ -6044,7 +6038,7 @@ snapshots:
       obug: 2.1.4
       std-env: 4.2.0
       tinyrainbow: 3.1.1
-      vitest: 4.1.11(@types/node@26.4.0)(@vitest/coverage-v8@4.1.11)(@vitest/ui@4.1.11)(happy-dom@20.11.15)(jsdom@30.0.1)(vite@8.2.2(@types/node@26.4.0)(jiti@2.6.1)(terser@5.51.2)(yaml@2.9.0))
+      vitest: 4.1.11(@types/node@26.4.0)(@vitest/coverage-v8@4.1.11)(@vitest/ui@4.1.11)(happy-dom@20.12.0)(jsdom@30.0.1)(vite@8.2.2(@types/node@26.4.0)(jiti@2.6.1)(terser@5.51.2)(yaml@2.9.0))
 
   '@vitest/expect@4.1.11':
     dependencies:
@@ -6090,7 +6084,7 @@ snapshots:
       sirv: 3.0.2
       tinyglobby: 0.2.17
       tinyrainbow: 3.1.1
-      vitest: 4.1.11(@types/node@26.4.0)(@vitest/coverage-v8@4.1.11)(@vitest/ui@4.1.11)(happy-dom@20.11.15)(jsdom@30.0.1)(vite@8.2.2(@types/node@26.4.0)(jiti@2.6.1)(terser@5.51.2)(yaml@2.9.0))
+      vitest: 4.1.11(@types/node@26.4.0)(@vitest/coverage-v8@4.1.11)(@vitest/ui@4.1.11)(happy-dom@20.12.0)(jsdom@30.0.1)(vite@8.2.2(@types/node@26.4.0)(jiti@2.6.1)(terser@5.51.2)(yaml@2.9.0))
 
   '@vitest/utils@4.1.11':
     dependencies:
@@ -6124,7 +6118,7 @@ snapshots:
       '@wyw-in-js/processor-utils': 2.4.1(supports-color@10.2.2)
       '@wyw-in-js/shared': 2.4.0(supports-color@10.2.2)
       cosmiconfig: 8.3.6(typescript@6.0.3)
-      happy-dom: 20.11.15
+      happy-dom: 20.12.0
       minimatch: 9.0.9
       oxc-parser: 0.131.0
       oxc-resolver: 11.24.2
@@ -6932,8 +6926,8 @@ snapshots:
       '@babel/parser': 7.29.8
       eslint: 10.9.1(jiti@2.6.1)(supports-color@10.2.2)
       hermes-parser: 0.25.1
-      zod: 4.5.2
-      zod-validation-error: 4.0.2(zod@4.5.2)
+      zod: 4.5.4
+      zod-validation-error: 4.0.2(zod@4.5.4)
     transitivePeerDependencies:
       - supports-color
 
@@ -7309,7 +7303,7 @@ snapshots:
 
   graceful-fs@4.2.11: {}
 
-  happy-dom@20.11.15:
+  happy-dom@20.12.0:
     dependencies:
       '@types/node': 26.4.0
       '@types/whatwg-mimetype': 3.0.2
@@ -7350,12 +7344,12 @@ snapshots:
     dependencies:
       function-bind: 1.1.2
 
-  haze-ui@1.12.1(@linaria/core@8.2.0(supports-color@10.2.2))(react-dom@19.2.8(react@19.2.8))(react-f0rm@0.7.0(react@19.2.8)(zod@4.5.2))(react@19.2.8):
+  haze-ui@1.12.2(@linaria/core@8.2.0(supports-color@10.2.2))(react-dom@19.2.8(react@19.2.8))(react-f0rm@0.7.0(react@19.2.8)(zod@4.5.4))(react@19.2.8):
     dependencies:
       '@linaria/core': 8.2.0(supports-color@10.2.2)
       react: 19.2.8
-      react-f0rm: 0.7.0(react@19.2.8)(zod@4.5.2)
-      react-toolroom: 0.11.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      react-f0rm: 0.7.0(react@19.2.8)(zod@4.5.4)
+      react-toolroom: 0.18.4(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react-use-control: 1.3.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
     transitivePeerDependencies:
       - react-dom
@@ -8226,22 +8220,17 @@ snapshots:
       react: 19.2.8
       scheduler: 0.27.0
 
-  react-f0rm@0.7.0(react@19.2.8)(zod@4.5.2):
+  react-f0rm@0.7.0(react@19.2.8)(zod@4.5.4):
     dependencies:
       '@for-fun/event-emitter': 1.0.1
       react: 19.2.8
       use-sync-external-store: 1.6.0(react@19.2.8)
     optionalDependencies:
-      zod: 4.5.2
+      zod: 4.5.4
 
   react-is@16.13.1: {}
 
   react-is@17.0.2: {}
-
-  react-toolroom@0.11.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
-    dependencies:
-      react: 19.2.8
-      react-dom: 19.2.8(react@19.2.8)
 
   react-toolroom@0.18.4(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
     dependencies:
@@ -8705,7 +8694,7 @@ snapshots:
     dependencies:
       is-number: 7.0.0
 
-  tools-config@0.3.0(@typescript-eslint/utils@8.68.0(eslint@10.9.1(jiti@2.6.1)(supports-color@10.2.2))(supports-color@10.2.2)(typescript@6.0.3))(eslint-import-resolver-node@0.3.10(supports-color@10.2.2))(eslint-plugin-import@2.32.0)(eslint@10.9.1(jiti@2.6.1)(supports-color@10.2.2))(prettier@3.9.6)(stylelint@16.26.1(supports-color@10.2.2)(typescript@6.0.3))(supports-color@10.2.2)(typescript@6.0.3):
+  tools-config@0.3.1(@typescript-eslint/utils@8.68.0(eslint@10.9.1(jiti@2.6.1)(supports-color@10.2.2))(supports-color@10.2.2)(typescript@6.0.3))(eslint-import-resolver-node@0.3.10(supports-color@10.2.2))(eslint-plugin-import@2.32.0)(eslint@10.9.1(jiti@2.6.1)(supports-color@10.2.2))(prettier@3.9.6)(stylelint@16.26.1(supports-color@10.2.2)(typescript@6.0.3))(supports-color@10.2.2)(typescript@6.0.3):
     dependencies:
       '@eslint/js': 10.0.1(eslint@10.9.1(jiti@2.6.1)(supports-color@10.2.2))
       eslint: 10.9.1(jiti@2.6.1)(supports-color@10.2.2)
@@ -8933,7 +8922,7 @@ snapshots:
       terser: 5.51.2
       yaml: 2.9.0
 
-  vitest@4.1.11(@types/node@26.4.0)(@vitest/coverage-v8@4.1.11)(@vitest/ui@4.1.11)(happy-dom@20.11.15)(jsdom@30.0.1)(vite@8.2.2(@types/node@26.4.0)(jiti@2.6.1)(terser@5.51.2)(yaml@2.9.0)):
+  vitest@4.1.11(@types/node@26.4.0)(@vitest/coverage-v8@4.1.11)(@vitest/ui@4.1.11)(happy-dom@20.12.0)(jsdom@30.0.1)(vite@8.2.2(@types/node@26.4.0)(jiti@2.6.1)(terser@5.51.2)(yaml@2.9.0)):
     dependencies:
       '@vitest/expect': 4.1.11
       '@vitest/mocker': 4.1.11(vite@8.2.2(@types/node@26.4.0)(jiti@2.6.1)(terser@5.51.2)(yaml@2.9.0))
@@ -8959,7 +8948,7 @@ snapshots:
       '@types/node': 26.4.0
       '@vitest/coverage-v8': 4.1.11(vitest@4.1.11)
       '@vitest/ui': 4.1.11(vitest@4.1.11)
-      happy-dom: 20.11.15
+      happy-dom: 20.12.0
       jsdom: 30.0.1
     transitivePeerDependencies:
       - msw
@@ -9082,8 +9071,8 @@ snapshots:
 
   yocto-queue@0.1.0: {}
 
-  zod-validation-error@4.0.2(zod@4.5.2):
+  zod-validation-error@4.0.2(zod@4.5.4):
     dependencies:
-      zod: 4.5.2
+      zod: 4.5.4
 
-  zod@4.5.2: {}
+  zod@4.5.4: {}
