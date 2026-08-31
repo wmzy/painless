@@ -179,6 +179,11 @@ export default function App() {
       context={routerContext}
       // baseUrl={import.meta.env.BASE_URL.slice(0, -1)}
       errorHandler={(e) => <RouterError error={e} />}
+      // 视图过渡（@native-router/react ≥1.10）：push/pop 双向开（库默认
+      // 仅 push——pop 走 viewStack 快照恢复，动画会拖慢返回；这里显式
+      // 双开展示方向感，replace/守卫重定向不动画）。动画范围由
+      // view-transition.css 决定（整页模式：root 快照 + 方向感位移）。
+      viewTransition={(info) => info.action !== 'replace'}
     >
       <View />
       <Loading />

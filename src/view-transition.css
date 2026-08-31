@@ -1,0 +1,98 @@
+/* 视图过渡（View Transitions）——整页模式配方。
+ *
+ * 配对机制在 src/views/index.tsx 的 Router viewTransition prop（@native-
+ * router/react ≥1.10）：动画时序由库驱动（startViewTransition + flushSync
+ * 提交），本文件只管视觉。方向感经 :active-view-transition-type(push/pop)
+ * 消费（type 伪类挂在根元素上）——types 由库按导航 action 自动映射，
+ * Chrome <129 / Safari <18.2 自动降级为无方向感的统一过渡（不报错）。
+ *
+ * 局部模式（MemoryRouter / 嵌套 router 场景）不在本模板使用范围，配方见
+ * @native-router/react README「View Transitions」节：出口容器挂全文档唯一
+ * view-transition-name + ::view-transition-group(root)/old(root)/new(root)
+ * 三者 animation: none 冻结 root 组。
+ *
+ * 动画语义克制：前进=新帧自右 12px 滑入，后退反向；160ms + ease-out，
+ * 前后帧都有淡入淡出避免生硬剪切。root 快照覆盖视口全域，导航栏等常驻
+ * 元素随 root 整体参与（RealWorld 布局无跨页 shared element，无需命名组）。
+ */
+
+/* 前进（push）：旧帧左移淡出、新帧自右滑入淡入 */
+:root:active-view-transition-type(push)::view-transition-old(root) {
+  animation: vt-slide-out-left 160ms ease-out both;
+}
+:root:active-view-transition-type(push)::view-transition-new(root) {
+  animation: vt-slide-in-right 160ms ease-out both;
+}
+
+/* 后退（pop）：镜像反向 */
+:root:active-view-transition-type(pop)::view-transition-old(root) {
+  animation: vt-slide-out-right 160ms ease-out both;
+}
+:root:active-view-transition-type(pop)::view-transition-new(root) {
+  animation: vt-slide-in-left 160ms ease-out both;
+}
+
+/* 无方向感降级（types 不支持）与未匹配 action：统一交叉淡入淡出 */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: vt-fade 160ms ease-out both;
+}
+/* 上面的方向感规则特异性更高会覆盖本条，无需额外处理 */
+
+@keyframes vt-slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@keyframes vt-slide-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@keyframes vt-slide-out-left {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
+}
+@keyframes vt-slide-out-right {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+}
+@keyframes vt-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* 动画偏好减弱：过渡即时完成（帧仍正确切换，只是不播动画） */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}

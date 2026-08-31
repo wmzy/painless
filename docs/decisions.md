@@ -370,3 +370,44 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
     （带上 mock 语义）或留在模板（包只暴露 persist 挂点与订阅面）；
     ③`services/dataloaders.ts` 绑定层已验证「应用侧只留声明」，上移时
     作为包的 README 示范形态。
+
+## 14. View Transition：库管时序、CSS 管范围（2026-08-31 VT 批）
+
+- **库/模板分工**：`@native-router/react` 1.10 起 Router 系组件的
+  `viewTransition` prop 只管**时序**——`document.startViewTransition`
+  的调用、commit gate（过渡打开期间挂起新视图提交，由过渡回调内
+  flushSync 一次性提交，否则 onLoadingChange 重渲染与 POP 后的窗口
+  同步 replace 会在浏览器截帧前抢先提交令过渡被判无变化而跳过）、
+  action→types 映射（push/pop/replace）。**不给 DOM 挂
+  view-transition-name、不注入全局 CSS**——动画范围与视觉完全是
+  使用方 CSS 的事（`view-transition-name` 本就是 CSS 属性）。
+- **两套 CSS 配方**（库 README「View Transitions」节给全）：整页
+  模式（router 管全文档，root 快照零配置即所需）；局部模式
+  （MemoryRouter/嵌套 router：出口容器挂**全文档唯一** name +
+  `::view-transition-group(root)`/old/new 三者 `animation: none`
+  冻结 root 组）。本模板用整页模式（`src/view-transition.css`）；
+  局部模式顺带解决 portal 内容进快照的问题（圈外内容两边都不沾）。
+- **谓词双开 push/pop，偏离库默认**：库默认仅 push 动画（pop 走
+  viewStack 快照恢复，动画拖慢返回），模板显式
+  `viewTransition={(info) => info.action !== 'replace'}` 双开以展示
+  方向感（`:active-view-transition-type(push/pop)` 消费，160ms 位移
+  + 淡入淡出）；replace/守卫重定向链终点不动画（e2e 钉了零调用
+  断言）。
+- **降级链**：无 `startViewTransition`（旧浏览器/jsdom）直接提交；
+  types 选项不支持（Chrome <129 / Safari <18.2）经一次性行为探测
+  （`{update(){}, types:[]}` + 立即 `skipTransition`）回退 callback
+  形态——无方向感但过渡仍生效；`prefers-reduced-motion` 由 CSS
+  `animation: none` 兜底。
+- **滚动恢复时序缺陷（已修，钉版本）**：react 1.10.0 的 VT ×
+  ScrollRestoration 有两条确定性坏路径——VT 路径 pop 恢复的
+  scrollTo 落在 gate 持有的旧矮 DOM 上被钳到 0；非 VT 路径同步提交
+  使文档先收缩、浏览器钳制发生在保存读取之前（保存值即坏）。
+  1.10.1 修复（恢复挂起至 VT 提交后经 afterViewCommit 触发 + 离开
+  偏移在首个历史事件同步读取 + 探针/正式过渡 ready/finished 补
+  catch 止 unhandled rejection 泄漏）。**依赖下限因此是
+  ^1.10.1**，e2e 用「出站页矮时 back 后滚动位置恢复」守回归（含
+  完整证据链注释）。
+- **体积**：VT 批 +1.64 KB（115.50 → 116.56 KB，size-budget 口径）
+  ——主要是 CSS 与 react-dom 的 flushSync 引入；预 traded 的
+  `Element.startViewTransition` 提案落地或 React stable 通道出
+  `<ViewTransition>` 组件时，prop API 形态不变、库内实现可平移。

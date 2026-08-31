@@ -5,6 +5,10 @@ import {createRoot} from 'react-dom/client';
 // 需手工清单。此导入同时是 token 供应商注册的时序锚点（见下），不随按
 // 需收集迁移——须保持先于任何路由 data 请求。
 import 'haze-ui/css/tokens.css';
+// 视图过渡样式：全局伪元素动画（::view-transition-*），与组件按需 CSS
+// 机制无关，直接副作用导入。无 VT 支持的浏览器下载后空转（选择器不匹
+// 配任何元素，零选择成本之外无运行时开销）。
+import '@/view-transition.css';
 import {lightTheme, darkTheme, spacing, typography, ToastContainer} from 'haze-ui';
 
 // 副作用导入：尽早注册 token 供应商，保证冷刷新时的首个路由 data
