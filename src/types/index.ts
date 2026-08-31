@@ -8,10 +8,14 @@ import type {
   Word
 } from './base';
 
+// bio/image 对齐 spec（openapi.d.ts 的 Profile/User）：必填且可 null——
+// RealWorld 后端对无头像/无简介的作者返回 null 而非缺字段。手写口径曾为
+// `bio?` / `image: Image`（不可 null），与 spec 漂移会在 dev 校验抛错。
+// 视图消费 image 必须经 `?? undefined` 收 null（Avatar src 不收 null）。
 export type Author = {
   username: string;
-  bio?: string;
-  image: Image;
+  bio: string | null;
+  image: Image | null;
   following: boolean;
 };
 

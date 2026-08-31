@@ -113,11 +113,42 @@ describe('fakerWhenNothing', () => {
 // 类型→schema→mock→运行时校验 全链闭环：生成 schema（与 mock 管道同一
 // 份虚拟模块）→ faker 造数 → util/validate（ajv）校验。这正是 dev-only
 // 响应校验要保证的两个方向：好数据放行、坏数据可定位报错。
-// 用 authorSchema（$ref 深度 2，生成稳定）作样本：ArticlePage 的
-// articles[].author.image 在 json-schema-faker 0.6 下会丢 @faker 注解
-// 生成 null（见 decisions.md 第 7 条的已知漂移记录），不适合当好数据
-// 样本。
 describe('schema → faker → validate', () => {
+  // 回归（json-schema-faker 深层截断，decisions.md 第 7 条原已知边界）：
+  // jsf 默认 maxDepth=5，ArticlePage.articles[].author.* 在第 4-5 层，
+  // 截断后 @faker 注解整层失效（image 恒 null、username 空串）。修复在
+  // util/faker 的 options（maxDepth 16 + minLength 1）——此用例直接以
+  // 真实 ArticlePage schema 钉死：深层注解仍生效（image 出现 URL 形态）
+  // 且生成数据整体通过 dev 校验口径。
+  it('should apply @faker annotations at $ref depth and pass validation (ArticlePage)', async () => {
+    const {articlePageSchema} = await import('@/types/index.schema');
+    const {check} = await import('@/util/validate');
+
+    type Page = {
+      articles: {
+        author: {username: string; bio: string | null; image: string | null};
+      }[];
+    };
+    // anyOf 的 null 分支按随机采样，单次生成全 null 的概率 ~2^-10——
+    // 连跑 5 次取「至少出现一个 URL 形态」，把偶发抖动压到可忽略
+    let sawUrlImage = false;
+    let sample: Page | undefined;
+    for (let i = 0; i < 5 && !sawUrlImage; i++) {
+      sample = await schemaFaker<Page>(articlePageSchema);
+      sawUrlImage = sample.articles.some((a) =>
+        /^https?:\/\//.test(a.author.image ?? '')
+      );
+    }
+    // 深层注解生效：image 的带 @faker 分支被真正采样（URL），而非截断态
+    // 的恒 null / 裸随机串；minLength 1：无注解的 username 不再出空串
+    expect(sawUrlImage).toBe(true);
+    expect(sample!.articles.every((a) => a.author.username.length > 0)).toBe(
+      true
+    );
+    const result = await check(articlePageSchema, sample!, 'test articlePage');
+    expect(result).toEqual({value: sample});
+  });
+
   it('should pass runtime validation for generated author data', async () => {
     const {authorSchema} = await import('@/types/index.schema');
     const {check} = await import('@/util/validate');
@@ -194,7 +225,7 @@ describe('schema → faker → validate', () => {
       slug: 'some-title-1',
       createdAt: '2026-01-01T00:00:00.000Z',
       updatedAt: '2026-01-01T00:00:00.000Z',
-      author: {username: 'bob', image: 'https://example.com/b.png', following: false}
+      author: {username: 'bob', bio: null, image: 'https://example.com/b.png', following: false}
     };
     expect(comment.createdAt).toMatch(/\d{4}-\d{2}-\d{2}T/);
 

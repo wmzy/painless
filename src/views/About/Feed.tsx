@@ -109,7 +109,7 @@ export default function Feed() {
           {articles.map((a) => (
             <Card key={a.slug}>
               <Flex align='center' gap='sm'>
-                <Avatar src={a.author.image} alt={a.author.username} />
+                <Avatar src={a.author.image ?? undefined} alt={a.author.username} />
                 <Text>{a.author.username}</Text>
               </Flex>
               <Title level={3}>

@@ -18,7 +18,7 @@ import {screen, fireEvent, waitFor} from '@testing-library/react';
 const state = vi.hoisted(() => ({
   article: {
     tagList: [],
-    author: {username: 'alice', image: 'https://example.com/a.png', following: false},
+    author: {username: 'alice', bio: null, image: 'https://example.com/a.png', following: false},
     description: 'desc',
     title: 'Some title',
     body: 'line1\nline2',
@@ -136,7 +136,9 @@ beforeEach(() => {
   getCurrentUserMock.mockReturnValue({
     username: 'me',
     email: 'me@example.com',
-    token: 'jwt'
+    token: 'jwt',
+    bio: null,
+    image: null
   });
   fetchCommentsMock.mockResolvedValue([]);
   // 逐用例清全部实体缓存（旧单 cache 时代的一条 clear 等价物）：否则
@@ -251,7 +253,7 @@ describe('Article favorite / follow（写穿缓存 + refresh）', () => {
     expect(followMock).toHaveBeenCalledWith('alice', true);
 
     // 成功回调经 peek 取缓存当前值合并——而非闭包快照
-    pending.resolve({username: 'alice', image: '', following: true});
+    pending.resolve({username: 'alice', bio: null, image: '', following: true});
     expect(await screen.findByRole('button', {name: 'Unfollow alice'})).toBeDefined();
     expect(articleCache.peek!(['some-title-1'])?.value).toMatchObject({
       author: {username: 'alice', following: true}
@@ -273,7 +275,7 @@ describe('Article favorite / follow（写穿缓存 + refresh）', () => {
 
     // follow 成功返回：经 peek 合并 author，favorite 的乐观值必须保留
     //（闭包快照里还是 favorited: false——直接铺开就会覆盖掉它）
-    followPending.resolve({username: 'alice', image: '', following: true});
+    followPending.resolve({username: 'alice', bio: null, image: '', following: true});
     expect(await screen.findByRole('button', {name: 'Unfollow alice'})).toBeDefined();
     expect(await screen.findByRole('button', {name: '❤ 1'})).toBeDefined();
 
@@ -287,7 +289,7 @@ describe('Article favorite / follow（写穿缓存 + refresh）', () => {
     // mock 实现须在点击前就位——点击即调用，晚挂实现会拿到 undefined
     // 引发同步 TypeError
     favoriteMock.mockReturnValueOnce(favPending.promise);
-    followMock.mockResolvedValueOnce({username: 'alice', image: '', following: true});
+    followMock.mockResolvedValueOnce({username: 'alice', bio: null, image: '', following: true});
     renderView(<ArticleView />);
 
     // 先点 favorite（pending），再点 follow：follow 乐观写穿 + 服务端返回
@@ -344,7 +346,7 @@ describe('发评论后刷新评论列表', () => {
     // PastDate（date-time 字符串）：对齐 Article 同款字段与真实 API 契约
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
-    author: {username: 'bob', image: 'https://example.com/b.png', following: false}
+    author: {username: 'bob', bio: null, image: 'https://example.com/b.png', following: false}
   };
   const commentB: Comment = {...commentA, id: 'c2', body: 'second comment'};
 

@@ -130,7 +130,7 @@ describe('Register 表单', () => {
     // 200：档案存在 → 占用。文案对齐 RealWorld 后端 422 的 username
     // 字段错误，提前暴露与权威回填同句。fetchProfile 的 mock 给解包后
     // 的 Author 形状（值本身不参与断言，只表达「请求成功」）
-    profileMock.mockResolvedValueOnce({username: 'admin', image: '', following: false});
+    profileMock.mockResolvedValueOnce({username: 'admin', bio: null, image: '', following: false});
     vi.useFakeTimers();
     try {
       render(<Register />);
@@ -260,7 +260,7 @@ describe('Register 表单', () => {
 
       // 旧轮迟到返回「占用」：lock 不匹配，结果被丢弃，不落错误
       await act(async () => {
-        settleOld({username: 'admin', image: '', following: false});
+        settleOld({username: 'admin', bio: null, image: '', following: false});
         await vi.advanceTimersByTimeAsync(0);
       });
       expect(screen.queryByText('has already been taken')).toBeNull();

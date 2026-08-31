@@ -32,19 +32,27 @@ const parseHomeSearch = (input: unknown): HomeSearch => {
   return value;
 };
 
-export const homeSearchSchema: StandardSchemaV1<unknown, HomeSearch> = {
+// URL 输入侧的 search 形状——读侧 schema 的 Input 位与写侧 schema 的
+// Output 位共用一个口径：链接（TypedLink 的 search prop）与 useSetSearch
+// 都把值 String() 化后序列化进 query，number/string 均是合法写入形态
+//（coerce 交给 schema），故 offset/limit 放宽到 string | number。
+// Input 位若是 unknown，native-router 的 RouteSearchInputOf 会把链接的
+// search 契约退化为宽松 SearchInput（值仍是 string | string[]，但字段名
+// 不查）；标注为本形状后字段拼错/多传在编译期即报。validate 的运行时
+// 入参不受影响（Standard Schema 规范里 validate 恒收 unknown，Input 只
+// 活在可选的 types 幻影对里），解析行为不变。
+export type HomeSearchInput = {
+  tag?: string;
+  offset?: string | number;
+  limit?: string | number;
+};
+
+export const homeSearchSchema: StandardSchemaV1<HomeSearchInput, HomeSearch> = {
   '~standard': {
     version: 1,
     vendor: 'painless',
     validate: (input) => ({value: parseHomeSearch(input)})
   }
-};
-
-/** 写侧输出：经读侧契约校验/coerce 后、抹去等于缺省字段的最小形状 */
-export type HomeSearchInput = {
-  tag?: string;
-  offset?: number;
-  limit?: number;
 };
 
 // useSetSearch 会把 schema 校验后的输出整体序列化进 URL，而读侧恒定补齐

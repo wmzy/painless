@@ -68,6 +68,49 @@ Painless produces standard static assets. It does not couple to any specific dep
 - TypeScript - Type safety
 - [Vitest](https://vitest.dev) - Test framework
 
+## Coming from TanStack?
+
+If you know TanStack Query/Router/Form, the problems they solve are solved here too — with different shapes: per-entity caches instead of a client + provider, scenario hooks instead of option bags, composable functions instead of a framework runtime. The map below is written against the actual code in `src/`, not marketing.
+
+| TanStack | Here | Note |
+| --- | --- | --- |
+| `QueryClient` + `QueryClientProvider` | per-entity `createQueryCache(name, cacheTime?, {persist?})` + the `allCaches` registry | No provider, no context — caches are plain module-level objects; the registry drives logout clears and the DevTool cache view. `cacheTime` defaults to 5 min (TanStack's `gcTime` default); `tagsCache` is the one persisted entity. |
+| `queryKey` array + hashing | the args tuple, hashed by `stableHash` (signals stripped, `undefined` keys dropped recursively) | The key's *shape* is pinned on the cache type (`EntityCache<T, K>`), so a wrong-shaped key is a compile error, not a silent cache miss. |
+| `useQuery(options)` | `createQueryHook(config)` → a scenario hook (`useTagsQuery`, `useCommentsQuery`, …) | All options (`staleTime`, `initData`, `mock`) close once at the scenario declaration point; the call site takes only `args`. `fetch` × cache are paired exactly once by `bindQueryFn(fetch, cache)` — loader, hook and mutation channels resolve the same binding. |
+| `onMutate`/`onError` optimistic ritual | `cache.mutation((…) => ({mutate, key, update, apply}))` | `update` is the optimistic step, `apply` a field-selecting merge, rollback automatic and identity-guarded (a concurrent writer's newer value survives); layers compose — favoriting writes the article entity *and* every home page containing it in one call. |
+| `invalidateQueries` prefix match | `useMutation(fn, {invalidates: [[commentsCache, slug]]})` (exact key) or `{invalidates: [homeCache, articleCache]}` (whole entity); imperative `invalidate(router)` for view-stack snapshots | Granularity follows "does the write map 1:1 to the key?" — a comment maps to `[slug]`, an edit can't enumerate home's search-combination keys; failures never invalidate. |
+| `useInfiniteQuery` | `useInfinite` (`react-toolroom/async`) | `fetchNextPage`/`fetchPreviousPage`/`maxPages` equivalents; deliberately not wired into a cache — the About feed (`src/services/feed.ts`) is the in-repo example. |
+| `refetchInterval` | `usePolling` | Skips ticks while a call is slow, pauses when the tab is hidden. |
+| `queryFn` + fetch defaults | the fetch-fun pipe (`src/util/http.ts`) | Timeout, retry, auth injection and error mapping are pipe stages, not options — the role ky plays; the OpenAPI graft on `openapi-typescript` types (`src/services/article.openapi.ts`) is the openapi-fetch analogue. |
+| Router `loader` | route `data` via `createDataLoader({fetch, cache, keyOf})` → the `[loader, useData, queryFn]` triplet | The loader shares the entity cache with component queries through `withCache` (fresh hit = zero requests, stale = old value first + background revalidate); cache `set` events auto-`refresh(router)`, so views contain zero refresh calls. |
+| `beforeLoad` + router `context` | same names, same semantics | Returning a path from `beforeLoad` redirects during resolve — the URL never lands on the guarded route; `Router context={{getUser}}` is typed via the route's third generic. |
+| Search-param validation | route `search:` takes any Standard Schema (zod / valibot / hand-written) | `useSearch(schema)` on the read side; `TypedLink<AppRoutes>`'s `search` prop is checked against the schema's Input side, so a typo'd field is a compile error. |
+| `useBlocker` | same name, `@native-router/react` | Sync predicate (`() => !isDirty(form)`) with `{state, proceed, reset}` to drive a confirm dialog; a vetoed POP is automatically pushed back. |
+| `useForm` / `<Form>` | react-f0rm `useForm` / `<Form>` + haze-ui `FormItem` | Controlled fields via the `control` token, per-field subscriptions (`useIsSubmitting`, `useHasErrors`); this template composes small field-level `validate` callbacks, and `react-f0rm/resolvers/standard-schema` exists for zod/valibot/arktype; server 422s land in the same error channel via `setServerErrors`. |
+| Query DevTools | the DevTool panel (dev-only) | Cache view (per-entry age, in-flight badges, event stream) plus a request log — dev-only modules that fold out of production builds. |
+
+### Bundle Size, Same Yardstick
+
+All numbers measured the same way on 2026-08-31: esbuild `--bundle --minify` (peer deps external, regular deps included), zlib gzip level 9. "used" = the import set painless actually pulls (for TanStack, the hooks an app of this shape needs); "full" = the whole entry.
+
+| Role | Here (min+gzip) | Counterpart (min+gzip) |
+| --- | --- | --- |
+| Async state | react-toolroom/async **~6.0 kB** (full: 7.1) | @tanstack/react-query **~10.9 kB** (full: 13.9) |
+| Forms | react-f0rm **~6.3 kB** (full: 8.0) | @tanstack/react-form **~17.6 kB** |
+| HTTP client | fetch-fun **~5.5 kB** | ky **~9.3 kB** |
+| Routing | @native-router core+react **~11.0 kB** | @tanstack/react-router **~34.8 kB** |
+
+Versions measured: react-toolroom 0.18.2, react-f0rm 0.7.0, fetch-fun 0.10.0, @native-router/core 1.10.0 + react 1.9.0 (the versions painless installs) vs @tanstack/react-query 5.102.8, @tanstack/react-form 1.33.5, @tanstack/react-router 1.170.32, ky 2.1.0 (latest npm at measurement time).
+
+### What TanStack Has That This Stack Deliberately Doesn't
+
+- **Structural sharing** — deep equality costs O(payload) on every successful fetch to skip a re-render that is usually a no-op DOM reconcile; a hot component gets `React.memo` + scalar props instead (see Design Philosophy).
+- **The `enabled` switch** — options close once at the scenario declaration point, so conditional fetching is a conditional hook call; runtime option switches are the option-bag problem this layer exists to avoid, and unused options are YAGNI'd away (`docs/decisions.md` §2).
+- **Offline mutation queue** — replaying writes across reloads is a conflict-resolution *product* policy; even cache persistence is per-entity and opt-in here (only `tagsCache`), and a template refuses to make product calls for you.
+- **`pendingMs`-style pending timeout** — in-app navigations keep the current view with a global loading indicator and stale hits render the old value instantly, so pending is cold-start-only; a hanging loader keeps showing the skeleton rather than silently rendering a data-less view.
+- **Nested / parallel routes** — the route is the page and the page is the state; a URL fragment that needs independent state is a component, not a route (see Design Philosophy).
+- **SSR / streaming** — zero server runtime by design; bots get pre-rendered HTML from a headless-browser service and the app ships as plain static assets.
+
 ## Features
 
 All examples below are taken from (or lightly adapted from) the actual source in `src/`.

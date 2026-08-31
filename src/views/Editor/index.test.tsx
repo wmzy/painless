@@ -130,7 +130,7 @@ function asButton(el: HTMLElement): HTMLButtonElement {
 function makeArticle(overrides: Partial<Article> = {}): Article {
   return {
     tagList: ['existing'],
-    author: {username: 'alice', image: 'https://example.com/a.png', following: false},
+    author: {username: 'alice', bio: null, image: 'https://example.com/a.png', following: false},
     description: 'Old description',
     title: 'Old title',
     body: 'Old body',

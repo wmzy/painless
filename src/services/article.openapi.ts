@@ -1,101 +1,68 @@
-// OpenAPI 类型化客户端演示（docs/decisions.md 第 6 条的落地半）：与手写
-// services/article.ts 并存，作「同一 API 的第二种打开方式」对照。
+// OpenAPI 类型化客户端演示（docs/decisions.md 第 6 条，口径已收敛）：与
+// 手写 services/article.ts 并存，作「同一 API 的第二种打开方式」对照。
 //
 // 类型来源：openapi-typescript（devDependency，零运行时）从 RealWorld
 // 官方 spec 生成纯类型——spec 随库提交在 openapi/realworld.yml（上游
 // gothinkster/realworld 仓库 specs/api/openapi.yml，OpenAPI 3.1），
 // `npm run openapi` 重新生成 src/types/openapi.d.ts。
 //
-// 嫁接方式：typed* helper 把生成的 paths 类型钉到 fetch-fun 的幽灵类型
-// 上（配方源自 fetch-fun docs/openapi.md，本地化差异见各 helper 注释）。
+// 嫁接方式：fetch-fun 0.11 起官方提供 `fetch-fun/openapi` 子入口
+//（createOpenapi<paths>() 工厂 + typedUrl/typedPath/typedMethod/
+// typedJsonBody/typedJson，配方即原先本文件手写形态的官方化——JsonOk
+// 的 200|201 链与 typedPath 模板字面量保留均已被吸收）。
 // 此后路径/方法/请求体/2xx 响应全部编译期约束：
 //   - 拼错路径（'/article'）→ 不是 paths 的键，类型错误；
 //   - 该路径没有的方法（'/tags' + 'post'）→ 类型错误；
 //   - 请求体字段拼错/类型不符 → 不满足 requestBody schema，类型错误；
 //   - 返回值就是该 operation 的 2xx 响应类型，无需手写泛型参数。
+//
+// spec × validate 配对（openapi.md 的「Types are a promise」收尾）：
+// spec 类型只声明服务器「应该」返回什么，运行时最后一环挂在与手写版
+// 同一份生成 schema 链上（@/types/index.schema + envelope，DEV 折叠）
+//——手写 schema 恰是 RealWorld 响应的 envelope 形状（{article}/{tags}/
+// {articles,articlesCount}），与本通道「直返 spec 原始响应形状」的取数
+// 形态天然对齐，逐端点复用即可。
+//
 // 本文件未被任何视图引用：不进生产 chunk；typed* 也只是 fetch-fun
-// config 函数的薄包装，零新增运行时。运行时响应校验（真实数据回到
-// schema 的最后一环）挂在手写 schema 链上，见 src/util/validate.ts。
+// config 函数的薄包装，零新增运行时。
 import type {paths} from '@/types/openapi';
+
+import {createOpenapi, type JsonBody} from 'fetch-fun/openapi';
 
 import * as ff from 'fetch-fun';
 
 import {api} from '@/util/http';
+import {envelope} from '@/util/jsonSchema';
+// 虚拟模块（rollup-plugin-type-as-json-schema）：与手写版同一份生成
+// schema——「类型→schema→mock→运行时校验」全链单点契约。
+import {
+  articlePageSchema,
+  articleSchema,
+  tagListSchema
+} from '@/types/index.schema';
 
-/** OpenAPI operation 键（排除 openapi-typescript 生成的 parameters 键）。 */
-type Op = 'get' | 'put' | 'post' | 'delete' | 'options' | 'head' | 'patch' | 'trace';
+// ---- fetch-fun/openapi 官方子入口（0.11）-----------------------------------
+// 本地同构过渡工厂已随 fetch-fun 0.11 升级删除：createOpenapi<paths>() 的
+// 五个 typed* helper 与本文件原先手写的逐行同构（JsonOk 的 200|201 链、
+// typedPath 的模板字面量保留均已被官方吸收），调用点零改动。
+const {typedUrl, typedPath, typedMethod, typedJsonBody, typedJson} =
+  createOpenapi<paths>();
 
-/** operation 接受的 JSON 请求体（spec 未定义时为 unknown）。 */
-type JsonBody<O> = O extends {
-  requestBody?: {content: {'application/json': infer B}};
-}
-  ? B
-  : unknown;
-
-// 与配方文档的差异：RealWorld 的 CreateArticle 成功码是 201（其余演示
-// 端点是 200），成功响应联合 200 | 201 才能覆盖全部端点。
-type JsonOk<O> = O extends {
-  responses: {200: {content: {'application/json': infer D}}};
-}
-  ? D
-  : O extends {responses: {201: {content: {'application/json': infer D}}}}
-    ? D
-    : unknown;
-
-/** 路径必须是生成 paths 类型的真实键。 */
-function typedUrl<T extends ff.Options, U extends Extract<keyof paths, string>>(
-  o: T,
-  path: U
-) {
-  return ff.url<T, U>(o, path);
-}
-
-/**
- * 路径模板必须是 spec 真实键，占位参数集合由模板字面量推导（缺键/多键
- * 皆类型错误）。本地化：ff.path 会把 url 拓宽成 string，这里还原字面量
- * 类型——后续 method/reader 的约束都挂在它上面。
- */
-function typedPath<T extends ff.Options, U extends Extract<keyof paths, string>>(
-  o: T,
-  template: U,
-  params: ff.PlaceholderParams<U>
-) {
-  return ff.path(o, template, params) as Omit<T, 'url'> & {url: U};
-}
-
-/** 方法必须是该路径下真实存在的 operation。 */
-function typedMethod<
-  T extends ff.Options,
-  U extends Extract<keyof paths, string>,
-  M extends keyof paths[U] & Op
->(o: T & {url: U}, m: M) {
-  return ff.method<T & {url: U}, Uppercase<M>>(
-    o,
-    m.toUpperCase() as Uppercase<M>
-  );
-}
-
-/** 请求体必须满足该 operation 的 requestBody schema。 */
-function typedJsonBody<
-  T extends ff.Options,
-  U extends Extract<keyof paths, string>,
-  M extends keyof paths[U] & Op
->(o: T & {url: U; method: Uppercase<M>}, m: M, body: JsonBody<paths[U][M]>) {
-  // m 仅参与类型推导（约束 body 与后续 reader），运行时不需要
-  void m;
-  return ff.jsonBody(o, body);
-}
-
-/** 按该 operation 的 2xx 响应 schema 读响应（返回类型随之收敛）。 */
-function typedJson<
-  T extends ff.Options,
-  U extends Extract<keyof paths, string>,
-  M extends keyof paths[U] & Op
->(o: T & {url: U; method: Uppercase<M>}, m: M) {
-  // 同上：m 是纯类型参数
-  void m;
-  return ff.json<T & {url: U; method: Uppercase<M>}, JsonOk<paths[U][M]>>(o);
-}
+// ---- dev-only 响应校验接线（与手写版同款 schema 链）------------------------
+// schema 常量整组包在 import.meta.env.DEV 三元里，生产构建折叠后
+// envelope/生成 schema 的引用一并被摇出；mock 口径注解（@minItems 等）
+// 由校验侧剔除（util/jsonSchema.forResponse）。值型 unknown：虚拟模块的
+// 导出是 any，unknown 槽位承接（校验侧自行收窄），与 article.ts 同款。
+const schemas: Record<string, unknown> | undefined = import.meta.env.DEV
+  ? {
+      // spec 原始响应形状 ↔ 生成 schema 的对应：MultipleArticlesResponse
+      // 即 {articles, articlesCount}（articlePageSchema 本体）；单实体/
+      // tags 是 envelope 一层。favorite 响应同 SingleArticleResponse。
+      list: articlePageSchema,
+      article: envelope('article', articleSchema),
+      tags: envelope('tags', tagListSchema)
+    }
+  : undefined;
 
 // config 透传包装：合并可选的 query 参数与 signal。必须经 config 函数
 // 返回原类型——直接对象展开会把链上的幽灵类型（url/method 字面量、
@@ -120,12 +87,34 @@ function queryAndSignal<T extends ff.Options>(
   };
 }
 
+// dev-only 校验的管道挂点：与 http.ts 的 init.schema → withSchema 同款
+// Standard Schema v1 鸭子适配（本通道直接组管道，不走 http 出口函数，
+// 适配器在此就地内联一份孪生；校验实现与 ajv 动态加载在 util/validate，
+// 只经这里的分支内动态 import 进入，生产构建整体折叠）。
+function devValidate<T extends ff.Options>(schema: unknown, label: string) {
+  return (o: T): T => {
+    if (!import.meta.env.DEV || !schema) return o;
+    const standard: ff.StandardSchema = {
+      '~standard': {
+        version: 1,
+        vendor: 'painless/json-schema',
+        validate: async (value: unknown) => {
+          const {check} = await import('@/util/validate');
+          return check(schema, value, label);
+        }
+      }
+    };
+    return ff.validate(o, standard) as unknown as T;
+  };
+}
+
 // ---- 演示端点（与手写 services/article.ts 对照） --------------------------
 // 形态差异是演示的一部分：手写版解包返回实体（{article} → Article），
 // 这里返回 spec 原始响应形状（SingleArticleResponse 等）——解包把契约
-// 藏进函数签名，直返让 spec 类型一路可见。toggle 型端点（favorite）拆
-// 成两个函数：布尔分支会让 method/reader 的字面量类型变成联合，约束就
-// 松了；手写版用布尔切换，演示版优先保住编译期约束。
+// 藏进函数签名，直返让 spec 类型一路可见；校验 schema 也因此直接用
+// envelope 形状（不解包的数据对不解包的 schema）。toggle 型端点
+//（favorite）拆成两个函数：布尔分支会让 method/reader 的字面量类型变成
+// 联合，约束就松了；手写版用布尔切换，演示版优先保住编译期约束。
 
 /** GET /articles —— 对应手写版 article.query。 */
 export function query(
@@ -138,6 +127,7 @@ export function query(
       .pipe(typedMethod, 'get')
       .pipe(queryAndSignal(params, signal))
       .pipe(typedJson, 'get')
+      .pipe(devValidate(schemas?.list, 'GET /articles'))
   );
 }
 
@@ -149,6 +139,7 @@ export function findBySlug(slug: string, signal?: AbortSignal) {
       .pipe(typedMethod, 'get')
       .pipe(queryAndSignal(undefined, signal))
       .pipe(typedJson, 'get')
+      .pipe(devValidate(schemas?.article, 'GET /articles/{slug}'))
   );
 }
 
@@ -160,6 +151,7 @@ export function fetchTags(signal?: AbortSignal) {
       .pipe(typedMethod, 'get')
       .pipe(queryAndSignal(undefined, signal))
       .pipe(typedJson, 'get')
+      .pipe(devValidate(schemas?.tags, 'GET /tags'))
   );
 }
 
@@ -175,6 +167,7 @@ export function createArticle(
       .pipe(typedJsonBody, 'post', {article})
       .pipe(typedJson, 'post')
       .pipe(queryAndSignal(undefined, signal))
+      .pipe(devValidate(schemas?.article, 'POST /articles'))
   );
 }
 
@@ -186,6 +179,7 @@ export function favoriteArticle(slug: string, signal?: AbortSignal) {
       .pipe(typedMethod, 'post')
       .pipe(queryAndSignal(undefined, signal))
       .pipe(typedJson, 'post')
+      .pipe(devValidate(schemas?.article, 'POST /articles/{slug}/favorite'))
   );
 }
 
@@ -197,5 +191,6 @@ export function unfavoriteArticle(slug: string, signal?: AbortSignal) {
       .pipe(typedMethod, 'delete')
       .pipe(queryAndSignal(undefined, signal))
       .pipe(typedJson, 'delete')
+      .pipe(devValidate(schemas?.article, 'DELETE /articles/{slug}/favorite'))
   );
 }

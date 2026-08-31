@@ -6,14 +6,17 @@ import {
   TypedLink,
   useMatched,
   useSearch,
-  useSetSearch,
-  type SearchInput
+  useSetSearch
 } from '@native-router/react';
 import {Card, Title, Text, Badge, Avatar, Flex, Chip, Button,useToast} from 'haze-ui';
 import {useMutation} from 'react-toolroom/async';
 
 import {Article} from '@/types';
-import {homeSearchSchema, homeSearchWriteSchema} from '@/types/search';
+import {
+  homeSearchSchema,
+  homeSearchWriteSchema,
+  type HomeSearchInput
+} from '@/types/search';
 import {favoriteOnHome} from '@/services/mutations';
 import {getCurrentUser} from '@/services/auth';
 import {useHomeData} from '@/services/dataloaders';
@@ -95,8 +98,10 @@ export default function Home() {
 
   // 分页目标页的 search 载荷：URL 输入侧的字符串形态（coerce 交给读侧
   // schema），等于缺省的字段省略——与 homeSearchWriteSchema 的「抹去
-  // 缺省」同一约定，TypedLink 把它序列化进 href 预览与点击导航两者
-  const pageSearch = (target: number): SearchInput => ({
+  // 缺省」同一约定，TypedLink 把它序列化进 href 预览与点击导航两者。
+  // 返回类型即链接契约：homeSearchSchema 的 Input 位（HomeSearchInput），
+  // TypedLink 的 search prop 按同一类型判别
+  const pageSearch = (target: number): HomeSearchInput => ({
     ...(activeTag != null ? {tag: activeTag} : {}),
     ...(target > 0 ? {offset: String(target)} : {})
   });
@@ -145,7 +150,7 @@ export default function Home() {
             return (
               <Card key={a.slug}>
                 <Flex align='center' gap='sm'>
-                  <Avatar src={a.author.image} alt={a.author.username} />
+                  <Avatar src={a.author.image ?? undefined} alt={a.author.username} />
                   <Text>{a.author.username}</Text>
                   <Button
                     variant={a.favorited ? 'solid' : 'outline'}
@@ -179,11 +184,11 @@ export default function Home() {
             );
           })}
           {/* 分页链接化：TypedLink 表形态（TypedLink<AppRoutes>），to 与
-              search 都对路由表编译期判别——手写 schema 的 input 位是
-              unknown（无 ~standard.types 幻影对），search 收窄为 URL 输入
-              侧的宽松 SearchInput（string | string[] 值），字符串形态即
-              全部约束。href 即目标页真实 URL——⌘/中键新标签、爬虫与
-              无 JS 环境都自然可用；普通左键走 SPA 导航（preventDefault +
+              search 都对路由表编译期判别——search 按 homeSearchSchema 的
+              Input 位（HomeSearchInput）收窄：字段拼错/多传编译期即报，
+              offset/limit 的 number/string 均合法（序列化时 String() 化，
+              coerce 交给 schema）。href 即目标页真实 URL——⌘/中键新标签、
+              爬虫与无 JS 环境都自然可用；普通左键走 SPA 导航（preventDefault +
               navigate，与原 setSearch 同为 push 语义，每次翻页一条
               history 记录，back 逐页回退且落 viewStack 快照）。边界态语义
               见 pageLink 注释（aria-disabled + tabIndex）。 */}

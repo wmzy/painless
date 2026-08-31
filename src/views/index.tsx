@@ -38,8 +38,13 @@ const routerContext: RouterContext = {getUser: getCurrentUser};
 // undefined：const 本体恒为已定义函数，直接调用（测试）不报警。
 export const requireLogin: NonNullable<
   Route<string, any, RouterContext>['beforeLoad']
-> = ({context}) => {
-  if (!context.getUser()) return '/login';
+> = ({context, location}) => {
+  // 带上原目的页（pathname + search，深链含 query 时整段回跳）：redirect
+  // 值必须整体 encodeURIComponent——裸拼 '/' 与 '?' 会把原 query 混进
+  // /login 自己的 search（?a=1&redirect=/x?b=2 解析出 b=2）。Login 侧
+  // 经 loginSearchSchema 读回（已解码）并白名单校验后导航回去
+  if (!context.getUser())
+    return `/login?redirect=${encodeURIComponent(location.pathname + location.search)}`;
 };
 
 // createRoutes（satisfies 语义）：表按 Route 检查，同时每个 path 保留

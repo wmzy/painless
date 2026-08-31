@@ -15,16 +15,33 @@ import {render, screen, waitFor} from '@testing-library/react';
 
 import {StackWarmer, requireLogin, type RouterContext} from './index';
 
-const user: User = {username: 'ada', email: 'ada@x', token: 't'};
+const user: User = {username: 'ada', email: 'ada@x', token: 't', bio: null, image: null};
 
-// 守卫只消费 ctx.context，其余成员（router/params/search/signal）构造
-// 最小替身——断言收窄在 guard 契约本身，不绑 GuardContext 全形状
-const guardCtx = (getUser: RouterContext['getUser']) =>
-  ({context: {getUser}}) as Parameters<typeof requireLogin>[0];
+// 守卫只消费 ctx.context 与 ctx.location，其余成员（router/params/
+// search/signal）构造最小替身——断言收窄在 guard 契约本身，不绑
+// GuardContext 全形状。location 按 history 的 Path 形状（pathname +
+// search，search 含前导 '?'）
+const guardCtx = (
+  getUser: RouterContext['getUser'],
+  pathname = '/editor',
+  search = ''
+) =>
+  ({context: {getUser}, location: {pathname, search}}) as Parameters<
+    typeof requireLogin
+  >[0];
 
 describe('requireLogin（ctx.context 注入）', () => {
-  it('context 无用户：返回 /login 重定向', () => {
-    expect(requireLogin(guardCtx(() => null))).toBe('/login');
+  it('context 无用户：返回 /login，原 pathname+search 整体 encode 进 redirect', () => {
+    // 整体 encodeURIComponent：'/'、'?'、'&' 全部转义——裸拼会把原
+    // query 混进 /login 自己的 search（?a=1&redirect=/x?b=2 会解析出
+    // b=2），Login 侧就读不回完整原目的页了
+    expect(requireLogin(guardCtx(() => null, '/editor/my-slug', '?a=1&b=2'))).toBe(
+      `/login?redirect=${encodeURIComponent('/editor/my-slug?a=1&b=2')}`
+    );
+    // 无 search 的普通深链：pathname 裸 '/' 同样被转义（%2F）
+    expect(requireLogin(guardCtx(() => null, '/editor'))).toBe(
+      '/login?redirect=%2Feditor'
+    );
   });
 
   it('context 有用户：放行（undefined）', () => {
@@ -44,18 +61,30 @@ describe('Router context → requireLogin 链路（MemoryRouter 集成）', () =
     {path: '/login', component: () => Promise.resolve(() => <b>login</b>)}
   ]);
 
-  it('未登录访问受守卫路由：resolve 期重定向到 /login，URL 不落守卫路由', async () => {
+  it('未登录访问受守卫路由：resolve 期重定向到 /login?redirect=…，URL 不落守卫路由', async () => {
+    // 深链含 query：原目的页整段（含 search）encode 进 redirect
+    let router!: ReturnType<typeof useRouter>;
+    const Probe = () => {
+      router = useRouter();
+      return null;
+    };
     render(
       <MemoryRouter
         routes={routes}
-        initialEntries={['/secret']}
+        initialEntries={['/secret?tab=2']}
         context={{getUser: () => null}}
       >
         <View />
+        <Probe />
       </MemoryRouter>
     );
     expect(await screen.findByText('login')).toBeDefined();
     expect(screen.queryByText('secret')).toBeNull();
+    // URL 侧是 encode 后的单个 redirect 参数（无 tab=2 泄漏到顶层）
+    expect(router.history.location.pathname).toBe('/login');
+    expect(router.history.location.search).toBe(
+      `?redirect=${encodeURIComponent('/secret?tab=2')}`
+    );
   });
 
   it('已登录访问受守卫路由：放行进入', async () => {

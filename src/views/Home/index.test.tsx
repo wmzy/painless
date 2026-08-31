@@ -12,13 +12,31 @@
 // 仍走 useSetSearch 写入口。
 import type {ReactNode} from 'react';
 import type {ArticlePage} from '@/types';
+import type {AppRoutes} from '@/views';
 
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import {screen, fireEvent, waitFor} from '@testing-library/react';
 
 import {navigate, refresh} from '@native-router/core';
+import {TypedLink} from '@native-router/react';
 
 import {renderView} from '@/test-utils';
+
+// 编译期反向用例（tsc --noEmit 守门，vitest 本身不跑类型检查）：
+// TypedLink 表形态的 search prop 按 homeSearchSchema 的 Input 位
+//（HomeSearchInput）判别——字段拼错必须在编译期报错，两个方向都有守门：
+// 判别若失效（Input 位退回 unknown → search 回到宽松 SearchInput、字段名
+// 不查），下面的 @ts-expect-error 会反向报「Unused '@ts-expect-error'
+// directive」；正向对照证明合法载荷（offset/limit 的 string/number 值
+// 均可，序列化时 String() 化）不被误伤。两段 JSX 只作类型检查消费，
+// 运行时仅 createElement（mock 的 TypedLink 不渲染），零副作用。
+void (
+  <TypedLink<AppRoutes> to='/' search={{tag: 'a', offset: '10', limit: 20}} />
+);
+void (
+  // @ts-expect-error search 字段拼错应在编译期报错
+  <TypedLink<AppRoutes> to='/' search={{ofset: '10'}} />
+);
 
 
 
@@ -257,7 +275,9 @@ beforeEach(() => {
   getCurrentUserMock.mockReturnValue({
     username: 'me',
     email: 'me@example.com',
-    token: 'jwt'
+    token: 'jwt',
+    bio: null,
+    image: null
   });
   clearAllCaches();
   // 模拟生产链路的 loader 首跑副作用：绑定「cache set → refresh」订阅

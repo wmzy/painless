@@ -75,33 +75,38 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
   `vite-plugin-haze-css.mts` 自动收集）已控制住体积；等业务组件数量显著
   膨胀再评估。
 
-## 6. View Transition × fetch-fun OpenAPI 嫁接演示：OpenAPI 半已落地，VT 待方案设计
+## 6. View Transition × fetch-fun OpenAPI 嫁接演示：OpenAPI 已收敛，VT 待方案设计
 
 - **背景**：两个候选方向——native-router 的视图切换接 View Transition API
   （浏览器侧平滑过渡），fetch-fun 接 OpenAPI schema 生成类型化客户端。
   「嫁接演示」指在 painless 里用 OpenAPI schema 驱动 fetch-fun 管道，
   同时路由切换走 View Transition，展示组合效果。
-- **决定**：**OpenAPI 半已落地为演示**（`src/services/article.openapi.ts`，
-  与手写 `src/services/article.ts` 并存对照），View Transition 半仍待方案设计。
-  方案与边界：
+- **决定**：**OpenAPI 已收敛**（2026-08-31，原「半已落地」状态收口）。
+  View Transition 半仍待方案设计。演进与现状：
   - 类型来源：openapi-typescript（devDependency，零运行时）从 RealWorld
     官方 spec 生成纯类型。spec 随库提交在 `openapi/realworld.yml`（上游
     gothinkster/realworld 仓库 `specs/api/openapi.yml`，OpenAPI 3.1——
     注意官方路径已从旧的 `spec/openapi.json` 迁移），`npm run openapi`
     重新生成 `src/types/openapi.d.ts`，离线可复现。
-  - 嫁接方式：照 fetch-fun `docs/openapi.md` 的 typed helper 配方
-    （typedUrl/typedMethod/typedJsonBody/typedJson），路径/方法/请求体/
-    2xx 响应全部编译期约束。两处本地化：JsonOk 联合 200|201（RealWorld
-    建 article 返回 201）；补 typedPath 用 `ff.path` 把路径模板约束到
-    spec 真实键（占位参数集合模板字面量推导）。演示端点刻意与手写版
-    同名对照，但返回 spec 原始响应形状（不解包），toggle 型端点拆成
-    两个函数保住字面量类型。
-  - 边界：纯类型演示、未被视图引用，不进生产 chunk。spec 类型与手写
-    领域类型存在已知漂移（spec 的 bio/image 是 `string | null` 且必填，
-    手写是 `string?`；spec Comment.createdAt 是 date-time 字符串，手写
-    是 number）——运行时校验（第 7 条）只挂在手写 schema 链上，
-    openapi.md 建议的「spec 类型 × validate 配对」留待两套口径统一后
-    再做，避免双 schema 打架。
+  - 嫁接方式：typed helper 配方（typedUrl/typedPath/typedMethod/
+    typedJsonBody/typedJson）把路径/方法/请求体/2xx 响应全部编译期约束。
+    fetch-fun 0.11 起官方化为 `fetch-fun/openapi` 子入口
+    （`createOpenapi<paths>()` 工厂；JsonOk 的 200|201 联合已吸收本地化
+    差异）。本地依赖尚 0.10（无子入口），`article.openapi.ts` 按官方
+    形态保留逐行同构的本地工厂过渡——升级 0.11 后删本地定义改
+    `import {createOpenapi} from 'fetch-fun/openapi'`，调用点零改动。
+  - **双口径统一**（收敛的主件）：手写领域类型与 spec 的已知漂移修平
+    ——Author/User 的 `bio`/`image` 对齐 spec（必填、`string | null`；
+    原 `bio?` / 不可 null 的 `Image`），Comment.createdAt 的 number→string
+    漂移此前已修。视图 4 处 Avatar 消费经 `?? undefined` 收 null。
+    两套类型自此描述同一份响应契约。
+  - **spec × validate 配对**：口径统一后，「双 schema 打架」顾虑消失，
+    openapi 通道补上运行时校验接线——复用手写 schema 链（生成 schema
+    + envelope），逐端点挂 DEV 校验（`import.meta.env.DEV` 折叠 + 分支内
+    动态 import ajv，与手写版同款生产零成本）。形态天然对齐：openapi
+    通道直返 spec 原始响应形状（{article}/{tags}/{articles,articlesCount}），
+    手写 schema 恰是同一 envelope 形状。
+  - 边界：纯类型演示、未被视图引用，不进生产 chunk。
 
 ## 7. dev-only 运行时响应校验：ajv 动态 import，失配即抛
 
@@ -123,15 +128,27 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
     （「每页 10 条」），不该约束真实响应（最后一页可短），校验前剔除。
   - dev 抛错即挡（Zod `.parse` 语义）：类型与后端契约漂移在 dev 立即
     可见，是特性不是误报——第一个会被抓到的已知漂移是官方 spec 的
-    bio/image 可为 null 而手写类型是 `string?`。
+    bio/image 可为 null 而手写类型是 `string?`（已随第 6 条收敛批修平）。
   - 生产零成本：`import.meta.env.DEV` 折叠 + 分支内动态 import，
     构建产物已验证不含 ajv（同法验证过 faker）。
-  - 已知边界：json-schema-faker 0.6 在 $ref 深层嵌套下丢 `@faker`
-    注解（如 `ArticlePage.articles[].author.image` 生成 null、username
-    生成空串）——mock 侧（`mock.ts` 的 always 分支）校验因此降级为
-    console.error 告警并照常返回数据，避免 DevTool always 模式被
-    pre-existing 漂移直接打死；修生成侧漂移（换 faker 注解挂载点或
-    后处理）是独立后续项。
+- **已知边界（原记录的深层 $ref 丢注解，2026-08-31 已修）**：原症状
+  「json-schema-faker 0.6 在 $ref 深层嵌套下丢 `@faker` 注解
+  （`ArticlePage.articles[].author.image` 生成 null、username 空串）」
+  根因查明：jsf 默认 `maxDepth=5`，超深节点被替换成 `{type:'null'}`
+  生成默认值——与 $ref 无关，纯深度截断。修复在 `util/faker` 的
+  options：`maxDepth: 16`（覆盖本项目最深形状）+ `minLength: 1`（纯
+  string 节点的随机长度可含 0，username 等无注解字段会零星空串）。
+  修复后深层 @faker 注解恢复采样、生成数据整体通过 dev 校验
+  （faker.test.ts 有 ArticlePage 回归用例）。mock 侧（`mock.ts` 的
+  always 分支）校验**保持 console.error 告警不抛**——理由从
+  「pre-existing 漂移打死 always 模式」改为防御性：生成器是第三方
+  黑盒，未来任何造数缺陷不该让 DevTool 的 always 模式直接不可用。
+  残留形态差异（记录备查、均不影响校验）：date.past 注解产出
+  Date.toString() 文案（合法 string、非 ISO 形态）；nullable 的
+  bio/image 经 anyOf 随机取 null（恰好覆盖新契约的 null 分支）；
+  ts-json-schema-generator 对**类型别名**上的 @minItems/@maxItems 不
+  生效（TagList 的 10-30 条从未进 schema，属性级注解如 ArticlePage
+  的每页 10 条则正常）。
 
 ## 8. createDataLoader 的 DEV 来源校验：声明身份，不做结果指纹
 
@@ -187,9 +204,14 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
     举属性都不变，也不会再被枚举出多余成员）；`QueryFn` 类型以模块私有
     unique symbol 打纯类型品牌（`declare const bound: unique symbol`，
     零运行时），普通 service 函数缺品牌、编译期就进不了
-    `createQueryHook`。品牌值收 `unknown` 而非 `EntityCache<T, K>`——
-    EntityCache 成员在 K 上逆变，具体 QueryFn 会对 `QueryFn<any, any[]>`
-    （`QueryHookConfig.queryFn` 的字段类型）不可赋值。读取走导出的
+    `createQueryHook`。品牌值收 `EntityCache<T, K>`（2026-08-31 从
+    `unknown` 收回）：旧版 CacheProvider 成员为属性签名、K 上严格逆变，
+    具体 QueryFn 对 `QueryFn<any, any[]>`（`QueryHookConfig.queryFn`
+    的字段类型）不可赋值，被迫收 unknown；react-toolroom 0.18.3 起全
+    成员改方法简写（双变，库侧同步加 types.test.ts 回归），配合模板侧
+    `EntityCache.mutation` 同步方法简写化，具体元组 cache 可赋给
+    `any[]` 槽位——注册表 `CacheRegistryEntry.cache` 与 `getCache`
+    返回值随之从 `any` 收紧为 `any[]`。读取走导出的
     `getCache(queryFn)`；未绑定（品牌约束被 any 断链绕过时——JS 调用
     方、测试替身）**抛错**而非返回 undefined：早抛比 react-toolroom 深
     处的「cache.get is not a function」更快指向「service 函数忘经
@@ -248,3 +270,103 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
   只配置在 babel.config.js，vite 管道不消费它——`x-if={show}` 从未生效
   （条件不渲染、React 报 non-boolean attribute 警告），改显式
   `{show && …}`。
+
+## 12. mock 双通道分层与持久化镜像的 always 挂起
+
+- **背景**：mock 有两条通道，分层语义刻意相反。**loader 通道**
+  （`dataLoader.ts` 的 `mockViewData`）包在 `withCache` 外层——只有透传的
+  真实数据进缓存，faker 造数不污染缓存；**组件通道**（`createQueryHook`
+  内的 `useMock`）垫在 `useCache` 内层——mock 命中数据会 settle 进缓存，
+  这是 DevTool 面板 Refresh / always / empty 模式生效的前提（垫在缓存
+  外层会「缓存命中时 mock 失效、mock 命中时结果又进不了缓存」，论证见
+  `QueryHookConfig.mock` 注释）。
+- **缺陷**：内层垫法的代价在持久化实体上显形——tagsCache 是唯一持久化
+  实体（`painless.cache.tags`），always 期间组件通道的 faker tags settle
+  进缓存并经 `attachPersistence` 的 subscribe 镜像落盘；刷新后
+  mockConfig（内存态）重置 off，盘上 faker 数据在模块加载时被 hydrate
+  回来（早于任何面板条目重建）：侧栏显示假 tags，脱离 mock 面板管理。
+- **决定**：**always 激活期间挂起镜像写入**——subscribe 写盘回调开头检查
+  `getMockConfigs()`，任一 key `when === 'always'` 即跳过本次写。要点：
+  - 只拦镜像落盘：内存缓存照常更新（DevTool 缓存视图与组件消费不受
+    影响）；登出擦盘（`persistWipes` 的 removeItem）不经 subscribe
+    路径，不受影响。
+  - 粗粒度「任一 always 即全挂起」而非按 key 精确拦：mock key 与 cache
+    实体没有声明式映射，精确拦要为唯一持久化实体 tags 单建映射关系，
+    收益为零。「宁可少写不写脏」：挂起窗口漏写的真实数据只是丢一次
+    镜像，内存正确、下次写盘即补上（代价至多一次冷启动重拉）；写脏
+    则刷新后永久呈现。
+  - 关闭 always 即恢复写盘：DevTool 切 when 本就先 `clearAllCaches()`，
+    清内存的 delete 事件在 always 已解除时把空表写回盘（覆掉挂起前的
+    旧镜像），真实数据随后 settle 重新落盘。
+  - `empty` 模式不拦：它是「真实请求空手而归才造数兜底」，产物在语义上
+    与真实空态同权重地进缓存展示，且仅在真实侧确认空时产生；而
+    always 是无条件替代，关闭面板后缓存里的假数据即纯污染——两者的
+    「假」不可同日而语。
+- **`mock-config.ts` 抽模块**：mockConfig 状态（变量 +
+  get/getAll/set/change 订阅）自 `mock.ts` 抽出，`mock.ts` re-export 保持
+  DevTool 等消费方路径不破；`useQuery.ts` 从状态模块 import
+  `getMockConfigs`——直接反向 import `mock.ts` 会与其 `clearAllCaches`
+  依赖构成 useQuery↔mock 循环，状态模块零项目依赖是干净解。
+
+## 13. 胶水层上移 API 冻结清单（第 2 条收口的前置基线）
+
+- **背景**：第 2 条暂缓上移的 useQuery / loaderCache / dataLoader 胶水层，
+  形态已随三元组 + 场景 hook 收敛（第 2 条补记）。本条把「已冻结面」
+  显式列成契约基线：以下签名与语义不变量即上移包的 API 面，改动它们
+  等于改动未来库的公开 API，须先修订本条再动代码。
+- **已冻结面**（签名 + 语义不变量，出处标注源文件）：
+  - `createDataLoader({fetch, cache, keyOf, staleTime?, mock?})` →
+    `[loader, useData, queryFn]` 三元组（`util/dataLoader.ts`）：
+    - `loader` 内层包装序固定 withCache → mockViewData（mock 最外层，
+      faker 造数不进共享缓存——第 12 条 loader 通道语义）；
+    - `useData` 的重载体语义：无参返回 T（路由声明了 loader，进组件前
+      必已 resolve）；`{optional: true}` 返回 T | undefined（共用组件的
+      无 data 路由合法）。DEV 声明身份校验 `route.data === loader`
+      （第 8 条）随之冻结；
+    - `queryFn` 恒为 `bindQueryFn(fetch, cache)` 产物，第三元素即组件
+      通道入口（`createQueryHook` 的唯一合法入参）。
+  - `createQueryHook({queryFn, staleTime?, initData?, mock?})`
+    （`util/useQuery.ts`）：选项创建时闭合、运行时调用点只收 args 零
+    option 零重载；声明 initData 的场景 data 类型收窄为非空。
+    `QueryResult` 字段集冻结：`data / loading / fetching / error /
+    failureCount / stale / refetch / dataUpdatedAt`，各字段语义见第 9 条
+    （loading 仅初载、失败保留 dataUpdatedAt、select 恒等投影等）。
+  - `withCache(cache, keyOf, fn, {staleTime?})`（`util/loaderCache.ts`）：
+    新鲜命中直返零请求 / stale 旧值先行后台重验证 / miss 走 load 三分支
+    语义；同参数并发共享 in-flight；key 的 hash 归一（剥 signal 与
+    undefined 键）是两通道同寻址的前提。
+  - `bindRefresh`（内部；测试接缝 `bindCacheRefresh`）：cache set 事件
+    → 微任务去抖 refresh 最近使用它的 router；判据是「视图已见过的 key
+    换了值」（引用 diff，结构共享等价物）；delete/clear 不订阅。
+  - `bindQueryFn(fetch, cache)` / `getCache(queryFn)`（`util/useQuery.ts`）：
+    WeakMap 配对、函数身份零改动、phantom brand 编译期门槛、未绑定
+    早抛（第 9 条）。
+  - `createQueryCache(name, cacheTime?, {persist?})` + `allCaches` 注册表
+    + `clearAllCaches`（登出清场顺序：先清内存后擦盘）。
+  - `attachPersistence`（内部）：载荷版本门禁 `{v, data}`、hydrate 保留
+    cachedAt（重启后按真实年龄 SWR）、跨 tab storage 事件清内存不 hydrate
+    字节、mock always 挂起镜像写入（第 12 条）。
+- **验收测试清单**（上移时随包带走，用例组名即契约文档；改冻结面必须
+  先改这些组）：
+  - `useQuery.test.ts`：`createQueryHook（场景 hook）` 全组（initData
+    初载、SWR 旧值先行、refetch、failureCount、signal abort、hash 归一、
+    断网恢复三态、持久化 round-trip、跨 tab 同步、mock always 挂镜像）
+    + `bindQueryFn / getCache（fetch × cache 配对）`。
+  - `loaderCache.test.ts`：`withCache`（三分支、后台失败保旧、值引用
+    不变不 refresh、并发 miss 单飞）+ `mock 面板与 loader 缓存的交互
+    （DevTool Refresh 语义）` + `key 归一（hash 剥 undefined 键）`。
+  - `dataLoader.test.tsx`：`createDataLoader：DEV 来源身份校验`（含
+    错配/再包箭头/optional 对偶五例）+ `createDataLoader：POP 往返
+    （viewStack 快照回放）` + `createDataLoader：queryFn + 场景 hook
+    （组件通道）`。
+- **上移前置条件**：
+  - ✅ react-toolroom ≥0.18.3 已发版（`npm view` 核实，gitHead 对应
+    a40c39c）——CacheProvider 成员改为方法签名，具体元组实例化可赋值
+    给宽泛槽位（method-shorthand 类型修复；EntityCache 的 K 逆变收窄
+    依赖它）。painless lockfile 尚钉 0.18.2，随升级批切 0.18.3。
+  - 剩余阻碍（非阻塞、逐项决策后再动）：①fetch-fun 0.11 升级（第 6 条
+    的 openapi 子入口转正）与本清单独立，可并行；②mock/DevTool 与
+    `attachPersistence` 的耦合（always 挂镜像）上移时需决定——进包
+    （带上 mock 语义）或留在模板（包只暴露 persist 挂点与订阅面）；
+    ③`services/dataloaders.ts` 绑定层已验证「应用侧只留声明」，上移时
+    作为包的 README 示范形态。

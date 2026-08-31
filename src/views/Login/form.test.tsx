@@ -3,14 +3,24 @@
 // 归并建议：后续若建 src/views/Login/index.test.tsx，可直接把用例并入。
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import {render, screen, fireEvent, waitFor, act} from '@testing-library/react';
+import type {StandardSchemaV1} from '@native-router/react';
 
-const state = vi.hoisted(() => ({router: {pathname: '/login'}}));
+const state = vi.hoisted(() => ({
+  router: {pathname: '/login'},
+  // /login 的 search 输入（useSearch 的 mock 数据源）：redirect 场景
+  // 用例按需注入
+  search: {} as Record<string, unknown>
+}));
 
 // Login 视图只调 auth.login，整体 mock 服务层；422 拒绝值用鸭子形状
 // 普通对象（catch 侧按 {status, data.errors} 形状判断）
 vi.mock('@/services/auth', () => ({login: vi.fn()}));
 vi.mock('@native-router/react', () => ({
   useRouter: () => state.router,
+  // 视图接的 useSearch：以真实 schema 校验 mock 的 state.search——
+  // 读侧 coerce（非字符串/空串丢弃）在测试里同步生效
+  useSearch: (schema: StandardSchemaV1) =>
+    (schema['~standard'].validate(state.search) as {value: unknown}).value,
   // 视图里的 <TypedLink> 在 mock 中退化为普通锚点即可
   TypedLink: ({to, children}: {to: string; children: React.ReactNode}) => (
     <a href={to}>{children}</a>
@@ -19,10 +29,12 @@ vi.mock('@native-router/react', () => ({
 vi.mock('@native-router/core', () => ({navigate: vi.fn()}));
 
 import * as auth from '@/services/auth';
+import {navigate} from '@native-router/core';
 
 import Login from './index';
 
 const loginMock = vi.mocked(auth.login);
+const navigateMock = vi.mocked(navigate);
 
 function fill(email: string, password: string) {
   fireEvent.change(screen.getByPlaceholderText('Email'), {target: {value: email}});
@@ -196,5 +208,55 @@ describe('Login 表单', () => {
     expect(submit.disabled).toBe(true);
     fireEvent.change(screen.getByPlaceholderText('Password'), {target: {value: 'secret'}});
     await waitFor(() => expect(submit.disabled).toBe(false));
+  });
+});
+
+// 登录后回跳原目的页：requireLogin 守卫写入 ?redirect=<encode(原路径+
+// search)>（见 views/index.tsx），Login 经 loginSearchSchema 读回、
+// sanitizeRedirect 白名单校验后导航——合法站内路径回原页，非法/缺失落
+// 首页。useSearch 已 mock 为真实 schema 校验 state.search，这里注入
+// 的就是 URL 解码后的 search 输入形状。
+describe('登录后回跳原目的页（redirect）', () => {
+  beforeEach(() => {
+    state.search = {};
+    navigateMock.mockReset();
+  });
+
+  // 合法提交：auth.login 成功后视图调 navigate(router, expected)
+  async function submitAndExpectNavigate(expected: string) {
+    loginMock.mockResolvedValueOnce(
+      undefined as unknown as Awaited<ReturnType<typeof auth.login>>
+    );
+    render(<Login />);
+    fill('alice@example.com', 'secret');
+    fireEvent.click(screen.getByRole('button', {name: 'Login'}));
+    await waitFor(() =>
+      expect(navigateMock).toHaveBeenCalledWith(state.router, expected)
+    );
+  }
+
+  it('带合法 redirect：登录成功导航回原目的页（含 search 深链）', async () => {
+    state.search = {redirect: '/editor/my-slug?tab=2'};
+    await submitAndExpectNavigate('/editor/my-slug?tab=2');
+  });
+
+  it('非法 redirect（协议绝对/协议相对）：防 open redirect，回首页', async () => {
+    // https://evil.com：带协议外站地址
+    state.search = {redirect: 'https://evil.com'};
+    await submitAndExpectNavigate('/');
+  });
+
+  it('非法 redirect（协议相对 //evil.com）：回首页', async () => {
+    state.search = {redirect: '//evil.com'};
+    await submitAndExpectNavigate('/');
+  });
+
+  it('无 redirect（直接访问 /login）：回首页', async () => {
+    await submitAndExpectNavigate('/');
+  });
+
+  it('空串 redirect（schema 读侧丢弃）：回首页', async () => {
+    state.search = {redirect: ''};
+    await submitAndExpectNavigate('/');
   });
 });

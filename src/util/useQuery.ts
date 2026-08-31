@@ -25,6 +25,7 @@ import {
 } from 'react-toolroom/async';
 
 import {useMock} from '@/util/mock';
+import {getMockConfigs} from '@/util/mock-config';
 
 // 对齐 TanStack Query 的 gcTime 默认值；低频全局实体可单独放长（见 tagsCache）
 const DEFAULT_CACHE_TIME = 5 * 60_000;
@@ -59,11 +60,14 @@ const hashArgs = (args: unknown[]) =>
 
 // mutation 从可选收成必有：createQueryCache 恒由 createMemoryCacheProvider
 // 创建（运行时必然携带），调用方零断言。值类型与 key 元组类型都在 cache 上
-// 收紧——peek 不需要 as，key 写错形状编译期暴露。
+// 收紧——peek 不需要 as，key 写错形状编译期暴露。mutation 用方法简写而非
+// 属性签名：方法参数按双变检查（react-toolroom ≥0.18.3 起 CacheProvider 全
+// 成员同款），具体 EntityCache<T,[string]> 才可赋给 EntityCache<any,any[]>
+// 的槽位——品牌值与注册表得以保住精确类型（decisions.md 第 9 条）。
 export type EntityCache<T, K extends unknown[]> = CacheProvider<T, K> & {
-  mutation: <Args extends any[], Resp>(
+  mutation<Args extends any[], Resp>(
     spec: (...args: Args) => MutationSpec<T, K, Args, Resp>
-  ) => BoundMutation<Args, Resp>;
+  ): BoundMutation<Args, Resp>;
 };
 
 // ---- 每实体缓存注册表 ------------------------------------------------------
@@ -72,9 +76,9 @@ export type EntityCache<T, K extends unknown[]> = CacheProvider<T, K> & {
 // 遍历）与 DevTool 面板遍历都以注册表为唯一事实来源，新实体自动带上名字。
 export type CacheRegistryEntry = {
   name: string;
-  // K 收 any（any 而非 any[]：EntityCache 成员在 K 上逆变，any[] 实参化
-  // 反而收不了具体元组的 cache）；注册表只服务遍历，值/key 类型无意义
-  cache: EntityCache<any, any>;
+  // K 收 any[]（react-toolroom ≥0.18.3 方法简写后具体元组 cache 可赋值，
+  // 旧版逆变种被迫收 any 的槽位已收紧）；注册表只服务遍历，值类型无意义
+  cache: EntityCache<any, any[]>;
 };
 
 // 模块加载即填充：下方实体 cache 的创建语句逐个 push 进同一个数组，导出的
@@ -138,6 +142,17 @@ const attachPersistence = (cache: EntityCache<any, any>, key: string) => {
   }
 
   cache.subscribe?.(() => {
+    // mock always 激活期间挂起镜像写入：组件通道的 useMock 垫在缓存内层
+    //（Refresh/always/empty 生效的前提，见 QueryHookConfig.mock），faker
+    // 数据会 settle 进缓存并经本回调镜像落盘——刷新后 mockConfig（内存
+    // 态）重置 off，盘上假数据被 hydrate 回来即脱离面板管理。任一 key
+    // always 即全挂起而非按 key 精确拦（持久化实体只有 tagsCache，为它
+    // 建 key→cache 映射收益为零；宁可少写不写脏——挂起窗口漏写的镜像由
+    // 下次写盘补上，写脏则刷新后永久呈现）。只拦镜像落盘：内存缓存照常
+    // 更新，登出擦盘（persistWipes）不经本回调。决策见第 12 条。
+    if (Object.values(getMockConfigs()).some((c) => c.when === 'always')) {
+      return;
+    }
     try {
       // 写前 diff 盘上现值（实时 getItem，非缓存的上次写值）：收到其它 tab
       // 的 storage 事件后 clear 的 delete 事件会把空表写回，若不 diff 直接
@@ -214,20 +229,22 @@ export type MockConfig = {
 // fetch × cache 配对只在此闭合一次，路由 loader / 场景 hook / mutation 写
 // 穿从同一绑定取同一 cache（机制见 docs/decisions.md 第 9 条）。[bound] 是
 // 模块私有 unique symbol 的 phantom 品牌（零运行时）：普通 service 函数缺
-// 品牌，编译期就进不了 createQueryHook。品牌值收 unknown 而非
-// EntityCache<T, K>——后者因 EntityCache 在 K 上逆变，具体 QueryFn 会对
-// QueryFn<any, any[]>（QueryHookConfig.queryFn 的类型）不可赋值。
+// 品牌，编译期就进不了 createQueryHook。品牌值收 EntityCache<T, K>——
+// react-toolroom ≥0.18.3 起 CacheProvider 成员全部方法简写（双变），具体
+// QueryFn 对 QueryFn<any, any[]>（QueryHookConfig.queryFn 的类型）可赋值
+// （旧版因 K 逆变被迫收 unknown，已随 0.18.4 升级收回精确类型）。
 declare const bound: unique symbol;
 
 export type QueryFn<T, K extends unknown[]> = ((
   ...args: [...K, signal?: AbortSignal]
-) => Promise<T>) & {
-  [bound]: unknown;
+) => Promise<T>
+) & {
+  [bound]: EntityCache<T, K>;
 };
 
 const boundCaches = new WeakMap<
   (...args: any[]) => Promise<any>,
-  EntityCache<any, any>
+  EntityCache<any, any[]>
 >();
 
 // 不变量：一个 service 函数只绑一个 cache（重复绑定后者覆盖）
@@ -242,7 +259,9 @@ export function bindQueryFn<T, K extends unknown[]>(
 // 未绑定抛错而非返回 undefined：品牌约束被 any 断链绕过时（JS 调用方、测试
 // 替身），早抛比深处「cache.get is not a function」更快指向「service 函数
 // 忘经 bindQueryFn 配对」。
-export function getCache(queryFn: QueryFn<any, any[]>): EntityCache<any, any> {
+export function getCache(
+  queryFn: QueryFn<any, any[]>
+): EntityCache<any, any[]> {
   const cache = boundCaches.get(queryFn);
   if (!cache) {
     throw new Error(

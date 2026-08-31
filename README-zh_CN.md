@@ -68,6 +68,49 @@ Painless 产出标准静态资源。它不与任何特定部署平台耦合—�
 - TypeScript —— 类型安全
 - [Vitest](https://vitest.dev) —— 测试框架
 
+## 从 TanStack 迁移过来？
+
+如果你熟悉 TanStack Query/Router/Form，它们解决的问题这里同样有解——只是形状不同：每实体缓存取代 client + provider，场景 hook 取代 option 袋，可组合的函数取代框架运行时。下表逐行对照 `src/` 的真实代码，不掺营销话术。
+
+| TanStack | 本生态对应物 | 备注 / 差异 |
+| --- | --- | --- |
+| `QueryClient` + `QueryClientProvider` | 每实体 `createQueryCache(name, cacheTime?, {persist?})` + `allCaches` 注册表 | 无 Provider、无 context——cache 是普通模块级对象；注册表驱动登出清场与 DevTool 缓存视图。`cacheTime` 默认 5 分钟（对齐 TanStack 的 `gcTime` 默认值）；`tagsCache` 是唯一持久化实体。 |
+| `queryKey` 数组 + 哈希 | args 元组，经 `stableHash` 哈希（剥 signal、递归剥 `undefined` 键） | key 的形状钉在 cache 类型上（`EntityCache<T, K>`）——形状写错是编译错误，不是静默的缓存 miss。 |
+| `useQuery(options)` | `createQueryHook(config)` → 场景 hook（`useTagsQuery`、`useCommentsQuery`……） | 全部选项（`staleTime`/`initData`/`mock`）在场景声明点一次闭合，调用点只收 `args`。fetch × cache 由 `bindQueryFn(fetch, cache)` 恰好配对一次——loader、hook、mutation 三条通道解析同一绑定。 |
+| `onMutate`/`onError` 乐观仪式 | `cache.mutation((…) => ({mutate, key, update, apply}))` | `update` 即乐观首步，`apply` 是字段选择式合并，回滚自动且带身份守卫（并发写者的更新值得以幸存）；层可组合——一次 favorite 同时写文章实体与 home 信息流中所有含该 slug 的页。 |
+| `invalidateQueries` 前缀匹配 | `useMutation(fn, {invalidates: [[commentsCache, slug]]})`（精确 key）或 `{invalidates: [homeCache, articleCache]}`（整实体）；命令式 `invalidate(router)` 清 viewStack 快照 | 粒度按「写操作与 key 是否一一对应」分档——评论对应 `[slug]`，编辑无法枚举 home 的 search 组合 key；失败自动不失效。 |
+| `useInfiniteQuery` | `useInfinite`（`react-toolroom/async`） | `fetchNextPage`/`fetchPreviousPage`/`maxPages` 皆有对应物；刻意不接缓存——About 页信息流（`src/services/feed.ts`）是仓内实例。 |
+| `refetchInterval` | `usePolling` | 调用慢时跳过心跳，页面隐藏时暂停。 |
+| `queryFn` + fetch 默认项 | fetch-fun 管道（`src/util/http.ts`） | 超时、重试、认证注入、错误映射都是管道阶段而非选项——扮演 ky 的角色；`openapi-typescript` 类型之上的 OpenAPI 嫁接（`src/services/article.openapi.ts`）对应 openapi-fetch。 |
+| Router `loader` | 路由 `data` 经 `createDataLoader({fetch, cache, keyOf})` → `[loader, useData, queryFn]` 三元组 | loader 经 `withCache` 与组件查询共享同一实体缓存（新鲜命中零请求，stale 旧值先行 + 后台重验证）；cache 的 `set` 事件自动 `refresh(router)`，视图里一个 refresh 调用都没有。 |
+| `beforeLoad` + router `context` | 同名同语义 | `beforeLoad` 返回路径即在 resolve 期重定向——URL 不会落在守卫路由上；`Router context={{getUser}}` 经路由第三泛型类型化。 |
+| search params 校验 | 路由 `search:` 收任意 Standard Schema（zod / valibot / 手写） | 读侧 `useSearch(schema)`；`TypedLink<AppRoutes>` 的 `search` prop 按 schema 的 Input 侧判别——字段拼错是编译错误。 |
+| `useBlocker` | 同名，`@native-router/react` | 同步谓词（`() => !isDirty(form)`）配 `{state, proceed, reset}` 驱动确认框；被否决的 POP 由库自动回推。 |
+| `useForm` / `<Form>` | react-f0rm `useForm` / `<Form>` + haze-ui `FormItem` | `control` 令牌受控字段、按字段订阅（`useIsSubmitting`、`useHasErrors`）；本模板组合小型字段级 `validate` 回调，zod/valibot/arktype 走 `react-f0rm/resolvers/standard-schema` 入口；服务端 422 经 `setServerErrors` 落进同一错误通道。 |
+| Query DevTools | DevTool 面板（dev-only） | 缓存视图（逐条目年龄、in-flight 徽标、事件流）+ 请求日志——dev-only 模块，生产构建整体折叠掉。 |
+
+### 体积对比（同一把尺子）
+
+以下数字全部以同一口径于 2026-08-31 实测：esbuild `--bundle --minify`（peer 依赖 external、常规依赖计入），zlib gzip level 9。「实占」= painless 实际引入的符号集（TanStack 侧取同形态应用所需的 hooks）；「全量」= 整个入口。
+
+| 角色 | 本生态（min+gzip） | 对照物（min+gzip） |
+| --- | --- | --- |
+| 异步状态 | react-toolroom/async **≈6.0 kB**（全量 7.1） | @tanstack/react-query **≈10.9 kB**（全量 13.9） |
+| 表单 | react-f0rm **≈6.3 kB**（全量 8.0） | @tanstack/react-form **≈17.6 kB** |
+| HTTP 客户端 | fetch-fun **≈5.5 kB** | ky **≈9.3 kB** |
+| 路由 | @native-router core+react **≈11.0 kB** | @tanstack/react-router **≈34.8 kB** |
+
+实测版本：react-toolroom 0.18.2、react-f0rm 0.7.0、fetch-fun 0.10.0、@native-router/core 1.10.0 + react 1.9.0（painless 实装版本）vs @tanstack/react-query 5.102.8、@tanstack/react-form 1.33.5、@tanstack/react-router 1.170.32、ky 2.1.0（测量时 npm latest）。
+
+### TanStack 有、而本生态刻意不做的
+
+- **结构共享** —— 深相等要为每次成功 fetch 付 O(payload)，换来的通常只是一次无 DOM 变更的 reconcile；热点组件用 `React.memo` + 标量 props 局部解决（见设计哲学）。
+- **`enabled` 开关** —— 选项在场景声明点一次闭合，条件取数就是条件调用 hook；运行时选项开关正是这层要消灭的 option 袋问题，未被用到的选项按 YAGNI 裁剪（`docs/decisions.md` 第 2 条）。
+- **离线 mutation 队列** —— 跨刷新重放写操作本质是冲突合并的产品策略；本模板连缓存持久化都按「逐实体、显式 opt-in」收敛（仅 `tagsCache`），替用户做产品决策不是模板的事。
+- **`pendingMs` 式 pending 超时** —— 应用内导航保留当前视图 + 全局 Loading，stale 命中即刻回旧值，pending 只剩冷启动一种；loader 挂住就让它挂着骨架，而不是悄悄渲染一个没有数据的视图。
+- **嵌套 / 并行路由** —— 路由即页面、页面即状态；需要独立状态的 URL 片段应该是组件，不是路由（见设计哲学）。
+- **SSR / 流式渲染** —— 零服务端运行时是刻意设计；爬虫流量用无头浏览器服务出预渲染 HTML，应用本体就是纯静态产物。
+
 ## 特性
 
 以下所有示例均摘自（或按 `src/` 真实源码轻微改写）项目实际代码。

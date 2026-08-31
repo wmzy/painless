@@ -13,6 +13,7 @@ import {renderHook, act, waitFor} from '@testing-library/react';
 
 import {stableHash} from 'react-toolroom/async';
 
+import {setMockConfig} from './mock-config';
 import {
   bindQueryFn,
   clearAllCaches,
@@ -723,6 +724,43 @@ describe('createQueryHook（场景 hook）', () => {
     expect(cache.peek!([])).toBeUndefined();
 
     localStorage.removeItem(KEY);
+  });
+
+  // mock always 挂起镜像写入（决策见 docs/decisions.md 第 12 条）：组件
+  // 通道的 useMock 垫在缓存内层，always 造的 faker 数据会 settle 进持久
+  // 化 cache——不拦落盘的话，刷新后 mockConfig（内存态）重置 off，盘上
+  // 假数据被 hydrate 回来（侧栏显示 faker 造的 tags，脱离面板管理）。
+  // setMockConfig 直接走状态模块（守卫读的就是它）。
+  it('mock always 激活期间挂起镜像写入；关闭后恢复写盘', () => {
+    const KEY = 'painless.test.mock-always';
+    const MOCK_KEY = 'mock-always-guard';
+    localStorage.clear();
+    setMockConfig(MOCK_KEY, {when: 'always'});
+    try {
+      const cache = createQueryCache<string[], []>('mock-always', 60_000, {
+        persist: KEY
+      });
+      cache.set([], ['faker-tag']);
+      // 只拦镜像落盘：内存缓存照常更新（DevTool 缓存视图与组件消费不受
+      // 影响），盘上不残留假数据
+      expect(cache.peek!([])?.value).toEqual(['faker-tag']);
+      expect(localStorage.getItem(KEY)).toBeNull();
+
+      // 关闭 always（DevTool 切 when 即 clearAllCaches，真实数据随后
+      // settle）：镜像写盘恢复，盘上是挂起窗口结束后的全量表
+      setMockConfig(MOCK_KEY, {when: 'disabled'});
+      cache.set([], ['real-tag']);
+      const stored = JSON.parse(localStorage.getItem(KEY)!);
+      expect(stored.data[stableHash([])]).toEqual([
+        ['real-tag'],
+        expect.any(Number)
+      ]);
+    } finally {
+      // mockConfig 是模块级全局态：收尾复位，不把「always 即不写盘」
+      // 渗漏给下游用例
+      setMockConfig(MOCK_KEY, {when: 'disabled'});
+      localStorage.removeItem(KEY);
+    }
   });
 });
 

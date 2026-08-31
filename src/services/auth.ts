@@ -6,12 +6,14 @@ import {fillPath} from 'fetch-fun';
 import * as http from '@/util/http';
 import {clearAllCaches} from '@/util/useQuery';
 
+// bio/image 对齐 spec（openapi.d.ts 的 User schema）：登录/注册响应里
+// 必带且可 null（Author 同款口径，见 types/index.ts）。
 export type User = {
   username: string;
   email: string;
   token: string;
-  bio?: string;
-  image?: string;
+  bio: string | null;
+  image: string | null;
 }
 
 const STORAGE_KEY = 'painless.user';

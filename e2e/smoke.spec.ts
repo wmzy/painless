@@ -651,6 +651,186 @@ test('about infinite feed: scroll to bottom loads the next page, then stops', as
   expect(feedOffsets).toEqual(['0', '10']);
 });
 
+// viewStack 同文档往返（卖点：后退恢复零请求）。分层短路见
+// views/index.tsx：bfcache > viewStack > queryCache——同文档 back 落
+// history.state 里的会话栈快照，视图即时恢复。零请求的边界是缓存新鲜
+// 期（实测确认）：POP 时条目仍新鲜（staleTime 2000ms 内）则全程零请求；
+// 已 stale 则快照恢复「旧值先行」，POP 的重解析走 SWR 后台重验证补一
+// 条 feed 请求——那是 queryCache 层的设计行为（stale-while-revalidate），
+// 不是 viewStack 失效。本用例按卖点场景走「快速浏览读完即回退」动线，
+// 全程留在新鲜期内；重验证只认事件触发（mount/focus/reconnect/导航），
+// 不会随时间自行发生，back 后的等待窗里没有触发源，计数断言稳定。
+// useFocusRevalidate 的面：本链路里它挂在 createQueryHook 场景（Tags/
+// About feed），且 Playwright 的 goBack 是同文档 POP，不派发 focus/
+// visibilitychange；计数只盯 /api/articles，Tags 侧的重拉（若有）天然
+// 不计入。
+test('viewStack back: Home 后退零请求恢复', async ({page}) => {
+  let feedGets = 0;
+  await mockApi(page, {published: false});
+  // feed 计数代理，注册在 mockApi 之后（后注册先咨询，fallback 只向更早
+  // 注册者回退，见段首注释）。两个 pattern 各司其职：列表请求恒带
+  // offset/limit query，glob 对完整 URL 匹配，裸 `**/api/articles` 拦不
+  // 到，`?*` 变体（? 恰好吃掉 URL 的字面 ?）才命中；裸变体兜住假想的
+  // 无 query 形态。同一请求只会计一次：query URL 只匹配 ?* 变体，fallback
+  // 传给裸变体时 glob 不匹配、回调不执行，直达 mockApi。
+  const countFeed = (route: Route) => {
+    feedGets++;
+    return route.fallback();
+  };
+  await page.route('**/api/articles', countFeed);
+  await page.route('**/api/articles?*', countFeed);
+
+  await page.goto('/');
+  await expect(
+    page.getByRole('heading', {name: article1.title})
+  ).toBeVisible();
+  // 初载恰好一次：StackWarmer 预热与冷启动首解析经 withCache 的 in-flight
+  // 共享并成同一请求（时序论证见 views/index.tsx）
+  await expect.poll(() => feedGets).toBe(1);
+  const before = feedGets;
+
+  // 进首篇详情：先 hover 等预览浮层把目标视图完整解析（含 CommentList
+  // 的 comments 订阅落定）再点击——直接点会踩「浮层卸载 abort 在飞
+  // comments 请求」的竞态（见下一条用例注释）；.first() 的取舍同预取
+  // 用例，浮层里已有同名标题
+  await page.getByRole('heading', {name: article1.title}).hover();
+  await expect(
+    page
+      .locator('[role="dialog"]')
+      .getByText('Fixture comment for the article page.')
+  ).toBeVisible();
+  await page.getByRole('heading', {name: article1.title}).first().click();
+  await expect(page).toHaveURL(new RegExp(`/article/${article1.slug}$`));
+  await expect(
+    page.getByText('Fixture comment for the article page.')
+  ).toBeVisible();
+  expect(feedGets).toBe(before);
+
+  // 后退：POP 落 viewStack 快照，Home 视图即时恢复
+  await page.goBack();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(
+    page.getByRole('heading', {name: article1.title})
+  ).toBeVisible();
+  await expect(
+    page.getByRole('heading', {name: article2.title})
+  ).toBeVisible();
+
+  // 负断言的稳定窗（同无限滚动终态断言的取舍）：给潜在的重解析/后台
+  // 重验证一个结算窗口后核对计数——快照命中则计数纹丝不动
+  await page.waitForTimeout(1000);
+  expect(feedGets).toBe(before);
+});
+
+// 乐观写失败自动回滚（cache.mutation 管道卖点，services/mutations.ts）：
+// 乐观首步同步翻转 → 服务调用 → 失败自动回滚 + 调用方 toast。favorite 是
+// toggle 端点（POST 加 / DELETE 取），route 对方法不敏感、一律拦截，本
+// 用例驱动 POST（未收藏 → 收藏）方向：500 虽属瞬态码，重试管道只放行
+// 幂等方法，POST 单趟即终败，~300ms 延迟就是确定的乐观窗口（DELETE 方向
+// 会额外带 2 趟重试，回滚语义同形，不重复驱动）。断言三段：乐观期翻转
+// （即时断言，窗口只有延迟期那么长）→ 500 落地后回滚复原 → danger
+// toast（错误文案经 http 层 mapError 拼 errors 字段「<field> <message>」；
+// haze-ui Toast 的 DOM 形态：div[role=alert] + haze-Toast__danger 变体类，
+// 已读组件库 dist 确认）。
+test('favorite 500: 乐观翻转回滚 + danger toast', async ({page}) => {
+  await mockApi(page, {published: false});
+  await page.route('**/api/articles/*/favorite', async (route) => {
+    // fulfill 前延迟 ~300ms：把乐观窗口拉到可断言的宽度
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    return json(route, 500, {errors: {favorite: ['server exploded']}});
+  });
+
+  await page.goto('/');
+  await login(page);
+
+  // 已登录态进首篇详情（收藏按钮需登录，未登录点击会被引去 /login）。
+  // 先 hover 等预览浮层完整解析再点击：Playwright 的 click 自带 mousemove
+  // 会开出浮层，浮层里的 CommentList 已挂起 comments 订阅——立刻点击会
+  // 卸载浮层、在飞请求被 signal abort（net::ERR_ABORTED），AbortError 污
+  // 染共享的 per-args 状态，真视图的 CommentList 渲染 Failed to load
+  // comments（预取用例不踩此坑：它在点击前等过预取落定）。等浮层的评
+  // 论文本出现即 comments 已 settle，点击后真视图直接吃缓存
+  await page.getByRole('heading', {name: article1.title}).hover();
+  await expect(
+    page
+      .locator('[role="dialog"]')
+      .getByText('Fixture comment for the article page.')
+  ).toBeVisible();
+  await page.getByRole('heading', {name: article1.title}).first().click();
+  await expect(page).toHaveURL(new RegExp(`/article/${article1.slug}$`));
+  await expect(
+    page.getByText('Fixture comment for the article page.')
+  ).toBeVisible();
+
+  // 点收藏：乐观首步在点击事件内同步落 DOM，断言即时落点（toHave* 自带
+  // 重试，但真正的约束是必须赶在 300ms 延迟结束前看到翻转）
+  await page.getByRole('button', {name: /❤\s*3/}).click();
+  const optimistic = page.getByRole('button', {name: /❤\s*4/});
+  await expect(optimistic).toBeVisible();
+  await expect(optimistic).toHaveAttribute('aria-pressed', 'true');
+
+  // 500 落地：管道回滚（❤4→❤3、aria-pressed 复原 false），错误文案进
+  // danger toast；视图不换页（写失败不牵动路由 errorComponent）。toast
+  // 定位锁定 haze-Toast__danger 变体类：haze-ui 的 Alert 也是 role=alert
+  //（评论失败态与 toast 同 role），类名才能把两者分开
+  await expect(
+    page.getByRole('button', {name: /❤\s*3/})
+  ).toHaveAttribute('aria-pressed', 'false');
+  const toast = page.locator('[role="alert"].haze-Toast__danger');
+  await expect(toast).toBeVisible();
+  await expect(toast).toContainText('favorite server exploded');
+  await expect(page).toHaveURL(new RegExp(`/article/${article1.slug}$`));
+});
+
+// 预览浮层竞态回归（react-toolroom ≥0.18.4 abort 让位修复的行为闭环）：
+// hover 开出预览浮层（浮层内 CommentList 已挂起 comments 订阅）后不等
+// settle 立刻点击——浮层卸载，useRun 的 signal abort 在飞请求。修复前：
+// provider.load 的 in-flight 槽要等微任务才随 reject 清除，真视图同栈
+// mount 的 load join 已死 promise，评论区永久渲染 Failed to load
+// comments 且无重试（fetch 总调用数停在 1）。修复后：abort 同步让位槽，
+// 真视图新起请求，评论区正常渲染。上面的用例刻意等浮层 settle 规避本
+// 竞态；本用例反其道行之，专守这条回归线。
+test('PreviewLink race: fast click after hover keeps comments healthy', async ({
+  page
+}) => {
+  await mockApi(page, {published: false});
+  // comments 端点垫 ~200ms 延迟（注册在 mockApi 之后，逆序先试、fulfill
+  // 即终结）：把「在飞窗口」拉宽到覆盖 click→浮层卸载的时序，不依赖
+  // 竞态的纳秒级自然窗口
+  await page.route('**/api/articles/*/comments*', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    return json(route, 200, {
+      comments: [
+        {
+          id: 'c1',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+          body: 'Fixture comment for the article page.',
+          slug: article1.slug,
+          author
+        }
+      ]
+    });
+  });
+
+  await page.goto('/');
+  // hover 开浮层后只等浮层本体出现（不等评论文本——那意味着 settle），
+  // 立刻点击
+  await page.getByRole('heading', {name: article1.title}).hover();
+  // first()：页面除预览浮层外还有一个常驻 [role=dialog]（ToastContainer
+  // 的宿主），strict mode 下裸 locator 解析到 2 个元素直接违例
+  await expect(page.locator('[role="dialog"]').first()).toBeVisible();
+  await page.getByRole('heading', {name: article1.title}).first().click();
+  await expect(page).toHaveURL(new RegExp(`/article/${article1.slug}$`));
+
+  // 修复后的契约：真视图的 CommentList 新起请求并成功渲染，全程不出现
+  // 失败态文案
+  await expect(
+    page.getByText('Fixture comment for the article page.')
+  ).toBeVisible({timeout: 5000});
+  await expect(page.getByText('Failed to load comments')).toHaveCount(0);
+});
+
 // ---------------------------------------------------------------------------
 // a11y：@axe-core/playwright 对 mock 数据渲染出的主要页面做 WCAG 2.0/2.1
 // A/AA 系统化扫描（复用上面的 mockApi/login fixtures，网络层全 mock，

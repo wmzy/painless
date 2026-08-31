@@ -1,0 +1,139 @@
+name: Weekly Upgrade Smoke
+
+# 周度依赖升级冒烟：pnpm update --latest 全量升最新 → typecheck/test/build/size
+# 四道门禁全绿才开 PR；任一红则 job 失败（通知走 Actions 默认邮件，不开 PR、不自动回退）。
+on:
+  schedule:
+    - cron: '0 3 * * 1' # 周一 03:00 UTC（GitHub 定时任务高峰可能延迟几分钟到半小时）
+  workflow_dispatch:
+
+# 最小权限集：推 deps/* 分支要 contents:write，开 PR 要 pull-requests:write
+permissions:
+  contents: write
+  pull-requests: write
+
+# 并发守卫：schedule 与手动 dispatch 撞车时会竞写同一个 deps/weekly-upgrade 分支
+concurrency:
+  group: upgrade-smoke
+  cancel-in-progress: true
+
+jobs:
+  upgrade-smoke:
+    # 防 fork：schedule 本就只在默认分支运行，这里把 fork 上的手动 dispatch 也拦掉
+    if: github.repository_owner == 'wmzy'
+    runs-on: ubuntu-latest
+    # 无人值守的定时 job，不用默认 6 小时挂死跑批
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Use Node.js 22.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      # 不加任何兼容旗标（如 --no-strict-peer-dependencies）：大版本跳版导致
+      # peer 冲突/安装失败时 job 直接红，这正是冒烟要暴露的信号
+      - name: Upgrade all dependencies to latest
+        run: |
+          start=$(date +%s)
+          pnpm update --latest
+          echo "pnpm update --latest: $(( $(date +%s) - start ))s" >> "$RUNNER_TEMP/step-times.txt"
+
+      # 一切已是最新（无 diff）→ 跳过后续门禁与开 PR，job 直接绿
+      - name: Detect dependency changes
+        id: changed
+        run: |
+          if git diff --quiet -- package.json pnpm-lock.yaml; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # 耗时行写在命令成功之后（run 默认 bash -e）：失败的步骤不记行，反正红了也不开 PR
+      - name: Typecheck
+        if: steps.changed.outputs.changed == 'true'
+        run: |
+          start=$(date +%s)
+          pnpm run typecheck
+          echo "typecheck: $(( $(date +%s) - start ))s" >> "$RUNNER_TEMP/step-times.txt"
+
+      - name: Test
+        if: steps.changed.outputs.changed == 'true'
+        run: |
+          start=$(date +%s)
+          pnpm run test:run
+          echo "test:run: $(( $(date +%s) - start ))s" >> "$RUNNER_TEMP/step-times.txt"
+
+      - name: Build
+        if: steps.changed.outputs.changed == 'true'
+        run: |
+          start=$(date +%s)
+          pnpm run build
+          echo "build: $(( $(date +%s) - start ))s" >> "$RUNNER_TEMP/step-times.txt"
+
+      # 体积棘轮（docs/decisions.md 第 10 条）：依赖升级可能把 bundle 顶过阈值——
+      # 超了照样红；是否放宽阈值留给本 PR 人工决策
+      - name: Size budget
+        if: steps.changed.outputs.changed == 'true'
+        run: |
+          start=$(date +%s)
+          pnpm run size
+          echo "size: $(( $(date +%s) - start ))s" >> "$RUNNER_TEMP/step-times.txt"
+
+      - name: Generate PR body
+        if: steps.changed.outputs.changed == 'true'
+        run: |
+          {
+            echo "## 周度依赖升级冒烟"
+            echo
+            echo '由 Weekly Upgrade Smoke workflow 自动开出：`pnpm update --latest` 全量升级后，'
+            echo 'typecheck / test / build / size 四道门禁全绿。'
+            echo
+            echo '注：GITHUB_TOKEN 创建的 PR 不会自动触发 CI（GitHub 防递归限制），'
+            echo '门禁结果即上方各步骤，如需复跑可在 PR 上手动触发。'
+            echo
+            echo '### git diff package.json'
+            echo '```diff'
+            if git diff --quiet -- package.json; then
+              echo '（package.json 无变化——仅 lockfile 重解析）'
+            else
+              git diff -- package.json
+            fi
+            echo '```'
+            echo
+            echo '### 各步骤耗时'
+            echo '```'
+            cat "$RUNNER_TEMP/step-times.txt"
+            echo '```'
+          } > "$RUNNER_TEMP/pr-body.md"
+
+      # 仓库此前无开 PR 的 action 先例，按任务约定取 peter-evans/create-pull-request@v6
+      - name: Create pull request
+        if: steps.changed.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          # 只提交依赖清单，PR body 等临时产物都在 RUNNER_TEMP、天然不入库
+          add-paths: |
+            package.json
+            pnpm-lock.yaml
+          branch: deps/weekly-upgrade
+          # 上周 PR 已合并/关闭时清掉旧分支重建；仍有 open PR 时则原位更新
+          delete-branch: true
+          title: 'chore(deps): weekly upgrade smoke'
+          commit-message: 'chore(deps): weekly upgrade smoke (pnpm update --latest)'
+          body-path: ${{ runner.temp }}/pr-body.md
+          # 默认 GITHUB_TOKEN；committer/author 显式钉成 bot，避免 schedule 与
+          # 手动 dispatch 两种触发下 author 随 github.actor 抖动
+          committer: 'github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>'
+          author: 'github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>'

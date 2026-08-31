@@ -115,7 +115,7 @@ export default function ArticleView() {
     <Card>
       <Title>{article.title}</Title>
       <Flex align='center' gap='sm'>
-        <Avatar src={article.author.image} alt={article.author.username} />
+        <Avatar src={article.author.image ?? undefined} alt={article.author.username} />
         <Text>{article.author.username}</Text>
         <Button variant='outline' size='sm' onClick={toggleFollow}>
           {article.author.following ? 'Unfollow' : 'Follow'}{' '}

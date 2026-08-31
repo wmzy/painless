@@ -38,7 +38,7 @@ export default function CommentList({title}: Props) {
       <List>
         {comments.map((c) => (
           <ListItem key={c.id}>
-            <Avatar src={c.author.image} alt={c.author.username} />
+            <Avatar src={c.author.image ?? undefined} alt={c.author.username} />
             <Text>{c.body}</Text>
           </ListItem>
         ))}
