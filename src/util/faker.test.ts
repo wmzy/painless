@@ -174,4 +174,41 @@ describe('schema → faker → validate', () => {
     expect(slugIssue).toBeDefined();
     expect(slugIssue!.message).toContain('must be string');
   });
+
+  // 回归（类型契约漂移）：Comment.createdAt/updatedAt 必须是 date-time
+  // 字符串（PastDate）而非数字时间戳——RealWorld API 返回 ISO 字符串
+  // （openapi.d.ts 的 Comment schema），schema 由该类型自动生成，若回退
+  // 成 number，dev 运行时校验会把真实后端的响应整个挡下
+  // （ValidationError）。双向钉死：数字被拒且定位到 /createdAt、
+  // /updatedAt，ISO 形态（/\d{4}-\d{2}-\d{2}T/）放行。刻意不断言
+  // schemaFaker(commentSchema) 的日期形态：date.past 注解经
+  // json-schema-faker 0.6 产出 Date.toString() 文案，是 decisions.md
+  // 已记录的生成侧漂移，与本契约无关。
+  it('should reject numeric comment timestamps and accept date-time strings', async () => {
+    const {commentSchema} = await import('@/types/index.schema');
+    const {check} = await import('@/util/validate');
+
+    const comment = {
+      id: 'c1',
+      body: 'contract fixture',
+      slug: 'some-title-1',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      author: {username: 'bob', image: 'https://example.com/b.png', following: false}
+    };
+    expect(comment.createdAt).toMatch(/\d{4}-\d{2}-\d{2}T/);
+
+    const good = await check(commentSchema, comment, 'test comment');
+    expect(good).toEqual({value: comment});
+
+    const bad = await check(
+      commentSchema,
+      {...comment, createdAt: 1_767_225_600_000, updatedAt: 1_767_225_600_000},
+      'test comment'
+    );
+    expect('issues' in bad).toBe(true);
+    const issues = (bad as {issues: {path: string; message: string}[]}).issues;
+    expect(issues.some((i) => i.path === '/createdAt')).toBe(true);
+    expect(issues.some((i) => i.path === '/updatedAt')).toBe(true);
+  });
 });

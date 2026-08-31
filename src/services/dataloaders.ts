@@ -57,8 +57,9 @@ export const [editorLoader, useEditorData] = createDataLoader({
  * 元素当前无路由挂载，keyOf 按 /article/:title 的 ctx 形状预置，将来若
  * 要把评论提升为路由级 loader 可直接挂。场景 hook 在此组装：initData
  * 空数组在声明点闭合（data 类型随之收窄为非空，列表直接 .map），调用
- * 点（CommentList）零 option。发评论后的刷新由 Article 视图的
- * useMutation({invalidates: [commentsCache]}) 声明式负责。
+ * 点（CommentList）零 option。发评论后的刷新由 Article 视图的前缀失效
+ * useMutation({invalidates: [[commentsCache, slug]]}) 声明式负责——key
+ * 即精确 [slug]，其它文章的评论缓存不被误清。
  */
 export const [, , queryComments] = createDataLoader({
   fetch: articleService.fetchCommentsByTitle,
@@ -84,5 +85,8 @@ export const [, , queryTags] = createDataLoader({
 export const useTagsQuery = createQueryHook({
   queryFn: queryTags,
   initData: [],
-  mock: {schema: tagListSchema, key: 'tagList'}
+  // tagListSchema 来自 .schema 虚拟模块（typings/schema.d.ts 通配声明，
+  // 导出 any）：显式断 unknown 收口，避免 any 沿 MockConfig 字面量扩散
+  //（article.ts 的 schemas 收纳同款先例）
+  mock: {schema: tagListSchema as unknown, key: 'tagList'}
 });

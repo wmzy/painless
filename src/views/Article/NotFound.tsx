@@ -3,6 +3,8 @@ import type {AppPaths} from '@/views';
 import {TypedLink} from '@native-router/react';
 import {Card, Title, Text} from 'haze-ui';
 
+import {useTitle} from '@/util/useTitle';
+
 
 // /article/:title 的路由级 errorComponent：data（findByTitle）失败时由
 // native-router 在出错路由层级渲染，不再落到全局 errorHandler。props
@@ -21,6 +23,8 @@ function isNotFound(error: Error): boolean {
 }
 
 export default function NotFound({error}: Props) {
+  // 404 与加载失败共用本组件，标题不细分——用户只需知道「没进到正文」
+  useTitle('Not Found · Painless');
   return (
     <Card>
       <Title>Article not found</Title>

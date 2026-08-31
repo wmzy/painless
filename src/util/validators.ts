@@ -1,10 +1,15 @@
-// 表单层共享工具：字段验证器工厂 + 服务端 422 字段错误回填。
-// Login/Register/Editor 三页此前各自手写 required/email/minLength 的
+// 表单层共享工具：字段验证器工厂（同步 + 异步）+ 服务端 422 字段错误
+// 回填。Login/Register/Editor 三页此前各自手写 required/email/minLength 的
 // validate 回调、并在 catch 里把服务端错误拼成一句话放顶部 Alert，
-// 两处重复都在此收敛。
+// 两处重复都在此收敛。异步校验器（usernameAvailable）依赖 services 层
+// 的查重端点——方向是 util → services 的特例：本文件定位是应用级表单
+// 工具（已耦合 react-f0rm 与 RealWorld 的 422 错误形状），services/auth
+// 的依赖图（http/useQuery）不回指本文件，无环。
 import type {FormInstance} from 'react-f0rm';
 
 import {setServerErrors} from 'react-f0rm';
+
+import {fetchProfile} from '@/services/auth';
 
 // 与 Field 的 validate 回调同形：返回错误文案表示未通过，undefined 通过
 export type Validator = (v: string) => string | undefined;
@@ -36,6 +41,46 @@ export function compose(...validators: Validator[]): Validator {
     }
     return undefined;
   };
+}
+
+// ---- 异步校验器 -----------------------------------------------------------
+// 与上面同步 Validator 的差别在第二参：对齐 react-f0rm 的 validate 回调
+// 协议（src/hooks/validate.ts 的 Validator）——meta.signal 在轮次被超越
+// （新一轮开始/字段卸载）时自动 abort，透传给 service 层即可撤销在途
+// 请求；被取消的轮次即使仍有返回，也会被 useValidate 的 lock 机制独立
+// 丢弃（「不监听 signal 也保持正确」是库的显式保证）。
+export type AsyncValidator = (
+  v: string,
+  meta: {signal: AbortSignal}
+) => Promise<string | undefined>;
+
+// 用户名占用校验（Register 异步查重）：GET profiles/{username}——200 表示
+// 已被占用；文案对齐 RealWorld 后端对重复用户名的 422 字段错误
+// 'has already been taken'，提前暴露与提交时 applyApiFieldErrors 的权威
+// 回填是同一句话，用户看到的占用提示前后一致。
+//
+// fail-open 论证：查重只是提前暴露的 UX 优化，校验通道绝不阻塞注册。
+// 除 AbortError（轮次被取消，交还 react-f0rm 吞掉）外的一切失败——404
+// （用户名可用）、5xx/网络错/超时（结果未知）——都返回 undefined 放行。
+// 权威判定在提交时：后端对占用用户名返回 422，字段回填兜底已存在
+// （applyApiFieldErrors）；若在这里 fail-closed（把网络错当占用报错），
+// 查重服务的抖动会被升级成「无法注册」，可用性损失远大于晚一步才见
+// 占用提示的收益。
+export function usernameAvailable(
+  msg = 'has already been taken'
+): AsyncValidator {
+  return (v, meta) =>
+    fetchProfile(v, meta.signal).then(
+      // 200：档案存在 → 用户名已被占用
+      () => msg,
+      (e: unknown) => {
+        // 取消不是失败：维持拒绝语义，让 useValidate 的 .catch(() => {})
+        // 吞掉被超越的轮次（其结果本来也会被 lock 丢弃，这里是显式交还）
+        if (e instanceof DOMException && e.name === 'AbortError') throw e;
+        // 404 = 可用；其余（5xx/网络错/超时）结果未知，同样放行
+        return undefined;
+      }
+    );
 }
 
 // 服务端 422 字段错误回填：能对应到表单字段（fields）的错误写到该字段

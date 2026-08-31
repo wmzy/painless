@@ -274,27 +274,23 @@ Scope discipline — the pattern is for state a host may want to steer. Delibera
 
 One caveat: a control prop must be identity-stable across renders — dev builds throw if the same mounted hook receives a different control object.
 
-### A Project-Level `useQuery` Preset
+### A Project-Level Query Preset (`createQueryHook`)
 
-Instead of adopting a data-fetching library, the template composes `react-toolroom/async` primitives (`useInjectable`, `useCache`, `useRun`, `useResult`, `useLoading`, `useInitialLoading`, `useError`, `useRetry`, `useFocusRevalidate`) into **one** project-owned hook — demonstrating the idea that each project should shape its own query layer:
+Instead of adopting a data-fetching library, the template composes `react-toolroom/async` primitives (`useInjectable`, `useCache`, `useRun`, `useResultSelect`, `useLoading`, `useArgsStatus`, `useFocusRevalidate`, `useReconnectRevalidate`, `useRefresh`) into **one** project-owned factory — demonstrating the idea that each project should shape its own query layer. `createQueryHook(config)` closes every option at the **scenario declaration point** (once, immutable); the hook it returns takes only `args` at the call site — zero options, zero plumbing:
 
 ```ts
 // src/util/useQuery.ts (signature)
-function useQuery<F extends AsyncFunc>(
-  fn: F,
-  args: Parameters<F>,
-  opts: QueryOptions<R<F>>
-): QueryResult<R<F> | undefined>;
+export function createQueryHook<C extends QueryHookConfig>(
+  config: C
+): (args: SceneArgs<C>) => QueryResult<SceneData<C>>;
+// SceneArgs: the queryFn's args (trailing optional signal stripped);
+// SceneData: its return type, plus undefined unless initData was declared
 
-type QueryOptions<T> = {
-  cache: EntityCache<T, any>;  // required — pick the per-entity cache (see allCaches)
-  staleTime?: number;          // defaults to 2000ms
-  initData?: T;                // initial data to avoid undefined on first render
-  retry?: {                    // feeds useRetry; disabled by default
-    retries?: number;
-    backoff?: 'exponential' | 'linear' | ((attempt: number) => number);
-  };
-  mock?: MockConfig;           // {schema, key} — hooks the DevTool mock panel
+type QueryHookConfig = {
+  queryFn: QueryFn<any, any[]>;  // required — a bindQueryFn(fetch, cache) product
+  staleTime?: number;            // defaults to 2000ms
+  initData?: unknown;            // initial data; narrows data to non-nullable
+  mock?: MockConfig;             // {schema, key} — hooks the DevTool mock panel
 };
 
 type QueryResult<T> = {
@@ -302,40 +298,50 @@ type QueryResult<T> = {
   loading: boolean;     // initial load only — true until the first result exists
   fetching: boolean;    // any request in flight (incl. background refetches)
   error: Error | undefined;
+  failureCount: number; // per-args failures since the last success
   stale: boolean;
-  refetch: () => void;  // drops the cache entry for the current args and re-runs
+  dataUpdatedAt: number | undefined; // last successful settle for these args (TanStack's namesake)
+  refetch: () => void | Promise<unknown>; // drops the cache entry for the current args and re-runs
 };
 ```
 
-The cache is **per-entity** (`articleCache` / `homeCache` / `commentsCache` / `tagsCache`): the value type and the key-tuple type are pinned on the cache itself, so `peek` results are narrowed without `as` casts and a wrong-shaped key is a compile error — the `'article'`-style magic string prefix disappears because identity *is* the cache binding. The hash normalizes two ways (signals stripped; object keys with `undefined` values dropped recursively), so `{tag: undefined}` and `{}` are one key — a loader key from a schema output and a view-side key from component state can never drift apart. `allCaches` registers every entity cache for logout-time clears and the DevTool panel.
+Note what the config does **not** contain: `cache`. The fetch function and its cache are paired exactly once by `bindQueryFn(fetch, cache)` into a branded `QueryFn` — a plain service function lacks the phantom brand and cannot enter `createQueryHook` at compile time — and the loader, scenario-hook and mutation channels all resolve that one binding (no re-pairing at assembly points).
 
-Out of the box the preset wires the behaviors projects usually hand-roll: concurrent same-args calls are **deduplicated at the provider level** — since react-toolroom 0.8, `useCache`'s miss/stale revalidation routes through `queryCache.load` (an atomic get-or-insert of the in-flight slot), so every consumer *and every channel* (another component, a route loader — see below) asking for the same key while a request is pending shares that one promise; dependency changes **abort** the previous request via a trailing `AbortSignal` threaded through the service layer to `fetch` (`useRun({signal: true})`); cache/load/refetch keys are all one **structural hash** (`stableHash` with signals stripped — key-order-insensitive); and window focus / visibility regain **revalidates in the background** (`useFocusRevalidate`) — fresh entries hit the cache without a request, stale ones swap in silently.
+The caches are **per-entity** (`articleCache` / `homeCache` / `commentsCache` / `tagsCache`, declared via `createQueryCache(name, cacheTime?, {persist?})`): the value type and the key-tuple type are pinned on the cache itself, so `peek` results are narrowed without `as` casts and a wrong-shaped key is a compile error — the `'article'`-style magic string prefix disappears because identity *is* the cache binding. The hash normalizes two ways (signals stripped; object keys with `undefined` values dropped recursively), so `{tag: undefined}` and `{}` are one key — a loader key from a schema output and a view-side key from component state can never drift apart. `allCaches` registers every entity cache for logout-time clears and the DevTool panel; `tagsCache` additionally carries a localStorage mirror (hydrated on load, wiped on logout).
 
-Real usage, from the tag sidebar and the comment list:
+Out of the box the preset wires the behaviors projects usually hand-roll: concurrent same-args calls are **deduplicated at the provider level** — `useCache`'s miss/stale revalidation routes through the cache's `load` (an atomic get-or-insert of the in-flight slot), so every consumer *and every channel* (another component, a route loader — see below) asking for the same key while a request is pending shares that one promise; dependency changes **abort** the previous request via a trailing `AbortSignal` threaded through the service layer to `fetch` (`useRun({signal: true})`); cache/load/refetch keys are all one **structural hash** (`stableHash` with signals stripped — key-order-insensitive); and window focus / visibility regain and reconnects **revalidate in the background** (`useFocusRevalidate` / `useReconnectRevalidate`) — fresh entries hit the cache without a request, stale ones swap in silently.
+
+Real declarations and call sites, from the tag sidebar and the comment list:
 
 ```tsx
-// src/views/Home/Tags.tsx
-const {data: tags, loading, error, stale} = useQuery(articleService.fetchTags, [], {
+// src/services/dataloaders.ts — the scenario declaration points
+// (createDataLoader's triplet — loader / useData / queryFn — see the next section)
+export const [, , queryTags] = createDataLoader({
+  fetch: articleService.fetchTags,
   cache: tagsCache,
+  keyOf: (): [] => []
+});
+export const useTagsQuery = createQueryHook({
+  queryFn: queryTags,
   initData: [],
   mock: {schema: tagListSchema, key: 'tagList'}
 });
+export const useCommentsQuery = createQueryHook({queryFn: queryComments, initData: []});
 
-// src/views/Article/CommentList.tsx
-const {data: comments, loading, error} = useQuery(
-  articleService.fetchCommentsByTitle,
-  [title],
-  {cache: commentsCache, initData: []}
-);
+// src/views/Home/Tags.tsx — the call site carries zero options
+const {data: tags, loading, error, stale} = useTagsQuery([]);
+
+// src/views/Article/CommentList.tsx — initData: [] narrows data to Comment[]
+const {data: comments, loading, error, dataUpdatedAt} = useCommentsQuery([title]);
 ```
 
 #### When to Reach Past the Preset
 
-The preset wires the behaviors most projects need (dedup, SWR, focus/reconnect revalidation, abort-on-change, optional retry). `react-toolroom/async` ships more primitives that the preset deliberately does **not** re-export — when one of these fits, drop to the library hook directly on the same injectable/cache instead of growing the preset:
+The preset wires the behaviors most projects need (dedup, SWR, focus/reconnect revalidation, abort-on-change). `react-toolroom/async` ships more primitives that the preset deliberately does **not** re-export — when one of these fits, drop to the library hook directly on the same injectable/cache instead of growing the preset:
 
 - **Polling** (`usePolling` — TanStack's `refetchInterval`): live dashboards. It skips ticks while a call is slow and pauses when the tab is hidden; pass `args` so the poller addresses the same cache key as your `useRun`.
-- **Infinite lists** (`useInfinite` — TanStack's `useInfiniteQuery`): `fetchNextPage`/`fetchPreviousPage`, `maxPages` windowing. RealWorld's Home is offset pagination (correct for the API), but infinite scroll is a one-hook drop-in when your API is cursor-based.
-- **Retry observability** (`useFailureCount`): expose "retrying (2/3)…" UI when you enable `opts.retry`.
+- **Infinite lists** (`useInfinite` — TanStack's `useInfiniteQuery`): `fetchNextPage`/`fetchPreviousPage`, `maxPages` windowing. The About page's feed (`src/services/feed.ts`) is a working in-repo example — offset pagination aggregated into an endless list, the first page driven by `useRun` like any plain query, the next by an IntersectionObserver sentinel — and it deliberately opts out of the cache: what to cache and for how long belongs to scenarios that actually share data across pages, which is the point of per-scenario assembly over a one-size preset.
+- **Retry observability** (`useRetry` + `useFailureCount`): the preset already reports per-args `failureCount` in its result; a scenario that wants automatic retries drops to `useRetry` and pairs it with `useFailureCount` for "retrying (2/3)…" UI.
 - **Mutation serialization** (`useMutation` `scope`, react-toolroom 0.11): rapid-fire writes to the same entity — the template's favorite button queues per-slug (`scope: (slug) => \`favorite:${slug}\``), so a second click executes on the *settled* baseline instead of racing.
 - **Lower-level stores** (`useResult`/`useLoading`/`useError` share one broadcast domain per injectable): siblings reading the same query sync for free; late mounters start from the last result with zero requests.
 
@@ -343,9 +349,9 @@ The rule of thumb: the preset is the default path; a library primitive beside it
 
 ### Route Loaders Share the Entity Caches (`withCache`)
 
-The two data channels — route `data` loaders and `useQuery` — deliberately share the **entity caches**. They differ in *when* they trigger and whether they block (loader: navigation resolve, `pendingComponent` skeleton; query: post-mount, loading/error states), but cache and invalidation are one. `withCache(cache, keyOf, fn)` (`src/util/loaderCache.ts`) wraps a loader; `keyOf(ctx)` is the **single place** the entity's key is defined — the loader addresses `articleCache` as `[title]` / `homeCache` as `[search]`, and mutations address the same tuples through the cache binding, so views never hand-assemble keys at all (the old `homeCacheArgs` "payload must match the schema output shape" footgun is structurally gone — the hash drops `undefined` keys).
+The two data channels — route `data` loaders and the scenario hooks (`createQueryHook` products) — deliberately share the **entity caches**. They differ in *when* they trigger and whether they block (loader: navigation resolve, `pendingComponent` skeleton; query: post-mount, loading/error states), but cache and invalidation are one. One declaration covers both channels: `createDataLoader({fetch, cache, keyOf, mock?})` (`src/util/dataLoader.ts`) returns a **triplet** `[loader, useData, queryFn]` — the loader goes on the route, `useData()` reads typed data in the view (the `useData<T>()!` assertion and generic annotations collapse into the factory; `{optional: true}` covers a shared component on a route that may carry no data, and dev builds verify the route actually declared this loader), and `queryFn` feeds `createQueryHook` for the component channel. `keyOf(ctx)` is the **single place** the entity's key is defined — the loader addresses `articleCache` as `[title]` / `homeCache` as `[search]`, and mutations address the same tuples through the cache binding, so views never hand-assemble keys at all (the old `homeCacheArgs` "payload must match the schema output shape" footgun is structurally gone — the hash drops `undefined` keys). All declarations live in `src/services/dataloaders.ts` — the application binding layer the route table and views consume.
 
-`withCache` gives the loader SWR semantics — fresh hits return the cached value with zero requests, stale hits return the old value immediately and revalidate in the background, misses fall through to the skeleton/error paths. Combined with the router's view stack, a navigation lands in one of four states:
+Under the hood the loader is wrapped by `withCache(cache, keyOf, fn)` (`src/util/loaderCache.ts`) with SWR semantics — fresh hits return the cached value with zero requests, stale hits return the old value immediately and revalidate in the background, misses fall through to the skeleton/error paths. Combined with the router's view stack, a navigation lands in one of four states:
 
 | Navigation lands on | Loader runs? | What the user sees |
 | --- | --- | --- |
@@ -354,7 +360,7 @@ The two data channels — route `data` loaders and `useQuery` — deliberately s
 | cache hit, stale | yes — background revalidate | old value immediately, refreshed in place — no skeleton, no flash |
 | cache miss | yes — network | `pendingComponent` skeleton (cold start) |
 
-In-flight requests are shared across channels at the provider level: a `PrefetchLink` warm-up and the real navigation resolve to the *same* in-flight promise, so hovering a link first does not double-fetch.
+In-flight requests are shared across channels at the provider level: a `PrefetchLink` warm-up and the real navigation resolve to the *same* in-flight promise, so hovering a link first does not double-fetch. Idle entries are reclaimed per-entry (`cacheTime` ages from each entry's `lastUsedAt` — loader-written entries with no live consumers are reclaimed after the window too; no never-expire special cases).
 
 Two session-level freshness edges are covered: on `logout()` the Layout also calls `invalidate(router)` (native-router ≥1.6) — view-stack snapshots of the previous account are dropped, so a later back POP re-resolves through guards and loaders instead of replaying the old account's views; and `pageshow` with `persisted: true` (bfcache restore — the SPA gets no navigation event) triggers `refresh(router)`: loaders re-run against the cache, fresh hits cost nothing, stale ones swap in silently.
 
@@ -364,25 +370,29 @@ Write-through favorite / follow used to be ~30 hand-rolled lines per call site (
 
 ```ts
 // src/services/mutations.ts
-// article 层：单实体原语，可被任何视图/其它层复用
+// article layer: the single-entity primitive, reusable by any view / other layer
 export const favoriteOnArticle = articleCache.mutation(
   (slug: string, on: boolean) => ({
     mutate: () => api.favoriteArticle(slug, on),
     key: [slug],
     update: (old) => ({...old, favorited: on,
       favoritesCount: old.favoritesCount + (on ? 1 : -1)}),
-    // field-selecting merge: the response was captured when the request
-    // started — only the favorite fields are authoritative, a `following`
-    // written while this was in flight survives
+    // field-selecting merge: only the favorite fields are authoritative —
+    // a `following` written while this was in flight survives the apply
     apply: (old, resp) => ({...old, favorited: resp.favorited,
       favoritesCount: resp.favoritesCount})
   })
 );
 
-// home 层：信息流投影，组合在上一层之上（key 省略 = patch every entry）
+// home layer: the feed projection, composed on top (key omitted = patch every
+// settled entry; pages that don't contain the slug miss-bail and are skipped)
 export const favoriteOnHome = homeCache.mutation((slug: string, on: boolean) => ({
-  mutate: () => favoriteOnArticle(slug, on),   // composition point
-  update: (page, slug, on) => patchArticleIn(page, slug, {...}),
+  mutate: () => favoriteOnArticle(slug, on), // composition point
+  update: (page, slug, on) => {
+    const target = page.articles.find((x) => x.slug === slug);
+    if (!target) return undefined;
+    return patchArticleIn(page, slug, {...});
+  },
   apply: (page, resp) => patchArticleIn(page, resp.slug, {...})
 }));
 ```
@@ -391,7 +401,10 @@ The pipeline journals every write, and on failure rolls back with an identity gu
 
 ```tsx
 // src/views/Home/index.tsx
-const [favorite] = useMutation(favoriteOnHome);
+const [favorite] = useMutation(favoriteOnHome, {
+  // serialize rapid clicks on the same article; different articles don't block
+  scope: (slug: string) => `favorite:${slug}`
+});
 const toast = useToast();
 const toggleFavorite = (a: Article) => {
   if (!getCurrentUser()) return void navigate(router, '/login');
@@ -408,7 +421,7 @@ Three properties fall out of the composition for free:
 - **Refresh is automatic** — `withCache` subscribes each cache's `set` events on first loader run and refreshes the router when an already-seen key's value reference changes (microtask-debounced). Write-through, rollback, `patchWhere` batches and background revalidation settles all flow through it; views contain zero `refresh` calls. The reference-change check doubles as a structural-sharing substitute: a revalidation that settles with the same reference triggers nothing.
 - **Failure isolation** — each layer miss-bails independently (nothing is fabricated for absent entries, so an optimistic write can never resurrect an entry a logout just cleared), and a rejection unwinds every composed layer.
 
-Comment posting stays with declarative invalidation (`invalidates: [commentsCache]`) — list shape after an append is not locally computable, a hard refetch is the right tool; `Editor` saving likewise invalidates `homeCache`/`articleCache` wholesale.
+Comment posting stays with declarative invalidation, pinned to the exact key: `useMutation(articleService.addComment, {invalidates: [[commentsCache, article.slug]]})` clears only the current article's comment entry (other articles' caches survive, and a mounted `CommentList` refetches passively via the provider's delete event — the list shape after an append is not locally computable, a hard refetch is the right tool). `Editor` saving invalidates wholesale (`invalidates: [homeCache, articleCache]`) — two deliberate granularities: a comment write maps 1:1 to the `[slug]` key, while the home projection's keys are full search combinations that an edit cannot enumerate at the write point.
 
 ### A Typed HTTP Client on `fetch-fun`
 
@@ -546,7 +559,7 @@ Two integration points:
 - Route loaders: `mockViewData(fn, schema, key)` wraps a route `data` function.
 - Component queries: `useQuery`'s `mock: {schema, key}` option.
 
-Both register with the **DevTool** panel (dev-only), where each dataset can be switched between `empty` (mock only when the API errors or returns nothing) and `always`. Every mock-config write (`setMockConfig`) clears the shared `queryCache` — mocks take precedence over cache: a mode switch or panel Refresh must bypass the loader's fresh `withCache` hits, or the mock would never take effect (dev-only; production has no `setMockConfig` callers).
+Both register with the **DevTool** panel (dev-only), where each dataset can be switched between `empty` (mock only when the API errors or returns nothing) and `always`. Mode switches and the panel's Refresh button clear all per-entity caches (`clearAllCaches` walks the `allCaches` registry) — mocks take precedence over cache: they must bypass the loader's fresh `withCache` hits, or the mock would never take effect (dev-only; production has no mock callers).
 
 The panel also hosts two more dev inspectors:
 
@@ -570,6 +583,35 @@ const pushRight = css`
   margin-left: auto;
 `;
 ```
+
+### Error Reporting Extension Points
+
+The template ships no error-reporting SDK — reporting is a product decision it refuses to make for you. What it does ship is three mounting points, one per layer, each seeing a different slice of failures:
+
+- **HTTP layer** (`src/util/http.ts`) — every request from every channel (route loaders, `useQuery`, mutations) funnels through the one fetch-fun pipeline, and its final `mapError` stage is where a reporter belongs: capture, then return the error unchanged so `instanceof HTTPError`, `.status` and `.data` keep working downstream. Richest signal per failure (status, parsed error body, request context) — but request failures only, and filter the noise: a request aborted because a newer navigation superseded it (`AbortSignal` threading) is routine, not an error.
+- **Router layer** (`src/views/index.tsx`) — navigation-time failures split by segment: `params`/`search` parse failures, and any route without its own fallback, land in the global `errorHandler` (renders `RouterError`); a route's `errorComponent` (e.g. `NotFound` on `/article/:title`) covers only that route's `data` failures. The division of labor: `errorComponent` is presentation — the page decides what "article not found" looks like — while `errorHandler` is the single choke point that sees every other loader failure, and the natural place to report them.
+- **Render layer** (`src/index.tsx`) — the router catches resolve failures; an error thrown while a view *renders*, or from an event handler, is outside its pipeline. The template deliberately mounts no root `ErrorBoundary` yet — the natural spot is `Root` in `src/index.tsx`, wrapping `<App />` as the last-resort boundary, paired with a crash fallback UI instead of a white screen.
+
+Wiring one up (Sentry pseudo-code — the template carries no such dependency):
+
+```tsx
+// ① HTTP layer — src/util/http.ts, at the mapError exit: report, return as-is
+.pipe(ff.mapError, (e) => {
+  if (!isAbort(e)) Sentry.captureException(e); // superseded-request aborts aren't errors
+  return e;
+})
+// ② Router layer — src/views/index.tsx, global errorHandler (errorComponent only renders)
+errorHandler={(e) => {
+  Sentry.captureException(e);
+  return <RouterError error={e} />;
+}}
+// ③ Render layer — src/index.tsx root ErrorBoundary (not mounted yet; wraps <App />)
+<ErrorBoundary onError={(e) => Sentry.captureException(e)} fallback={<Crash />}>
+  <App />
+</ErrorBoundary>
+```
+
+The layers overlap by design — a loader's 500 already passed through the HTTP layer — so mount where your product needs signal and let the SDK dedupe (Sentry-class SDKs fingerprint repeats).
 
 ## Getting Started
 

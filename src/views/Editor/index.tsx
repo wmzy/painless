@@ -15,6 +15,7 @@ import {useMutation} from 'react-toolroom/async';
 import * as articleService from '@/services/article';
 import {useEditorData} from '@/services/dataloaders';
 import {articleCache, homeCache} from '@/util/useQuery';
+import {useTitle} from '@/util/useTitle';
 import {required, applyApiFieldErrors} from '@/util/validators';
 
 // 表单值形状：validate 回调与 handleSubmit 的 values 都由此约束
@@ -34,6 +35,10 @@ export default function Editor() {
   // DEV 下 route.data === editorLoader 或 === undefined 均合法，失配
   // throw（见 src/util/dataLoader.ts）
   const article = useEditorData({optional: true});
+  // 新建/编辑二态页标题：判别只复用上面 optional loader 的返回值，
+  // 不为标题引入第二个数据来源；页名与视图内 <Title> 文案（New/Edit
+  // Article）一致
+  useTitle(article ? 'Edit Article · Painless' : 'New Article · Painless');
   const [error, setError] = useState<string | null>(null);
   // react-f0rm 0.5.0：setInitialValues 已改为内容比较——引用变化但内容
   // 相同不再 values.clear() 清空 live values，inline 对象即可，无需

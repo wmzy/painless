@@ -93,7 +93,7 @@ import {renderView} from '@/test-utils';
 import {getCurrentUser} from '@/services/auth';
 import * as articleService from '@/services/article';
 import {withCache} from '@/util/loaderCache';
-import {articleCache, clearAllCaches} from '@/util/useQuery';
+import {articleCache, clearAllCaches, commentsCache} from '@/util/useQuery';
 import {articleLoader} from '@/services/dataloaders';
 
 import ArticleView from './index';
@@ -184,6 +184,18 @@ describe('Article 评论表单', () => {
 
     expect(await screen.findByText('Comment is required')).toBeDefined();
     expect(addCommentMock).not.toHaveBeenCalled();
+  });
+
+  // useTitle 接入批：页标题取文章 title（loader 保证进组件前 resolve，
+  // 首帧即有，基线铺设见 Home/index.test.tsx 同款注释）
+  it('document.title：进入设为文章标题页，卸载恢复进入前值', () => {
+    document.title = 'Painless';
+    const view = renderView(<ArticleView />);
+
+    expect(document.title).toBe('Some title · Painless');
+
+    view.unmount();
+    expect(document.title).toBe('Painless');
   });
 });
 
@@ -329,8 +341,9 @@ describe('发评论后刷新评论列表', () => {
     id: 'c1',
     body: 'first comment',
     slug: 'some-title-1',
-    createdAt: 0,
-    updatedAt: 0,
+    // PastDate（date-time 字符串）：对齐 Article 同款字段与真实 API 契约
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
     author: {username: 'bob', image: 'https://example.com/b.png', following: false}
   };
   const commentB: Comment = {...commentA, id: 'c2', body: 'second comment'};
@@ -377,5 +390,76 @@ describe('发评论后刷新评论列表', () => {
         ? commentBox.value
         : (commentBox as HTMLTextAreaElement).value
     ).toBe('');
+  });
+
+  it('前缀失效：只清本 slug 的评论条目，其它 slug 缓存不被误清', async () => {
+    // 预置另一 slug 的已 settle 条目——失效若仍是整实体（裸 provider
+    // [commentsCache]），它会连带给清、peek 落空，本用例即红
+    commentsCache.set(['another-article'], [commentA]);
+    fetchCommentsMock
+      .mockResolvedValueOnce([commentA])
+      .mockResolvedValueOnce([commentA, commentB]);
+    addCommentMock.mockResolvedValueOnce(commentB);
+    renderView(<ArticleView />);
+
+    expect(await screen.findByText('first comment')).toBeDefined();
+
+    fireEvent.change(screen.getByPlaceholderText('Write a comment...'), {
+      target: {value: 'second comment'}
+    });
+    fireEvent.click(screen.getByRole('button', {name: 'Post Comment'}));
+
+    // 新评论上屏后才保证重拉已 settle 且写回缓存，peek 断言无时序竞态
+    expect(
+      await screen.findByText('second comment', {selector: 'li span'})
+    ).toBeDefined();
+    // 重拉只发生在本 slug：另一 slug 的条目没被失效也就没有请求
+    expect(fetchCommentsMock.mock.calls.map(([title]) => title)).toEqual([
+      'some-title-1',
+      'some-title-1'
+    ]);
+    // 本 slug 条目按新数据重建；另一 slug 条目原样存活
+    expect(commentsCache.peek!(['some-title-1'])?.value).toEqual([
+      commentA,
+      commentB
+    ]);
+    expect(commentsCache.peek!(['another-article'])?.value).toEqual([commentA]);
+  });
+
+  it('「更新于 x 前」：首载 settle 后出现，失效重拉后时间戳刷新', async () => {
+    // Date.now 打桩成可控时钟：dataUpdatedAt 的打点与文案推导都以它为
+    // 唯一时间源——两次 settle 的真实间隔是毫秒级，不打桩则「时间刷新」
+    // 在文案上不可分辨（恒为「不到 1 分钟前」），断言会假绿
+    let now = Date.now();
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => now);
+    try {
+      fetchCommentsMock
+        .mockResolvedValueOnce([commentA])
+        .mockResolvedValueOnce([commentA, commentB]);
+      addCommentMock.mockResolvedValueOnce(commentB);
+      renderView(<ArticleView />);
+
+      // 初载 Spinner 窗口 dataUpdatedAt 为 undefined：克制小字不渲染
+      expect(screen.queryByText(/^更新于/)).toBeNull();
+
+      expect(await screen.findByText('first comment')).toBeDefined();
+      expect(screen.getByText('更新于 不到 1 分钟前')).toBeDefined();
+
+      // 快进 2 分钟再发评论：stamp 若未随重拉刷新，文案会停在「2 分钟前」
+      now += 2 * 60_000;
+      fireEvent.change(screen.getByPlaceholderText('Write a comment...'), {
+        target: {value: 'second comment'}
+      });
+      fireEvent.click(screen.getByRole('button', {name: 'Post Comment'}));
+
+      expect(
+        await screen.findByText('second comment', {selector: 'li span'})
+      ).toBeDefined();
+      // 重拉 settle 用新 now 打点：距离回到零区间，旧文案不再出现
+      expect(screen.getByText('更新于 不到 1 分钟前')).toBeDefined();
+      expect(screen.queryByText('更新于 2 分钟前')).toBeNull();
+    } finally {
+      clock.mockRestore();
+    }
   });
 });

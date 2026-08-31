@@ -265,6 +265,15 @@ export type QueryResult<T> = {
   /** 本参数自上次成功以来的失败次数，同参数成功即归零（per-args 观测） */
   failureCount: number;
   stale: boolean;
+  /**
+   * 本 args 最近一次成功 settle 的时间戳（Date.now()）。与 data 同源同
+   * 契约（useArgsStatus 的 provenance）：展示中的结果确由当前 args 取得
+   * 时为数字，否则 undefined（含「另一组 args 的结果正在展示」的窗口）。
+   * 失败不触碰——同 args 重拉失败保留上一次成功的时间戳，「数据截至 T」
+   * 跨错误态保持真话。TanStack Query dataUpdatedAt 的对应物；CommentList
+   * 的「更新于 x 前」以它为数据源，发评论失效重拉后自动刷新。
+   */
+  dataUpdatedAt: number | undefined;
   /** 删除当前 args 的缓存条目后重新请求（绕过缓存；引用稳定，失败 resolve undefined 不 reject） */
   refetch: () => void | Promise<unknown>;
 };
@@ -330,8 +339,10 @@ export function createQueryHook(
     useReconnectRevalidate(injectable, {args});
 
     // initData 注入 init 槽：首帧即有兜底值，但不落 result store——初载
-    // 语义的 loading 仍如实为 true。
-    const data = useResultSelect(injectable, identity, initData);
+    // 语义的 loading 仍如实为 true。注解 unknown 收口：实现重载的
+    // queryFn 是 QueryFn<any, any[]>，R<AF> 链路保持 any 会沿返回对象
+    // 扩散（对外类型由公开重载收窄，实现体内 unknown 足够）。
+    const data: unknown = useResultSelect(injectable, identity, initData);
     const fetching = useLoading(injectable);
 
     // per-args 观测：loading/error/failureCount 按 args key 独立——同一
@@ -342,8 +353,12 @@ export function createQueryHook(
     // 从返回值 error 读，useRun / refetch 不产生悬空 rejection。
     const argsStatus = useArgsStatus(injectable, args);
     const loading = argsStatus.loading && argsStatus.data === undefined;
-    const error: Error | undefined = argsStatus.error;
+    // ArgsStatus.error 库侧是 any（react-toolroom 未收紧）——断言收口
+    const error: Error | undefined = argsStatus.error as Error | undefined;
     const failureCount = argsStatus.failureCount;
+    // 透传 per-args 的成功时间戳：provenance 契约由 useArgsStatus 把关
+    //（data 为 undefined 的窗口它恒为 undefined），组装层零加工。
+    const dataUpdatedAt = argsStatus.dataUpdatedAt;
 
     // signal: true：每次 run 在 args 尾部附加 AbortSignal，args 变化或卸载
     // 时 abort 上一次（经服务层尾参透传到 fetch）；hash 让「结构变化」取代
@@ -352,6 +367,6 @@ export function createQueryHook(
 
     const refetch = useRefresh(injectable, args, cache);
 
-    return {data, loading, fetching, error, failureCount, stale, refetch};
+    return {data, loading, fetching, error, failureCount, stale, refetch, dataUpdatedAt};
   };
 }

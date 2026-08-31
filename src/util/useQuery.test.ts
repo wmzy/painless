@@ -54,6 +54,55 @@ describe('createQueryHook（场景 hook）', () => {
     expect(result.current.stale).toBe(false);
   });
 
+  it('dataUpdatedAt：成功 settle 打点、重拉成功刷新、失败保留上次成功', async () => {
+    // 可控时钟：打点值直接可比（真实 Date.now 两次 settle 几乎同值，
+    // 「刷新」不可断言）；固定值对 staleTime/cacheTime 均单调安全
+    let now = 1_000_000;
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => now);
+    try {
+      const fn = vi
+        .fn()
+        .mockResolvedValueOnce(['v1'])
+        .mockRejectedValueOnce(new Error('boom'))
+        .mockResolvedValueOnce(['v2']);
+      const cache = createQueryCache<any, any>('data-updated-at');
+      const useQ = createQueryHook({
+        queryFn: bindQueryFn(fn, cache),
+        initData: [] as string[]
+      });
+
+      const {result} = renderHook(() => useQ([]));
+      // 首个结果到达前（initData 兜底窗口）无打点
+      expect(result.current.dataUpdatedAt).toBeUndefined();
+
+      await waitFor(() => expect(result.current.data).toEqual(['v1']));
+      expect(result.current.dataUpdatedAt).toBe(now);
+
+      // 失败的重拉不触碰打点：「数据截至 T」跨错误态保持真话。注：fc 恰
+      // +1 依赖 react-toolroom ≥0.18.2（fix 59abeb5）——此前 painless 的
+      // signal 剥离自定义 hash 下，refetch 的删除事件在 pending claim 只
+      // 落一半时派发，消费者重跑与 refetch 自身重取经 in-flight 去重合并
+      // 为一次 fetch、两趟 wrapper 链 settle，一次失败被 failureCount 双计
+      now += 5_000;
+      await act(async () => {
+        void result.current.refetch();
+      });
+      await waitFor(() => expect(result.current.failureCount).toBe(1));
+      expect(result.current.dataUpdatedAt).toBe(1_000_000);
+      expect(result.current.data).toEqual(['v1']);
+
+      // 成功的重拉刷新到新时刻
+      now += 5_000;
+      await act(async () => {
+        void result.current.refetch();
+      });
+      await waitFor(() => expect(result.current.data).toEqual(['v2']));
+      expect(result.current.dataUpdatedAt).toBe(1_010_000);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
   it('同参数重新挂载：新鲜期内命中缓存，不再发请求', async () => {
     const fn = vi.fn().mockResolvedValue(['v1']);
     const cache = createQueryCache<any, any>('fresh-remount');
@@ -122,7 +171,7 @@ describe('createQueryHook（场景 hook）', () => {
     expect(result.current.refetch).toBe(refetch); // 重渲染不变
 
     await act(async () => {
-      refetch();
+      void refetch();
     });
     await waitFor(() => expect(result.current.data).toEqual(['v2']));
     expect(fn).toHaveBeenCalledTimes(2);
@@ -163,13 +212,13 @@ describe('createQueryHook（场景 hook）', () => {
     expect(result.current.failureCount).toBe(1);
 
     await act(async () => {
-      result.current.refetch();
+      void result.current.refetch();
     });
     await waitFor(() => expect(result.current.error?.message).toBe('boom-2'));
     expect(result.current.failureCount).toBe(2);
 
     await act(async () => {
-      result.current.refetch();
+      void result.current.refetch();
     });
     await waitFor(() => expect(result.current.data).toEqual(['ok']));
     expect(result.current.failureCount).toBe(0); // 成功即归零
@@ -190,7 +239,7 @@ describe('createQueryHook（场景 hook）', () => {
     expect(result.current.loading).toBe(false);
 
     await act(async () => {
-      result.current.refetch(); // 同 invalidate 触发的重拉路径
+      void result.current.refetch(); // 同 invalidate 触发的重拉路径
     });
 
     // 已有结果：不回到初载 loading（不闪整屏 Spinner），in-flight 由 fetching 表达
@@ -258,7 +307,7 @@ describe('createQueryHook（场景 hook）', () => {
     // 重发（useDedup 时代的「连点合并」不再保留，provider 去重只在同一条
     // in-flight 生命周期内生效）。
     await act(async () => {
-      result.current.refetch();
+      void result.current.refetch();
     });
     await act(async () => {
       second.resolve(['v2']);

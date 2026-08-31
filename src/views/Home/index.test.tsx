@@ -7,6 +7,9 @@
 // settled 值、
 // refresh mock 广播重渲染，模拟「loader 重跑 → withCache 新鲜命中 →
 // 视图换新」链路。
+// 分页链接化批：翻页控件改为 TypedLink 表形态（search 序列化进链接），
+// 断言从「setSearch 载荷」改为「navigate 目标 URL + href 预览」；tag 取消
+// 仍走 useSetSearch 写入口。
 import type {ReactNode} from 'react';
 import type {ArticlePage} from '@/types';
 
@@ -112,6 +115,13 @@ vi.mock('haze-ui', async () => {
 vi.mock('@native-router/react', async () => {
   const React = await import('react');
   const {homeCache} = await import('@/util/useQuery');
+  // TypedLink 的导航出口走被 mock 的 core navigate（工厂内 import 拿到
+  // 的已是 mock 注册表里的替身，断言口与视图直调 navigate 一致）
+  const {navigate} = await import('@native-router/core');
+  // navigate 的实参是 useMatched 替身里的宽松 router 形状，收窄到 mock
+  // 侧的实际契约（router 透传 + 目标字符串）以绕开真实签名的
+  // RouterInstance 要求
+  const navigateTo = navigate as (router: unknown, to: string) => void;
   return {
     useData: () => {
       const [, force] = React.useState(0);
@@ -128,6 +138,38 @@ vi.mock('@native-router/react', async () => {
     },
     useSearch: () => state.parseSearch(state.search),
     useSetSearch: () => state.setSearch,
+    // TypedLink 最小行为复刻：search 序列化进 query（undefined/null 丢弃，
+    // 测试值无编码需求），href 预览与点击导航共用同一 target
+    TypedLink: ({
+      to,
+      search,
+      children,
+      ...rest
+    }: {
+      to: string;
+      search?: Record<string, string | undefined>;
+      children?: ReactNode;
+    } & Record<string, unknown>) => {
+      const qs = Object.entries(search ?? {})
+        .filter(([, v]) => v !== undefined)
+        .map(([k, v]) => `${k}=${v!}`)
+        .join('&');
+      const target = qs ? `${to}?${qs}` : to;
+      return React.createElement(
+        'a',
+        {
+          ...rest,
+          href: target,
+          // 真实 TypedLink 对普通左键点击 preventDefault 后走 SPA 导航；
+          // 同款处理顺带避免 jsdom 对锚点默认导航的 not-implemented 噪音
+          onClick: (e: {preventDefault: () => void}) => {
+            e.preventDefault();
+            navigateTo(state.router, target);
+          }
+        },
+        children
+      );
+    },
     // useHomeData 的 DEV 来源校验读 matched[index].route.data——见
     // state.matchedRoute 注释
     useMatched: () => ({
@@ -194,17 +236,13 @@ function makeArticles(n: number) {
   }));
 }
 
-function paginationButtons() {
+// 分页断言辅助：翻页控件已链接化（TypedLink），以 link 角色定位；
+// 边界禁用态读 aria-disabled（链接无 disabled 属性，见视图 pageLink 注释）
+function paginationLinks() {
   return {
-    // 同 Editor 测试：显式收窄规避 getByRole 在 tsc 与 eslint typed-lint
-    // 两条路径下的 button 推断分歧。
-    prev: asButton(screen.getByRole('button', {name: '← Previous'})),
-    next: asButton(screen.getByRole('button', {name: 'Next →'}))
+    prev: screen.getByRole('link', {name: '← Previous'}),
+    next: screen.getByRole('link', {name: 'Next →'})
   };
-}
-
-function asButton(el: HTMLElement): HTMLButtonElement {
-  return el as HTMLButtonElement;
 }
 
 beforeEach(() => {
@@ -236,18 +274,31 @@ describe('Home 视图', () => {
     expect(screen.queryByTestId('chip')).toBeNull();
     expect(screen.getByText('title-0')).toBeDefined();
     expect(screen.getByText('1 / 3')).toBeDefined();
-    const {prev, next} = paginationButtons();
-    expect(prev.disabled).toBe(true);
-    expect(next.disabled).toBe(false);
+    const {prev, next} = paginationLinks();
+    expect(prev.getAttribute('aria-disabled')).toBe('true');
+    expect(next.getAttribute('aria-disabled')).toBeNull();
   });
 
-  it('点击 Next 把 offset 写进 search', () => {
+  // useTitle 接入批：jsdom 的 document 无 <title> 起始值，先铺入口默认
+  // （index.html 的 Painless）再验证「进入设置 / 卸载恢复」契约
+  it('document.title：进入设为 Home · Painless，卸载恢复进入前值', () => {
+    document.title = 'Painless';
+    const view = renderView(<Home />);
+
+    expect(document.title).toBe('Home · Painless');
+
+    view.unmount();
+    expect(document.title).toBe('Painless');
+  });
+
+  it('点击 Next 导航到目标页（offset 序列化进链接 search）', () => {
     renderView(<Home />);
 
-    fireEvent.click(paginationButtons().next);
-    // 写载荷按 URL 输入侧的字符串形态给出；经写 schema 抹缺省后
-    // URL 端为 /?offset=10
-    expect(state.setSearch).toHaveBeenCalledWith({offset: '10'});
+    // href 预览与点击导航同一 target：⌘/中键新标签打开的可访问性来源
+    const {next} = paginationLinks();
+    expect(next.getAttribute('href')).toBe('/?offset=10');
+    fireEvent.click(next);
+    expect(navigateMock).toHaveBeenCalledWith(state.router, '/?offset=10');
   });
 
   it('search 含 tag：展示可取消 Chip，关闭即清空筛选', () => {
@@ -257,7 +308,8 @@ describe('Home 视图', () => {
     expect(screen.getByTestId('chip').textContent).toContain('react');
 
     fireEvent.click(screen.getByRole('button', {name: 'Remove tag'}));
-    // go({})：整段 search 清空（写 schema 抹缺省后为空），URL 端为 /
+    // 取消筛选（useSetSearch 写入口）：整段 search 清空（写 schema 抹
+    // 缺省后为空），URL 端为 /
     expect(state.setSearch).toHaveBeenCalledWith({});
   });
 
@@ -267,12 +319,12 @@ describe('Home 视图', () => {
     renderView(<Home />);
 
     expect(screen.getByText('2 / 3')).toBeDefined();
-    const {prev} = paginationButtons();
-    expect(prev.disabled).toBe(false);
+    const {prev} = paginationLinks();
+    expect(prev.getAttribute('aria-disabled')).toBeNull();
 
     fireEvent.click(prev);
-    // offset 回到 0 不进写入载荷（写 schema 同样抹缺省），URL 端为 /?tag=react
-    expect(state.setSearch).toHaveBeenCalledWith({tag: 'react'});
+    // offset 回到 0 不进链接载荷（等于缺省即省略），URL 端为 /?tag=react
+    expect(navigateMock).toHaveBeenCalledWith(state.router, '/?tag=react');
   });
 
   it('末页边界：Next 禁用，Previous 回退一页', () => {
@@ -281,12 +333,15 @@ describe('Home 视图', () => {
     renderView(<Home />);
 
     expect(screen.getByText('3 / 3')).toBeDefined();
-    const {prev, next} = paginationButtons();
-    expect(next.disabled).toBe(true);
-    expect(prev.disabled).toBe(false);
+    const {prev, next} = paginationLinks();
+    expect(next.getAttribute('aria-disabled')).toBe('true');
+    expect(prev.getAttribute('aria-disabled')).toBeNull();
 
     fireEvent.click(prev);
-    expect(state.setSearch).toHaveBeenCalledWith({tag: 'react', offset: '10'});
+    expect(navigateMock).toHaveBeenCalledWith(
+      state.router,
+      '/?tag=react&offset=10'
+    );
   });
 
   it('单页数据：两个方向均禁用', () => {
@@ -294,9 +349,9 @@ describe('Home 视图', () => {
     renderView(<Home />);
 
     expect(screen.getByText('1 / 1')).toBeDefined();
-    const {prev, next} = paginationButtons();
-    expect(prev.disabled).toBe(true);
-    expect(next.disabled).toBe(true);
+    const {prev, next} = paginationLinks();
+    expect(prev.getAttribute('aria-disabled')).toBe('true');
+    expect(next.getAttribute('aria-disabled')).toBe('true');
   });
 });
 

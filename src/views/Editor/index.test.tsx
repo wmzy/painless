@@ -4,8 +4,8 @@
 // （http 层错误升级为 fetch-fun HTTPError 后不再有可构造的 ApiError 类），
 // 断言走 FormItem 渲染的字段错误 span 与 aria 接线。
 // 提交链路 useMutation 批：提交走 services/article.saveArticle（内部仍
-// http.post/put，mock 层不变），成功经 invalidates 失效共享 queryCache 的
-// ['home']/['article'] 前缀条目——用 queryCache.set 预置条目断言被删。
+// http.post/put，mock 层不变），成功经 invalidates 整实体失效 homeCache
+// /articleCache——用各实体 cache.set 预置条目断言被删。
 import type {Article} from '@/types';
 
 import {describe, it, expect, vi, beforeEach} from 'vitest';
@@ -194,6 +194,22 @@ describe('Editor', () => {
     ]);
   });
 
+  // useTitle 接入批：新建/编辑二态页标题，判别来自 optional loader 的
+  // 返回值（基线铺设见 Home/index.test.tsx 同款注释）
+  it('document.title：新建 New Article、编辑 Edit Article，卸载均恢复进入前值', () => {
+    document.title = 'Painless';
+    const createView = render(<Editor />);
+    expect(document.title).toBe('New Article · Painless');
+    createView.unmount();
+    expect(document.title).toBe('Painless');
+
+    state.article = makeArticle();
+    const editView = render(<Editor />);
+    expect(document.title).toBe('Edit Article · Painless');
+    editView.unmount();
+    expect(document.title).toBe('Painless');
+  });
+
   it('编辑文章：提交中按钮禁用并显示 Updating...，走 http.put', async () => {
     state.article = makeArticle();
     const pending = deferred();
@@ -288,12 +304,12 @@ describe('Editor', () => {
     expect(navigateMock).not.toHaveBeenCalled();
   });
 
-  // 提交链路 useMutation 化：成功经 invalidates 失效共享 queryCache 的
-  // ['home']/['article'] 前缀条目——否则 navigate('/') 后 Home / Article
+  // 提交链路 useMutation 化：成功经 invalidates 整实体失效 homeCache /
+  // articleCache——否则 navigate('/') 后 Home / Article
   // 的 loader 在 staleTime 内新鲜命中旧缓存，新文章 2 秒内不出现
   it('发布成功：navigate 前失效 home/article 前缀缓存条目', async () => {
-    // 预置与 loader 同 key 的缓存条目（homeCacheArgs / articleCacheArgs
-    // 与 views/index.tsx 的 withCache(['home'])/['article'] 寻址同形）
+    // 预置与 loader 同 key 的缓存条目（keyOf 的 [search]/[slug] 寻址
+    // 同形）
     homeCache.set([{offset: 0, limit: 10}], {articles: [], articlesCount: 0});
     homeCache.set([{tag: 'react', offset: 0, limit: 10}], {articles: [], articlesCount: 0});
     articleCache.set(['old-title-1'], makeArticle());

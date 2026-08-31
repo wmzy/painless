@@ -366,7 +366,11 @@ function MockView({
       <Button onClick={() => setShow(!show)}>
         {show ? 'Hide' : 'Show'} Schema
       </Button>
-      <pre x-if={show}>{JSON.stringify(value, null, 2)}</pre>
+      {/* 原写法是 x-if={show}（babel-plugin-transform-jsx-condition 语法）
+          ——但 vite 管道不消费 babel.config.js，转换从未生效：show=false
+          时 <pre> 照常渲染（x-if 被当未知 DOM 属性，React 报 non-boolean
+          警告）。改显式条件。 */}
+      {show && <pre>{JSON.stringify(value, null, 2)}</pre>}
     </div>
   );
 }

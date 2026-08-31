@@ -11,6 +11,7 @@ import {favoriteOnArticle, followOnArticle} from '@/services/mutations';
 import {getCurrentUser} from '@/services/auth';
 import {useArticleData} from '@/services/dataloaders';
 import {commentsCache} from '@/util/useQuery';
+import {useTitle} from '@/util/useTitle';
 
 import CommentList from './CommentList';
 
@@ -29,6 +30,9 @@ export default function ArticleView() {
   // 原 useData<Article>()! 的泛型与断言都收敛进工厂；共用组件的路由若
   // 可能不挂 data（如 Editor 的新建态）则用 {optional: true} 形态
   const article = useArticleData();
+  // 文章标题进 document.title：loader 已保证进组件前 resolve，title
+  // 首帧即有，无「先默认后换」的闪烁；离开恢复入口默认
+  useTitle(`${article.title} · Painless`);
   const {router} = useMatched();
   const commentForm = useForm();
   // 同 Editor：react-f0rm ≥0.4 的 onSubmit 被 await，isSubmitting 覆盖整个异步提交
@@ -52,11 +56,20 @@ export default function ArticleView() {
     scope: (slug: string) => `follow:${slug}`
   });
 
-  // 发评论 → 声明式失效：useMutation 成功后对 commentsCache 整实体失效
-  //（前缀即全部条目），CommentList 挂载中的 useCache 消费者经 provider
-  // 删除事件被动重拉。失败自动不失效。
+  // 发评论 → 声明式前缀失效：commentsCache 的 key 就是精确的 [slug]
+  //（见 dataloaders.ts 的 commentsCache 声明），[commentsCache, article.slug]
+  // 只清当前文章的评论条目——其它 slug 的缓存原样保留，多文章互访回来
+  // 不必重拉。CommentList 挂载中的 useCache 消费者经 provider 删除事件
+  // 被动重拉。失败自动不失效。前缀里的 slug 经 useMutation 的 ref funnel
+  // 取每次 mutate 调用时最新渲染的值（invalidates 读 optionsRef.current，
+  // react-toolroom 源码 src/async/index.ts useMutation），路由参数变化
+  // 不重挂也不会失效到旧 slug。与 Editor 对 homeCache 的整实体失效是
+  // 刻意两种粒度：home 投影的 key 是 HomeSearch 对象（feed 过滤/分页的
+  // 完整组合），编辑一篇文章影响哪些组合无法在写点本地推导，只能整实体
+  // 清；评论的写（addComment(slug, body)）与缓存 key 一一对应，前缀即
+  // 全量精确集。
   const [mutateAddComment] = useMutation(articleService.addComment, {
-    invalidates: [commentsCache]
+    invalidates: [[commentsCache, article.slug]]
   });
 
   // 未登录（无 token）时写操作一律引导去登录页

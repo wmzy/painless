@@ -18,66 +18,38 @@ import {
   email,
   minLength,
   compose,
+  usernameAvailable,
   applyApiFieldErrors
 } from '@/util/validators';
+import {useTitle} from '@/util/useTitle';
 
-// —— 用户名异步查重：react-f0rm 异步 validate 协议示范 ——
-// debounce 窗口（validateDebounce）由 FormItem 透传给 react-f0rm ≥0.6 的
-// useField（haze-ui ≥1.12 起内建支持），此前的手写 debounce 闭包校验器
-// 已删除：validate 里只剩「查 signal + 发请求」，窗口内重复触发只跑最后
-// 一轮（提交 trigger 会等窗口走完，语义与手写版一致）。
+// —— 用户名异步查重：react-f0rm 异步 validate 协议 ——
+// debounce 窗口（validateDebounce）由 FormItem 透传给 react-f0rm 的
+// useField（haze-ui ≥1.12 内建透传），窗口内重复触发只跑最后一轮；窗口
+// 挂起期间字段计入 validating，提交（trigger/ensureValidate）会等窗口与
+// 异步轮全部走完，不与在途校验赛跑。
 // AbortSignal 全链路：useValidate 在新一轮校验开始（或字段卸载）时
-// abort 上一轮的 meta.signal——校验函数据此撤销在途请求；即使被取消的
-// 轮次仍返回结果，useValidate 的 lock 机制也会独立丢弃过期结果。
-const USERNAME_RESERVED = new Set(['admin', 'root', 'system', 'superuser']);
-// debounce 窗口与模拟网络延迟分开调参：窗口内重复触发只发最后一次
+// abort 上一轮的 meta.signal——usernameAvailable 把 signal 透传给
+// fetchProfile，被超越的轮次撤销在途请求；即使旧轮仍返回结果（校验方
+// 不监听 signal），useValidate 的 lock 机制也会独立丢弃过期结果。
 const USERNAME_DEBOUNCE_MS = 300;
-const USERNAME_CHECK_MS = 400;
 
-const usernameAbortError = () =>
-  new DOMException('username check aborted', 'AbortError');
-
-// 模拟端点：保留字查询 + ~400ms 延迟。
-// 生产替换点：换成真实查重 API，并把 signal 透传给
-// fetch(`/api/usernames/${encodeURIComponent(username)}`, {signal})，
-// 协议不变（AbortError 同样由调用方按取消处理）。
-function checkUsernameReserved(username: string, signal: AbortSignal) {
-  return new Promise<boolean>((resolve, reject) => {
-    // 请求发出前 signal 已 abort：跳过，不发请求
-    if (signal.aborted) return reject(usernameAbortError());
-    const timer = setTimeout(() => {
-      // 「响应」到达时再查一次：往返途中被取代的请求按取消处理
-      if (signal.aborted) return reject(usernameAbortError());
-      resolve(USERNAME_RESERVED.has(username.trim().toLowerCase()));
-    }, USERNAME_CHECK_MS);
-    // 在途取消：abort 时撤销响应定时器（对应真实 fetch 的 AbortError）
-    signal.addEventListener(
-      'abort',
-      () => {
-        clearTimeout(timer);
-        reject(usernameAbortError());
-      },
-      {once: true}
-    );
-  });
-}
-
-// 异步查重校验器：必填走同步分支（返回同步错误，不经网络请求）。注意
-// validateDebounce>0 时 react-f0rm 对整个 validator（含本同步 required
+// 同步 required 分支先行短路：react-f0rm 的 rules+validate 组合
+// （combineRulesAndValidate）两边都跑、不短路——若把 required 放 rules，
+// 空值也会发一轮 profiles 请求。这里在进入异步轮前手动短路：空值同步
+// 返回错误，非空才走 usernameAvailable 的 GET profiles/{username} 查重。
+// 注意 validateDebounce>0 时 react-f0rm 对整个 validator（含本同步
 // 分支）统一经 setTimeout 延后——空值失焦后错误也是 300ms 窗口走完才
-// 出现，并非「required 即时显示」；异步轮保留对 meta.signal.aborted 的
-// 响应与 AbortError 语义（AbortError 被 useValidate 的 .catch(() => {})
-// 吞掉，取消的轮次不落任何错误）。
+// 出现，并非「required 即时显示」。
 const validateUsername = (value: string, meta: {signal: AbortSignal}) => {
   const empty = required('Username is required')(value);
   if (empty !== undefined) return empty;
-  if (meta.signal.aborted) return Promise.reject(usernameAbortError());
-  return checkUsernameReserved(value, meta.signal).then((reserved) =>
-    reserved ? `'${value}' is already taken` : undefined
-  );
+  return usernameAvailable()(value, meta);
 };
 
 export default function Register() {
+  // 页标题（统一口径见 Home 的 useTitle 注释）：页名与视图内 <Title> 一致
+  useTitle('Register · Painless');
   // 类型化表单：validate 参数与 handleSubmit 的 values 均由此推断。
   // 空字符串 initialValues 让字段从首帧就是受控输入（undefined 起始会
   // 触发 React 的 uncontrolled→controlled 警告）。confirmPassword 是纯
@@ -141,10 +113,11 @@ export default function Register() {
       <Form form={form} onSubmit={handleSubmit} aria-label='Register form'>
         {/* 错误 span 只在 invalid 时渲染，aria-describedby 相应条件传递，
             避免指向不存在元素的悬空 id */}
-        {/* 用户名：异步查重示范（react-f0rm 异步 validate 协议）。
-            mode='onBlur' 同 email——失焦/提交才校验，避免每次击键一轮
-            请求；validateDebounce 把窗口调度交给 useField（窗口内重复
-            触发只跑最后一轮，提交 trigger 会等窗口走完） */}
+        {/* 用户名：异步查重（react-f0rm 异步 validate 协议，查重端点
+            services/auth 的 fetchProfile）。mode='onBlur' 同 email——
+            失焦/提交才校验，避免每次击键一轮请求；validateDebounce 把
+            窗口调度交给 useField（窗口内重复触发只跑最后一轮，提交
+            trigger 会等窗口走完） */}
         <FormItem
           form={form}
           name='username'

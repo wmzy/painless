@@ -36,8 +36,8 @@ importers:
         specifier: ^0.7.0
         version: 0.7.0(react@19.2.8)(zod@4.5.2)
       react-toolroom:
-        specifier: ^0.18.1
-        version: 0.18.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        specifier: ^0.18.2
+        version: 0.18.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react-use-control:
         specifier: ^1.3.2
         version: 1.3.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -3751,8 +3751,8 @@ packages:
       react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
       react-dom: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
-  react-toolroom@0.18.1:
-    resolution: {integrity: sha512-YVhAO7WiH/A0jEr0H3C/vWONhtvFu37hwMZyqgD5CT4KYy1HC07HelVP726g6JjpoKb+iSz058L9Hx6ENv4yRg==}
+  react-toolroom@0.18.2:
+    resolution: {integrity: sha512-twmE4zNfQPk8pgO3e5Ut2JBGv8nGf9Vi66RI6ER35ihxYBpMkyo5dud2h+V8hbuLspE84iI2cooIY+bSuLeFzg==}
     peerDependencies:
       react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
       react-dom: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
@@ -8261,7 +8261,7 @@ snapshots:
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
 
-  react-toolroom@0.18.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
+  react-toolroom@0.18.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
     dependencies:
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)

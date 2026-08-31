@@ -11,9 +11,12 @@ import {navigate} from '@native-router/core';
 
 
 import * as auth from '@/services/auth';
+import {useTitle} from '@/util/useTitle';
 import {required, email, compose, applyApiFieldErrors} from '@/util/validators';
 
 export default function Login() {
+  // 页标题（统一口径见 Home 的 useTitle 注释）：页名与视图内 <Title> 一致
+  useTitle('Login · Painless');
   // 类型化表单：validate 参数与 handleSubmit 的 values 均由此推断。
   // 空字符串 initialValues 让字段从首帧就是受控输入（undefined 起始会
   // 触发 React 的 uncontrolled→controlled 警告）

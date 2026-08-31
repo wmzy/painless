@@ -55,4 +55,16 @@ describe('Article NotFound errorComponent', () => {
     expect(link).toBeDefined();
     expect(link.closest('a')!.getAttribute('href')).toBe('/');
   });
+
+  // useTitle 接入批：404 与加载失败共用标题（基线铺设见
+  // Home/index.test.tsx 同款注释）
+  it('document.title：进入设为 Not Found · Painless，卸载恢复进入前值', () => {
+    document.title = 'Painless';
+    const view = render(<NotFound error={apiError(404, 'Request failed with status code 404')} />);
+
+    expect(document.title).toBe('Not Found · Painless');
+
+    view.unmount();
+    expect(document.title).toBe('Painless');
+  });
 });

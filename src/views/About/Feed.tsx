@@ -2,12 +2,13 @@
 // hooks 组装），这里只做交互与呈现——IntersectionObserver 哨兵驱动
 // useFeed 的 fetchNextPage，加载/终态反馈渲染在哨兵本体上（滚到底时
 // 它正是视口里的那个元素，反馈与触发点合一）。
+import type {AppPaths} from '@/views';
+
 import {css} from '@linaria/core';
 import {useEffect, useRef} from 'react';
 import {TypedLink} from '@native-router/react';
 import {Avatar, Badge, Button, Card, Flex, Text, Title} from 'haze-ui';
 
-import type {AppPaths} from '@/views';
 
 import {useFeed} from '@/services/feed';
 
@@ -51,10 +52,14 @@ export default function Feed() {
   // 通知，因此「哨兵仍可见时翻完一页」会级联续拉直到填满滚动区或触底
   // ——这正是无限滚动的预期行为。两个守卫挡住重复触发：终态不再拉，
   // 在飞时不重入。
+  // 渐进增强：browserslist 目标含不支持 IntersectionObserver 的环境
+  //（KaiOS 2.5），不支持时哨兵静默、哨兵区改渲染 Load more 手动按钮
+  //（下方 hasNextPage 分支）——功能完整降级而非依赖假设。
+  const ioSupported = typeof IntersectionObserver !== 'undefined';
   const sentinelRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = sentinelRef.current;
-    if (!el) return;
+    if (!el || !ioSupported) return;
     const observer = new IntersectionObserver((entries) => {
       if (
         entries.some((entry) => entry.isIntersecting) &&
@@ -66,7 +71,7 @@ export default function Feed() {
     });
     observer.observe(el);
     return () => observer.disconnect();
-  }, [fetchNextPage, hasNextPage, isFetchingNextPage]);
+  }, [fetchNextPage, hasNextPage, isFetchingNextPage, ioSupported]);
 
   // 首载占位：!ready 同时覆盖「请求在飞且无结果」（initialLoading 同期
   // 为真）与 useRun 发起请求前的一帧；空结果集（count=0 的正常响应）
@@ -134,7 +139,15 @@ export default function Feed() {
                   Retry
                 </Button>
               </>
-            ) : hasNextPage ? null : (
+            ) : hasNextPage ? (
+              // 无 IntersectionObserver 环境的手动降级入口（哨兵不自动
+              // 触发，按钮补上「拉下一页」）
+              ioSupported ? null : (
+                <Button variant='outline' size='sm' onClick={fetchNextPage}>
+                  Load more
+                </Button>
+              )
+            ) : (
               <Text type='muted'>All {total} articles loaded</Text>
             )}
           </div>

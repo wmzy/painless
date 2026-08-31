@@ -5,7 +5,7 @@ import {createRoot} from 'react-dom/client';
 // 需手工清单。此导入同时是 token 供应商注册的时序锚点（见下），不随按
 // 需收集迁移——须保持先于任何路由 data 请求。
 import 'haze-ui/css/tokens.css';
-import {lightTheme, darkTheme, ToastContainer} from 'haze-ui';
+import {lightTheme, darkTheme, spacing, typography, ToastContainer} from 'haze-ui';
 
 // 副作用导入：尽早注册 token 供应商，保证冷刷新时的首个路由 data
 // 请求（早于 Layout chunk 加载）也能带上 Authorization。
@@ -24,7 +24,13 @@ const DevTool = import.meta.env.DEV
 // 应用根：主题状态挂在真实组件上才能驱动根重渲染。创建/跟随逻辑收敛
 // 在 useAppTheme（util/theme.tsx）：初始值跟随系统 prefers-color-scheme，
 // 手动干预（ThemeToggle 写 control）前持续跟随系统切换。className 在
-// lightTheme/darkTheme 间切换，haze-ui 的 --haze-* CSS 变量整体换肤；
+// lightTheme/darkTheme 间切换，haze-ui 的 --haze-color-* 整体换肤。
+// spacing/typography 是 1.12 起的独立作用域类（tokens.css 把
+// --haze-space-*/--haze-radius-*/--haze-font-* 挂到
+// .haze-spacing__spacing / .haze-typography__typography 而非主题类）：
+// 根部不挂则全应用这些 token 不解析，haze Button 的 padding/radius
+// 实际为 0（颜色 token 不受影响，故 1.12 集成时漏挂未被发现）。挂根
+// 一次，全树（含懒加载视图）继承。
 // control 经 ThemeControlCtx 下发（index.tsx 不是组件树内的 hook 调用点，
 // 消费方统一从 context 取）。
 // ToastContainer 也挂根：provider 覆盖全部视图（含 Layout 之外），任何
@@ -33,7 +39,9 @@ function Root() {
   const [dark, themeControl] = useAppTheme();
 
   return (
-    <div className={dark ? darkTheme : lightTheme}>
+    <div
+      className={`${dark ? darkTheme : lightTheme} ${spacing} ${typography}`}
+    >
       <ThemeControlCtx.Provider value={themeControl}>
         <ToastContainer>
           {DevTool ? (

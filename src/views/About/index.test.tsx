@@ -45,7 +45,7 @@ const makeArticles = (n: number): FixtureArticle[] =>
 
 const state = vi.hoisted(() => ({
   articles: [] as FixtureArticle[],
-  calls: [] as Array<{offset: number; limit: number}>,
+  calls: [] as {offset: number; limit: number}[],
   // 一次性失败：offset 命中即 reject 并移除（重试即成功）
   failOnce: new Set<number>(),
   // 定向挂起：offset 命中的调用停在 gate 上，测试手动放行（加载态断言用）
@@ -191,6 +191,18 @@ describe('About infinite feed（useFeed 场景 + 哨兵交互）', () => {
     expect(
       screen.getByRole('heading', {name: 'About Native Router'})
     ).toBeDefined();
+  });
+
+  // useTitle 接入批（基线铺设见 Home/index.test.tsx 同款注释）：标题由
+  // About 自身的 effect 同步设置，与 feed 的异步加载无关，无需 await
+  it('document.title：进入设为 About · Painless，卸载恢复进入前值', () => {
+    document.title = 'Painless';
+    const view = renderView(<About />);
+
+    expect(document.title).toBe('About · Painless');
+
+    view.unmount();
+    expect(document.title).toBe('Painless');
   });
 
   it('滚到底自动续页：哨兵可见触发 offset 递增的下一页，加载反馈可见', async () => {

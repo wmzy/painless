@@ -35,6 +35,8 @@ jobs:
         run: pnpm run test:run
       - name: Build
         run: pnpm run build
+      - name: Size budget
+        run: pnpm run size
 
   e2e:
     runs-on: ubuntu-latest

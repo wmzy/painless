@@ -194,3 +194,57 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
     方、测试替身）**抛错**而非返回 undefined：早抛比 react-toolroom 深
     处的「cache.get is not a function」更快指向「service 函数忘经
     bindQueryFn 配对」。
+
+## 10. 体积预算：自定义脚本口径 + CI 守门（2026-08-31 review 批）
+
+- **背景**：模板以轻量为核心卖点（按需 CSS 90.2→22.7kB 是关键数据），但 CI
+  此前只 build 不守体积，回归无门禁。业界常用 size-limit，但其 preset 对
+  vite 多 chunk SPA 的量法（webpack 重新打包 entry）与本仓库真实产物脱节。
+- **决定**：自写 `scripts/size-budget.mjs`（零 npm 依赖），口径名
+  **「dist JS+CSS gzip 总和（zlib level 9，含懒加载 chunk）」**：逐文件
+  `gzipSync(buf, {level: 9})` 求和——zlib gzip 头 MTIME 恒 0，同输入同
+  Node 版本逐字节可复现；逐文件而非合并流（静态服务器按文件独立 gzip，
+  合并吃到跨文件字典红利、数字失真）；含懒加载 chunk（回归藏在懒加载里
+  也是回归）。CI（test job）Build 步骤后接 `pnpm run size`。阈值是棘轮：
+  基线 +10% 余量只为吸收小幅正当增长，超限要么回退要么同一 commit 更新
+  基线并给理由（脚本头注释承载口径与基线快照）。
+- **教训承接**：体积数字报告必须挂可复现口径名（react-toolroom 曾出现无
+  任何口径能复现的「+94B brotli」）。
+
+## 11. review 批杂项决策（2026-08-31）
+
+- **useTitle（hook + 两段 effect，不用 React 19 `<title>` JSX）**：恢复
+  语义是硬需求——`<title>` 卸载只移除自己浮升的元素，不写回 index.html
+  静态默认值，终究要 effect 兜底；`<title>` JSX 的核心收益在流式 SSR，
+  本项目零 SSR。两段 effect 规避「[title] 变化触发 cleanup 写回上轮本页
+  title」的坑；基线快照取 effect 期而非渲染期（路由换树同一次 commit，
+  渲染期读到的是上一页标题）。标题口径统一「<页名> · Painless」。
+- **失效粒度按「key 与写操作是否一一对应」分档**：评论写与 `[slug]` 一一
+  对应 → 前缀失效 `[[commentsCache, slug]]`（其它文章的评论缓存不误清）；
+  home 投影的 key 是完整 search 组合、发布/编辑改变列表形状不可本地推导
+  → 整实体失效（Editor 的既有论证不变）。两档并存是刻意对比，非不一致。
+- **Register 异步校验 fail-open**：`usernameAvailable` 经
+  `GET /profiles/:username` 查重（200 占用 / 404 可用），网络错与 5xx
+  一律放行——校验通道不阻塞注册，权威判定在提交时 422（既有
+  `applyApiFieldErrors` 兜底）。`meta.signal` 透传到 fetch，被超越回合
+  自动取消（react-f0rm validateDebounce）。
+- **StackWarmer（initHistoryStack）接入**：HistoryRouter 组件形态下经
+  `useRouter()` 在子组件 effect 里调 core 的 `initHistoryStack`，刷新后
+  viewStack 尾窗预热、窗内 back/forward 零请求。已知边界（库既定语义）：
+  预热经 resolve 直取快照、不经 beforeLoad 守卫——刷新后窗口含守卫路由
+  且登录态已变时，POP 落预热快照不重跑守卫；loader 数据公开、写操作有
+  401 兜底，当前接受，需严格语义时可在预热后置空守卫槽位。
+- **haze-ui 1.12 token 作用域修复**：1.12 起 tokens.css 把
+  spacing/radius/typography token 挂到独立作用域类（不再是主题类的
+  一部分），根部只挂 `lightTheme/darkTheme` 时全应用
+  `--haze-space-*/--haze-radius-*` 不解析（haze 组件 padding/radius 实际
+  为 0，颜色 token 不受影响故集成时未被发现）。修复：根 className 合并
+  `spacing`/`typography` 导出（挂根一次全树继承）。
+- **About Feed 渐进增强**：browserslist 目标含无 IntersectionObserver 的
+  环境（KaiOS 2.5），哨兵做特性检测降级——无 IO 时自动续拉静默、哨兵区
+  改渲染 Load more 手动按钮；eslint compat 的 polyfills 声明补
+  `IntersectionObserver`（引用处有降级路径，非硬依赖）。
+- **DevTool `x-if` 死语法清除**：`babel-plugin-transform-jsx-condition`
+  只配置在 babel.config.js，vite 管道不消费它——`x-if={show}` 从未生效
+  （条件不渲染、React 报 non-boolean attribute 警告），改显式
+  `{show && …}`。

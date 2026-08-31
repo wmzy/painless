@@ -2,14 +2,20 @@
 // 422 错误回填（合约必测用例：注册邮箱已占用）。Register 视图此前无
 // 测试文件，按测试放置规则新建本文件。
 // 归并建议：后续若建 src/views/Register/index.test.tsx，可直接把用例并入。
+import type {Author} from '@/types';
+
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import {render, screen, fireEvent, act} from '@testing-library/react';
 
 const state = vi.hoisted(() => ({router: {pathname: '/register'}}));
 
-// Register 视图只调 auth.register，整体 mock 服务层；422 拒绝值用鸭子
+// Register 视图经 util/validators 的 usernameAvailable 调 auth.fetchProfile
+// 查重、直接调 auth.register 提交，整体 mock 服务层；422 拒绝值用鸭子
 // 形状普通对象（catch 侧按 {status, data.errors} 形状判断）
-vi.mock('@/services/auth', () => ({register: vi.fn()}));
+vi.mock('@/services/auth', () => ({
+  register: vi.fn(),
+  fetchProfile: vi.fn()
+}));
 vi.mock('@native-router/react', () => ({
   useRouter: () => state.router,
   // 视图里的 <TypedLink> 在 mock 中退化为普通锚点即可
@@ -24,6 +30,7 @@ import * as auth from '@/services/auth';
 import Register from './index';
 
 const registerMock = vi.mocked(auth.register);
+const profileMock = vi.mocked(auth.fetchProfile);
 
 // 第 4 参确认密码默认与密码一致：既有用例不关心一致性校验，保持
 // 「填完即可过字段校验」的原语义；一致性差异场景由新用例显式传入。
@@ -36,6 +43,9 @@ function fill(username: string, email: string, password: string, confirm = passw
 
 beforeEach(() => {
   registerMock.mockReset();
+  // 查重基线：404（用户名可用）。不关心查重的用例一律走可用基线，
+  // 不因占用分叉；占用 / 网络错场景由异步查重用例显式覆盖
+  profileMock.mockReset().mockRejectedValue({status: 404});
 });
 
 describe('Register 表单', () => {
@@ -59,6 +69,17 @@ describe('Register 表单', () => {
     expect(registerMock).not.toHaveBeenCalled();
   });
 
+  // useTitle 接入批（基线铺设见 Home/index.test.tsx 同款注释）
+  it('document.title：进入设为 Register · Painless，卸载恢复进入前值', () => {
+    document.title = 'Painless';
+    const view = render(<Register />);
+
+    expect(document.title).toBe('Register · Painless');
+
+    view.unmount();
+    expect(document.title).toBe('Painless');
+  });
+
   // 合约必测：注册邮箱已占用 → 服务端 422 的 email 错误回填到
   // email 字段下方（FormItem 的错误 span 渲染），顶部 Alert 不再显示整句
   it('注册邮箱已占用：422 的 email 错误回填到字段下方，顶部 Alert 隐藏', async () => {
@@ -69,9 +90,10 @@ describe('Register 表单', () => {
       message: 'email has already been taken',
       data: {errors: {email: ['has already been taken']}}
     });
-    // fake timers：提交会先等 username 异步查重落地（300ms debounce +
-    // 400ms 模拟延迟）才发 register 请求，真实定时器会把断言拖到
-    // findByText 超时边缘；推进假时钟后错误同步可见
+    // fake timers：提交会先等 username 异步查重的 debounce 窗口（300ms）
+    // 走完才发 register 请求，真实定时器会把断言拖到 findByText 超时
+    // 边缘；推进假时钟后错误同步可见（fetchProfile mock 即时落定，
+    // advanceTimersByTimeAsync 在定时器间冲刷微任务）
     vi.useFakeTimers();
     try {
       render(<Register />);
@@ -80,7 +102,7 @@ describe('Register 表单', () => {
       fireEvent.click(screen.getByRole('button', {name: 'Register'}));
 
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(300 + 400);
+        await vi.advanceTimersByTimeAsync(300);
       });
 
       expect(screen.getByText('has already been taken')).toBeDefined();
@@ -99,13 +121,16 @@ describe('Register 表单', () => {
   });
 
   // —— 用户名异步查重（react-f0rm 异步 validate + AbortSignal）——
-  // 模拟端点固定 300ms debounce + 400ms 延迟，用 fake timers 推进。
-  // 异步校验与 fake timers 的配合点：advanceTimersByTimeAsync 在每个
-  // 定时器之间冲刷微任务，而 react-f0rm 的 waitUntil 是纯事件 + Promise
-  // （无定时器轮询），校验链路因此能被完整推进；React 状态更新统一包
-  // 在 act 里冲净。
+  // debounce 窗口 300ms 用 fake timers 推进；fetchProfile 的服务 mock
+  // 即时落定（微任务），advanceTimersByTimeAsync 在每个定时器之间冲刷
+  // 微任务，校验链路因此能被完整推进；React 状态更新统一包在 act 里
+  // 冲净。
 
-  it('用户名异步查重：失焦后命中保留字，错误落字段下方（aria 接线）', async () => {
+  it('用户名异步查重：端点返回占用，错误落字段下方（aria 接线）', async () => {
+    // 200：档案存在 → 占用。文案对齐 RealWorld 后端 422 的 username
+    // 字段错误，提前暴露与权威回填同句。fetchProfile 的 mock 给解包后
+    // 的 Author 形状（值本身不参与断言，只表达「请求成功」）
+    profileMock.mockResolvedValueOnce({username: 'admin', image: '', following: false});
     vi.useFakeTimers();
     try {
       render(<Register />);
@@ -114,52 +139,131 @@ describe('Register 表单', () => {
       fireEvent.change(username, {target: {value: 'admin'}});
       fireEvent.blur(username);
 
-      // 请求在途：延迟未到，不显示错误
-      expect(screen.queryByText(/is already taken/)).toBeNull();
+      // debounce 窗口未走完：请求未发出，不显示错误
+      expect(profileMock).not.toHaveBeenCalled();
+      expect(screen.queryByText('has already been taken')).toBeNull();
       await act(async () => {
-        // 300ms debounce 后发出请求，再 400ms 模拟延迟返回
-        await vi.advanceTimersByTimeAsync(300 + 400);
+        await vi.advanceTimersByTimeAsync(300);
       });
 
-      expect(screen.getByText("'admin' is already taken")).toBeDefined();
+      // signal 随请求透传到服务层（被超越的轮次据此撤销在途请求）
+      expect(profileMock).toHaveBeenCalledWith('admin', expect.any(AbortSignal));
+      expect(screen.getByText('has already been taken')).toBeDefined();
       expect(username.getAttribute('aria-invalid')).toBe('true');
       const errorEl = document.getElementById(
         username.getAttribute('aria-describedby')!
       );
       expect(errorEl?.getAttribute('role')).toBe('alert');
-      expect(errorEl?.textContent).toBe("'admin' is already taken");
+      expect(errorEl?.textContent).toBe('has already been taken');
     } finally {
       vi.useRealTimers();
     }
   });
 
-  // signal 取消路径：快速重触发（改值再失焦）时，react-f0rm 在新一轮
-  // 校验开始即 abort 旧轮 meta.signal → 在途的旧请求被撤销；旧轮即使
-  // 有结果也不落错误（校验函数取消 + useValidate lock 双保险）
-  it('用户名异步查重：被新一轮取代的旧请求不落错误', async () => {
+  // 404 的正向判定：RealWorld 用 404 表达「用户名不存在」→ 可用，
+  // 不落任何错误
+  it('用户名异步查重：404 视为可用，不落错误', async () => {
     vi.useFakeTimers();
     try {
       render(<Register />);
       const username = screen.getByPlaceholderText('Username');
 
-      // 第一轮 'admin'（保留字）失焦，走完 debounce 窗口：请求已在途
+      fireEvent.change(username, {target: {value: 'fresh-user'}});
+      fireEvent.blur(username);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(300);
+      });
+
+      expect(profileMock).toHaveBeenCalledWith('fresh-user', expect.any(AbortSignal));
+      expect(screen.queryByText('has already been taken')).toBeNull();
+      expect(username.getAttribute('aria-invalid')).toBe('false');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // 网络错 fail-open：查重通道故障绝不阻塞注册——5xx/网络错/超时一律
+  // 按结果未知放行（fail-open 的论证见 validators.ts），权威判定留给
+  // 提交时的 422 字段回填
+  it('用户名异步查重：网络错 fail-open，不落错误且不阻塞提交', async () => {
+    profileMock.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    registerMock.mockResolvedValue(
+      undefined as unknown as Awaited<ReturnType<typeof auth.register>>
+    );
+    vi.useFakeTimers();
+    try {
+      render(<Register />);
+      const username = screen.getByPlaceholderText('Username');
+
+      fireEvent.change(username, {target: {value: 'offline-user'}});
+      fireEvent.blur(username);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(300);
+      });
+
+      expect(profileMock).toHaveBeenCalledTimes(1);
+      expect(screen.queryByText('has already been taken')).toBeNull();
+      expect(username.getAttribute('aria-invalid')).toBe('false');
+
+      // 提交不被查重故障阻塞：字段级校验全过（查重放行），注册照发
+      fill('offline-user', 'o@example.com', 'password123');
+      fireEvent.click(screen.getByRole('button', {name: 'Register'}));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(300);
+      });
+      expect(registerMock).toHaveBeenCalledTimes(1);
+      expect(registerMock).toHaveBeenCalledWith(
+        'offline-user',
+        'o@example.com',
+        'password123'
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // signal 取消路径的兜底不变量：快速重触发（改值再失焦）时，
+  // react-f0rm 在新一轮校验开始即 abort 旧轮 meta.signal——监听 signal
+  // 的请求被撤销；这里刻意让旧轮无视 signal（模拟不监听取消的校验方，
+  // 即 README「validators that ignore the signal stay correct」的保证），
+  // 断言旧轮迟到的「占用」结果被 useValidate 的 lock 机制独立丢弃
+  it('用户名异步查重：被新一轮取代的旧轮结果不落错误（lock 丢弃）', async () => {
+    let settleOld: (profile: Author) => void = () => undefined;
+    profileMock.mockImplementationOnce(
+      () =>
+        new Promise<Author>((resolve) => {
+          settleOld = resolve;
+        })
+    );
+    vi.useFakeTimers();
+    try {
+      render(<Register />);
+      const username = screen.getByPlaceholderText('Username');
+
+      // 第一轮 'admin' 失焦，走完 debounce 窗口：请求在途（不监听 signal）
       fireEvent.change(username, {target: {value: 'admin'}});
       fireEvent.blur(username);
       await act(async () => {
         await vi.advanceTimersByTimeAsync(300);
       });
-      expect(screen.queryByText(/is already taken/)).toBeNull();
+      expect(profileMock).toHaveBeenCalledTimes(1);
 
-      // 快速重触发：改为 'root' 再失焦 → 旧轮 signal 被 abort，在途的
-      // admin 查重取消；最终只有新轮 root 的错误落下
+      // 快速重触发：改为 'root' 再失焦 → 旧轮 signal 被 abort（在途
+      // promise 无视之）、lock 已换新；新轮走基线 404（可用）
       fireEvent.change(username, {target: {value: 'root'}});
       fireEvent.blur(username);
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(300 + 400);
+        await vi.advanceTimersByTimeAsync(300);
       });
+      expect(profileMock).toHaveBeenCalledTimes(2);
+      expect(screen.queryByText('has already been taken')).toBeNull();
 
-      expect(screen.getByText("'root' is already taken")).toBeDefined();
-      expect(screen.queryByText("'admin' is already taken")).toBeNull();
+      // 旧轮迟到返回「占用」：lock 不匹配，结果被丢弃，不落错误
+      await act(async () => {
+        settleOld({username: 'admin', image: '', following: false});
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(screen.queryByText('has already been taken')).toBeNull();
     } finally {
       vi.useRealTimers();
     }
@@ -186,10 +290,10 @@ describe('Register 表单', () => {
       // 一致时不报错、正常放行（对照组在用例末尾，先走不一致路径）
       fill('alice', 'alice@example.com', 'password123', 'password12');
       fireEvent.click(submit);
-      // 提交先等 username 异步查重（300ms debounce + 400ms 延迟）走完，
+      // 提交先等 username 异步查重的 debounce 窗口（300ms）走完，
       // 字段级全过后才跑 form 级一致性校验
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(300 + 400);
+        await vi.advanceTimersByTimeAsync(300);
       });
 
       expect(screen.getByText('Passwords do not match')).toBeDefined();
@@ -217,7 +321,7 @@ describe('Register 表单', () => {
       // 确认字段不随 values 透传（toHaveBeenCalledWith 断言精确实参）
       fireEvent.click(submit);
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(300 + 400);
+        await vi.advanceTimersByTimeAsync(300);
       });
       expect(registerMock).toHaveBeenCalledTimes(1);
       expect(registerMock).toHaveBeenCalledWith(

@@ -5,6 +5,7 @@ import {describe, it, expect, vi, beforeEach} from 'vitest';
 // auth 模块有模块级状态（当前用户、localStorage 恢复、token 注册），
 // 每个用例重置模块并动态导入，拿到的 http mock 与 auth 实例同批。
 vi.mock('@/util/http', () => ({
+  get: vi.fn(),
   post: vi.fn(),
   setTokenGetter: vi.fn(),
   setUnauthorizedHandler: vi.fn()
@@ -49,6 +50,48 @@ describe('auth service', () => {
         user: {username: 'test', email: 'test@test.com', password: 'password'}
       });
       expect(result).toEqual(mockUser.user);
+    });
+  });
+
+  // Register 用户名异步查重的数据源：只验证传输契约（端点/解包/signal
+  // 透传），占用与可用的判定语义在 util/validators 的 usernameAvailable。
+  describe('fetchProfile', () => {
+    it('should call get with profiles endpoint, unwrap profile and pass signal', async () => {
+      const profile = {
+        username: 'alice',
+        bio: '',
+        image: '',
+        following: false
+      };
+      vi.mocked(http.get).mockResolvedValue({profile});
+
+      const controller = new AbortController();
+      const result = await auth.fetchProfile('alice', controller.signal);
+
+      // fillPath 已在编译期约束参数集合，这里断言最终 URL 形状与
+      // signal 透传（被超越的校验轮次据此撤销在途请求）
+      expect(http.get).toHaveBeenCalledWith(
+        'profiles/alice',
+        undefined,
+        {signal: controller.signal}
+      );
+      expect(result).toEqual(profile);
+    });
+
+    it('should encode path parameters in the username segment', async () => {
+      vi.mocked(http.get).mockResolvedValue({
+        profile: {username: 'a b/c', image: '', following: false}
+      });
+
+      await auth.fetchProfile('a b/c');
+
+      // 用户名里的空格/斜杠经 fillPath 逐值 encodeURIComponent，
+      // 不依赖调用方手拼模板字符串的裸插值
+      expect(http.get).toHaveBeenCalledWith(
+        'profiles/a%20b%2Fc',
+        undefined,
+        {signal: undefined}
+      );
     });
   });
 

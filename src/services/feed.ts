@@ -17,6 +17,8 @@
 // injectable 聚合，组件卸载（离开 About）即整体释放，重进重拉首页——
 // 「缓存什么、缓存多久」留给真正需要跨页面共享的场景决定，这正是按
 // 场景组装而非套 preset 的意义。
+import type {Article, ArticlePage} from '@/types';
+
 import {
   useError,
   useInitialLoading,
@@ -26,7 +28,6 @@ import {
 } from 'react-toolroom/async';
 import {useCallback} from 'react';
 
-import type {Article, ArticlePage} from '@/types';
 
 import {query} from './article';
 
@@ -89,7 +90,8 @@ export function useFeed(limit = FEED_LIMIT) {
   // 信息量——统一吞掉拒绝，调用点（IO 回调、按钮 onClick）不必逐个挂
   // catch，否则每次失败都是一次 unhandled rejection。
   const swallow = (p: Promise<unknown>) => {
-    p.catch(() => {});
+    // 显式返回 undefined 规避 no-empty-function；语义即吞掉续拉/重试的拒绝
+    p.catch(() => undefined);
   };
 
   return {

@@ -21,6 +21,9 @@ export default [
       'vitest.config.mts',
       'vite.config.mts',
       'vite-plugin-haze-css.mts',
+      // 工程脚本（size-budget 等构建/CI 辅助，非产品代码；与上面三个
+      // 配置脚本同待遇，且规避 node globals 的 no-undef 配置负担）
+      'scripts/**',
       // openapi-typescript 生成物（npm run openapi），不参与 lint
       'src/types/openapi.d.ts'
     ]
@@ -45,7 +48,10 @@ export default [
     ...compat.configs['flat/recommended'],
     files: ['**/*.{ts,tsx,js,jsx}'],
     settings: {
-      polyfills: ['Promise']
+      // IntersectionObserver：About Feed 哨兵已做特性检测降级（无 IO
+      // 渲染手动 Load more，src/views/About/Feed.tsx），引用处不视为
+      // 未支持硬依赖
+      polyfills: ['Promise', 'IntersectionObserver']
     }
   },
   {

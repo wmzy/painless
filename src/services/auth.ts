@@ -1,4 +1,7 @@
+import type {Author} from '@/types';
+
 import {create, on, emit} from '@for-fun/event-emitter';
+import {fillPath} from 'fetch-fun';
 
 import * as http from '@/util/http';
 import {clearAllCaches} from '@/util/useQuery';
@@ -93,4 +96,26 @@ export async function register(
   });
   setUser(user);
   return user;
+}
+
+// 按 username 查公开档案：RealWorld 契约 GET profiles/{username}，无需
+// 鉴权（匿名可查），200 返回 {profile}（Author 形状），用户不存在时 404
+// ——非 2xx 由 http 层统一映射为 ff.HTTPError（status/data 可判别），
+// 调用方据此区分「占用 / 可用」。Register 的用户名异步查重正是复用该
+// 端点：200 = 已被占用，404 = 可用（见 util/validators 的
+// usernameAvailable）。路径参数经 fillPath（同 services/article.ts 先例）
+// ：`{username}` 占位符在编译期约束参数集合，运行时逐值
+// encodeURIComponent，用户名里的空格/斜杠/中文不依赖裸插值。尾参 signal
+// 透传给 fetch——被超越的校验轮次可撤销在途请求，与其余只读查询一致。
+export function fetchProfile(
+  username: string,
+  signal?: AbortSignal
+): Promise<Author> {
+  return http
+    .get<{profile: Author}>(
+      fillPath('profiles/{username}', {username}),
+      undefined,
+      {signal}
+    )
+    .then(({profile}) => profile);
 }

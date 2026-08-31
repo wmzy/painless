@@ -54,6 +54,17 @@ describe('Login 表单', () => {
     expect(loginMock).not.toHaveBeenCalled();
   });
 
+  // useTitle 接入批（基线铺设见 Home/index.test.tsx 同款注释）
+  it('document.title：进入设为 Login · Painless，卸载恢复进入前值', () => {
+    document.title = 'Painless';
+    const view = render(<Login />);
+
+    expect(document.title).toBe('Login · Painless');
+
+    view.unmount();
+    expect(document.title).toBe('Painless');
+  });
+
   it('字段级 mode=onBlur：email 失焦即校验，password 仍提交时校验', async () => {
     render(<Login />);
 

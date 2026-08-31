@@ -123,8 +123,10 @@ async function mockApi(page: Page, state: ApiState) {
         comments: [
           {
             id: 'c1',
-            createdAt: 1_767_225_600_000,
-            updatedAt: 1_767_225_600_000,
+            // date-time 字符串对齐真实 API 形态（曾是毫秒数 number，
+            // Comment 契约改为 PastDate 后失配）
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:00:00.000Z',
             body: 'Fixture comment for the article page.',
             slug: comments[1],
             author

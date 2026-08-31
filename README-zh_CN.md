@@ -250,27 +250,23 @@ const [open, setOpen, openCtrl] = useControl(false);
 
 一个注意点：control prop 跨渲染必须保持同一引用——开发构建下，同一挂载的 hook 收到不同 control 对象会直接抛错。
 
-### 项目级 `useQuery` preset
+### 项目级查询 preset（`createQueryHook`）
 
-模板不引入数据请求库，而是把 `react-toolroom/async` 的原语（`useInjectable`、`useCache`、`useRun`、`useResult`、`useLoading`、`useInitialLoading`、`useError`、`useRetry`、`useFocusRevalidate`）组合成**一个**项目自有的 hook——示范「每个项目定制自己的查询层」这一理念：
+模板不引入数据请求库，而是把 `react-toolroom/async` 的原语（`useInjectable`、`useCache`、`useRun`、`useResultSelect`、`useLoading`、`useArgsStatus`、`useFocusRevalidate`、`useReconnectRevalidate`、`useRefresh`）组合成**一个**项目自有的工厂——示范「每个项目定制自己的查询层」这一理念。`createQueryHook(config)` 把全部选项在**场景声明点**一次闭合（此后不可变），返回的 hook 在调用点只收 `args`——零 option、零管线：
 
 ```ts
 // src/util/useQuery.ts（签名）
-function useQuery<F extends AsyncFunc>(
-  fn: F,
-  args?: Parameters<F>,
-  opts?: QueryOptions<R<F>>
-): QueryResult<R<F> | undefined>;
+export function createQueryHook<C extends QueryHookConfig>(
+  config: C
+): (args: SceneArgs<C>) => QueryResult<SceneData<C>>;
+// SceneArgs：queryFn 的参数元组（剥掉尾参可选 signal）；
+// SceneData：其返回类型，未声明 initData 时叠加 undefined
 
-type QueryOptions<T> = {
-  cache?: QueryCache;   // 默认模块级共享 queryCache（cacheTime 10s）
-  staleTime?: number;   // 默认 2000ms
-  initData?: T;         // 初始数据，避免首屏取到 undefined
-  retry?: {             // 接 useRetry，默认禁用
-    retries?: number;
-    backoff?: 'exponential' | 'linear' | ((attempt: number) => number);
-  };
-  mock?: MockConfig;    // {schema, key} —— 接入 DevTool mock 面板
+type QueryHookConfig = {
+  queryFn: QueryFn<any, any[]>;  // 必填 —— bindQueryFn(fetch, cache) 的产物
+  staleTime?: number;            // 默认 2000ms
+  initData?: unknown;            // 初始数据；声明后 data 类型收窄为非空
+  mock?: MockConfig;             // {schema, key} —— 接入 DevTool mock 面板
 };
 
 type QueryResult<T> = {
@@ -278,34 +274,60 @@ type QueryResult<T> = {
   loading: boolean;     // 仅初载：首个结果产生前为 true
   fetching: boolean;    // 任意请求进行中（含后台重拉）
   error: Error | undefined;
+  failureCount: number; // 本参数自上次成功以来的失败次数
   stale: boolean;
-  refetch: () => void;  // 删除当前 args 的缓存条目后重发（绕过缓存）
+  dataUpdatedAt: number | undefined; // 本参数最近一次成功 settle 的时间戳（TanStack 同名物）
+  refetch: () => void | Promise<unknown>; // 删除当前 args 的缓存条目后重发（绕过缓存）
 };
 ```
 
-preset 开箱即接线了通常要项目自己手写的行为：同参数并发调用**在 provider 层去重**——react-toolroom 0.8 起 `useCache` 的 miss/stale 重验证内部走 `queryCache.load`（原子 get-or-insert 在飞槽位），请求未决期间每个消费者、**每条通道**（另一组件、路由 loader——见下节）拿到同一 key 都共享同一个 promise；依赖变化时经尾参 `AbortSignal` **中止**上一次请求（`useRun({signal: true})`，signal 一路穿透服务层到 fetch）；缓存/load/refetch 的 key 统一为**结构化哈希**（剥除 signal 的 `stableHash`——键序无关）；窗口重新聚焦/可见时**后台重验证**（`useFocusRevalidate`）——新鲜条目直接命中缓存不发请求，stale 条目静默换新。
+注意配置里**没有** `cache`：fetch 函数与它的 cache 由 `bindQueryFn(fetch, cache)` 恰好配对一次，产出带幻影品牌的 `QueryFn`——普通 service 函数缺品牌，编译期就进不了 `createQueryHook`；loader、场景 hook、mutation 三条通道都从同一绑定解析 cache，组装点不重复配对。
 
-真实用法，来自 tag 侧栏与评论列表：
+缓存是**每实体**的（`articleCache` / `homeCache` / `commentsCache` / `tagsCache`，经 `createQueryCache(name, cacheTime?, {persist?})` 声明）：值类型与 key 元组类型都钉在 cache 上——`peek` 结果无需 `as` 收窄，key 写错形状是编译错误；`'article'` 式魔法字符串前缀消失了，因为身份*就是* cache 绑定。哈希做两层归一（剥 signal；递归剥掉值为 undefined 的键），`{tag: undefined}` 与 `{}` 是同一把 key——loader 侧 schema 输出的 key 与视图侧组件状态拼出的 key 永不漂移。`allCaches` 把每个实体 cache 登记进注册表（登出清场 + DevTool 面板遍历）；`tagsCache` 额外带 localStorage 镜像（启动 hydrate、登出擦盘）。
+
+preset 开箱即接线了通常要项目自己手写的行为：同参数并发调用**在 provider 层去重**——`useCache` 的 miss/stale 重验证内部走 cache 的 `load`（原子 get-or-insert 在飞槽位），请求未决期间每个消费者、**每条通道**（另一组件、路由 loader——见下节）拿到同一 key 都共享同一个 promise；依赖变化时经尾参 `AbortSignal` **中止**上一次请求（`useRun({signal: true})`，signal 一路穿透服务层到 fetch）；缓存/load/refetch 的 key 统一为**结构化哈希**（剥除 signal 的 `stableHash`——键序无关）；窗口重新聚焦/可见、断网恢复时**后台重验证**（`useFocusRevalidate` / `useReconnectRevalidate`）——新鲜条目直接命中缓存不发请求，stale 条目静默换新。
+
+真实声明与调用点，来自 tag 侧栏与评论列表：
 
 ```tsx
-// src/views/Home/Tags.tsx
-const {data: tags, loading, error, stale} = useQuery(articleService.fetchTags, [], {
+// src/services/dataloaders.ts —— 场景声明点
+//（createDataLoader 三元组：loader / useData / queryFn —— 见下节）
+export const [, , queryTags] = createDataLoader({
+  fetch: articleService.fetchTags,
+  cache: tagsCache,
+  keyOf: (): [] => []
+});
+export const useTagsQuery = createQueryHook({
+  queryFn: queryTags,
   initData: [],
   mock: {schema: tagListSchema, key: 'tagList'}
 });
+export const useCommentsQuery = createQueryHook({queryFn: queryComments, initData: []});
 
-// src/views/Article/CommentList.tsx
-const {data: comments, loading, error, refetch} = useQuery(
-  articleService.fetchCommentsByTitle,
-  [title]
-);
+// src/views/Home/Tags.tsx —— 调用点零 option
+const {data: tags, loading, error, stale} = useTagsQuery([]);
+
+// src/views/Article/CommentList.tsx —— initData: [] 把 data 收窄为 Comment[]
+const {data: comments, loading, error, dataUpdatedAt} = useCommentsQuery([title]);
 ```
 
-### 路由 Loader 与 query 共享缓存（`withCache`）
+#### 何时越过 preset 直取原语
 
-两条数据通道——路由 `data` loader 与 `useQuery`——刻意共用同一份模块级 `queryCache`。二者差异在**触发时机**与是否阻塞（loader：导航 resolve 期，`pendingComponent` 骨架兜底；query：挂载后，loading/error 状态化），但缓存与失效是同一份。`withCache(fn, prefix)`（`src/util/loaderCache.ts`）包装 loader，按 `[...prefix, ctx.search ?? ctx.params ?? {}]` 寻址缓存；视图侧用 `homeCacheArgs(search)` / `articleCacheArgs(title)` 生成同形 key（Home 的载荷必须与 `homeSearchSchema` 输出**形状**一致——无 tag 时键不存在）。正是这把共享 key 让 mutation 能写穿缓存（见下节）。
+preset 已接线多数项目需要的行为（去重、SWR、聚焦/联网重验证、依赖变化中止）。`react-toolroom/async` 还带了 preset 刻意**不**再导出的更多原语——当其中一件正合身，直接在同一 injectable/cache 上降级用库 hook，别撑大 preset：
 
-`withCache` 给 loader 带来 SWR 语义——新鲜命中直接返回缓存值零请求，stale 命中立即返回旧值并后台重验证（仅成功才 `refresh(router)`），miss 照旧落骨架/错误路径。叠加路由的视图栈，一次导航落在四态之一：
+- **轮询**（`usePolling` —— TanStack 的 `refetchInterval`）：实时仪表盘。调用慢时自动跳拍、页面隐藏时暂停；传 `args` 让轮询器与 `useRun` 寻址同一缓存 key。
+- **无限列表**（`useInfinite` —— TanStack 的 `useInfiniteQuery`）：`fetchNextPage`/`fetchPreviousPage`、`maxPages` 窗口化。About 页的 feed（`src/services/feed.ts`）是仓库内的活例——偏移分页聚合成无限列表，首页与任何普通查询一样由 `useRun` 驱动、翻页由 IntersectionObserver 哨兵触发，且刻意不接缓存：「缓存什么、缓存多久」留给真正跨页面共享数据的场景，这正是按场景组装对一刀切 preset 的意义。
+- **重试可观测**（`useRetry` + `useFailureCount`）：preset 已在结果里按参数报告 `failureCount`；要自动重试的场景降级 `useRetry`，配 `useFailureCount` 呈现「重试中 (2/3)……」的 UI。
+- **变更串行化**（`useMutation` 的 `scope`，react-toolroom 0.11）：对同一实体的连发写入——模板的收藏按钮按 slug 排队（`scope: (slug) => \`favorite:${slug}\``），第二次点击在*已落定*的基线上执行，而不是赛跑。
+- **更底层的存储**（`useResult`/`useLoading`/`useError` 共享同一 injectable 的广播域）：兄弟组件读同一查询免费同步；晚挂载者从最后结果起步，零请求。
+
+经验法则：preset 是默认路径；旁边的库原语是*加法*不是分叉——两者对话的是同一批实体缓存。
+
+### 路由 Loader 共享实体缓存（`withCache`）
+
+两条数据通道——路由 `data` loader 与场景 hook（`createQueryHook` 产物）——刻意共用同一批**实体缓存**。二者差异在**触发时机**与是否阻塞（loader：导航 resolve 期，`pendingComponent` 骨架兜底；query：挂载后，loading/error 状态化），但缓存与失效是同一份。一条声明同时覆盖两条通道：`createDataLoader({fetch, cache, keyOf, mock?})`（`src/util/dataLoader.ts`）返回**三元组** `[loader, useData, queryFn]`——loader 挂到路由表，`useData()` 在视图里读类型化数据（`useData<T>()!` 的断言与泛型标注收拢进工厂；`{optional: true}` 服务「共用组件的路由可能不挂 data」的形态，dev 构建还会校验路由确实声明了本 loader），`queryFn` 喂给 `createQueryHook` 做组件通道。`keyOf(ctx)` 是实体 key 的**唯一定义点**——loader 把 `articleCache` 寻址为 `[title]`、`homeCache` 寻址为 `[search]`，mutation 经 cache 绑定寻址同一批元组，视图彻底不再手工拼 key（旧 `homeCacheArgs`「载荷必须与 schema 输出形状一致」的坑结构性消失——哈希剥掉 undefined 键）。全部声明集中在 `src/services/dataloaders.ts`——路由表与视图消费的应用绑定层。
+
+底层由 `withCache(cache, keyOf, fn)`（`src/util/loaderCache.ts`）包装 loader，带 SWR 语义——新鲜命中直接返回缓存值零请求，stale 命中立即返回旧值并后台重验证，miss 照旧落骨架/错误路径。叠加路由的视图栈，一次导航落在四态之一：
 
 | 落点 | 跑 loader？ | 用户看到 |
 | --- | --- | --- |
@@ -314,39 +336,68 @@ const {data: comments, loading, error, refetch} = useQuery(
 | 缓存命中但 stale | 跑——后台重验证 | 先见旧值，原地换新——不闪骨架、不闪屏 |
 | 缓存 miss | 跑——走网络 | `pendingComponent` 骨架（冷启动） |
 
-在飞请求跨通道共享（provider 层）：`PrefetchLink` 预热与正式导航 resolve 到**同一个**在飞 promise，先 hover 过的链接点击不会重复发请求。
+在飞请求跨通道共享（provider 层）：`PrefetchLink` 预热与正式导航 resolve 到**同一个**在飞 promise，先 hover 过的链接点击不会重复发请求。闲置条目按条目回收（`cacheTime` 从每条目的 `lastUsedAt` 起算——loader 直写的条目即使没有存活的消费者，闲置满窗口同样被回收，无「永不回收」特例）。
 
 两个会话级新鲜度边界也有兜底：`logout()` 时 Layout 额外调用 `invalidate(router)`（native-router ≥1.6）——丢弃上一账号的视图栈快照，此后后退 POP 走守卫+loader 重解析，而不是回放旧账号的视图；`pageshow` 且 `persisted: true`（bfcache 恢复——SPA 收不到任何导航事件）触发 `refresh(router)`：loader 对缓存重跑，新鲜命中零成本，stale 静默换新。
 
-### 收藏 / 关注的写穿更新
+### 可组合的乐观变更（`cache.mutation`）
 
-变更先写穿共享缓存，再与服务端对账——同一模式驱动 `Home` 的收藏按钮与 `Article` 的收藏/关注。`applyCache(next)` 把值按 loader 的 key 写进 `queryCache` 并 `refresh(router)`：loader 重跑是*新鲜缓存命中*，视图零请求、零骨架换新（手写本地 override `useState` 的时代结束——缓存写穿同时惠及后退导航命中，provider 的代次计数也保护它不被在飞的旧响应覆盖）：
+写穿式收藏/关注曾经是每个调用点约 30 行手写管线（peek 基线 → set → `refresh(router)` → 成功合并 → 失败回滚）。react-toolroom 0.10 起，这条管线成为**绑定 cache 的声明式 API**——配方住在服务层（`src/services/mutations.ts`），按缓存投影逐层组合：
+
+```ts
+// src/services/mutations.ts
+// article 层：单实体原语，可被任何视图/其它层复用
+export const favoriteOnArticle = articleCache.mutation(
+  (slug: string, on: boolean) => ({
+    mutate: () => api.favoriteArticle(slug, on),
+    key: [slug],
+    update: (old) => ({...old, favorited: on,
+      favoritesCount: old.favoritesCount + (on ? 1 : -1)}),
+    // 字段选择式合并：只有 favorite 域两个权威字段——请求在飞期间
+    // 写穿的 following 得以幸存
+    apply: (old, resp) => ({...old, favorited: resp.favorited,
+      favoritesCount: resp.favoritesCount})
+  })
+);
+
+// home 层：信息流投影，组合在上一层之上（key 省略 = 补丁打到全部
+// settled 条目；不含该 slug 的页 miss-bail 跳过）
+export const favoriteOnHome = homeCache.mutation((slug: string, on: boolean) => ({
+  mutate: () => favoriteOnArticle(slug, on), // 组合点
+  update: (page, slug, on) => {
+    const target = page.articles.find((x) => x.slug === slug);
+    if (!target) return undefined;
+    return patchArticleIn(page, slug, {...});
+  },
+  apply: (page, resp) => patchArticleIn(page, resp.slug, {...})
+}));
+```
+
+管道为每次写入记账，失败时带身份守卫回滚——仅当条目仍持有恰好那个乐观值才复原，并发写者的更新状态不会被我们的回滚吞掉。视图收缩为一次调用加错误提示：
 
 ```tsx
-// src/views/Article/index.tsx
-const key = articleCacheArgs(params.title!); // 正是 loader 寻址的那把 key
-const applyCache = (next: Article) => {
-  queryCache.set(key, next);
-  void refresh(router); // loader 重跑 = 新鲜命中 → 视图换新
-};
-
-const toggleFavorite = () => {
-  const snapshot = article; // 失败时的权威值
-  applyCache({
-    ...snapshot,
-    favorited: !snapshot.favorited,
-    favoritesCount: snapshot.favorited ? snapshot.favoritesCount - 1 : snapshot.favoritesCount + 1
-  });
-  articleService
-    .favoriteArticle(snapshot.slug, !snapshot.favorited)
-    .then((a) => applyCache(a)) // 服务端权威值校正
-    .catch(() => applyCache(snapshot)); // 回滚 —— 服务端状态从未改变
+// src/views/Home/index.tsx
+const [favorite] = useMutation(favoriteOnHome, {
+  // 同一文章连点串行；不同文章互不阻塞
+  scope: (slug: string) => `favorite:${slug}`
+});
+const toast = useToast();
+const toggleFavorite = (a: Article) => {
+  if (!getCurrentUser()) return void navigate(router, '/login');
+  // 回滚是自动的；toast 是仅剩的用户侧反馈
+  void favorite(a.slug, !a.favorited).catch((e) =>
+    toast(e instanceof Error ? e.message : 'Favorite failed', {variant: 'danger'})
+  );
 };
 ```
 
-`Home` 不整体替换而是**补丁**页条目——`queryCache.set(homeCacheArgs({...}), updater(page))` 只换缓存列表里的目标文章（无条目可补丁时放弃，如登出 `clear()` 之后；下一次导航自然重拉）。follow 成功时用 `queryCache.peek(key)` 的**当前值**合并而非闭包快照，follow 在飞期间写穿的 favorite 不会被合并覆盖。
+组合免费带来三个性质：
 
-发表评论后：`reset(commentForm, {body: ''})` 重置表单——评论 `Textarea` 经 haze-ui `FormItem` 的 control 桥全受控绑定，reset 直接同步显存文本、无需重挂子树——mutation 的 `invalidates` 再声明式驱动 `CommentList` 绕过缓存刷新。
+- **多投影一致性** —— 从 `Home` 收藏，一次调用同时写 `articleCache` 条目与所有含该 slug 的 `homeCache` 页；「返回列表看到旧计数」的缝隙消失。
+- **刷新自动化** —— `withCache` 在 loader 首跑时订阅各 cache 的 `set` 事件，已见过的 key 值引用变化即 refresh 路由（微任务去抖）。写穿、回滚、`patchWhere` 批量补丁、后台重验证 settle 全部经此扇出；视图里零 `refresh` 调用。引用变化判据同时是结构共享的等价物：重验证以同一引用 settle 则什么也不触发。
+- **失败隔离** —— 各层独立 miss-bail（不为缺失条目造数，乐观写不可能复活登出刚清掉的条目），一次 rejection 把组合的每一层全部退回。
+
+发表评论仍是声明式失效，但钉到精确 key：`useMutation(articleService.addComment, {invalidates: [[commentsCache, article.slug]]})` 只清当前文章的评论条目（其它文章的缓存原样保留；挂载中的 `CommentList` 经 provider 删除事件被动重拉——追加后的列表形状无法本地推导，硬重拉才是正确工具）。`Editor` 保存则整实体失效（`invalidates: [homeCache, articleCache]`）——两种粒度是刻意的：评论写与 `[slug]` key 一一对应，而 home 投影的 key 是完整的 search 组合、编辑一篇文章影响哪些组合无法在写点本地推导。
 
 ### 基于 `fetch-fun` 的类型化 HTTP 客户端
 
@@ -504,7 +555,16 @@ export type Article = {
 - 路由加载器：`mockViewData(fn, schema, key)` 包装路由 `data` 函数。
 - 组件查询：`useQuery` 的 `mock: {schema, key}` 选项。
 
-两者都会在 **DevTool** 面板（仅开发环境）注册，每个数据集可在 `empty`（仅当 API 出错或返回为空时 mock）与 `always`（始终 mock）之间切换。任何 mock 配置写入（`setMockConfig`）都会清空共享 `queryCache`——mock 优先于缓存：切换模式或面板 Refresh 必须绕过 loader 侧 `withCache` 的新鲜命中，否则 mock 永远不生效（仅开发环境；生产无 `setMockConfig` 调用方）。
+两者都会在 **DevTool** 面板（仅开发环境）注册，每个数据集可在 `empty`（仅当 API 出错或返回为空时 mock）与 `always`（始终 mock）之间切换。切换模式或面板 Refresh 会清空全部每实体缓存（`clearAllCaches` 遍历 `allCaches` 注册表）——mock 优先于缓存：必须绕过 loader 侧 `withCache` 的新鲜命中，否则 mock 永远不生效（仅开发环境；生产无 mock 调用方）。
+
+面板还托管另外两个开发期检查器：
+
+- **缓存视图** —— `allCaches` 快照：逐条目年龄、在飞徽标与 set/delete 事件流，外加 Clear 按钮（这套栈需要的最接近 TanStack Query DevTools 的东西，运行时成本约等于零）。
+- **请求日志** —— `src/util/http.ts` 中 dev-only 的 `withLogging` 中间件把每个 Request/Response/Error 事件推进环形缓冲（`src/util/requestLog.ts`）；面板按最新在前渲染并给状态码着色，「这次交互到底发请求没？」一眼可答。
+
+### 根部主题 control 驱动暗色模式
+
+`src/index.tsx` 在应用根创建唯一的 `useControl` 布尔值——初始跟随 `prefers-color-scheme`，此后归用户所有——并据此切换 `lightTheme`/`darkTheme`（haze-ui 的 `--haze-*` CSS 变量类）。control 经普通 context（`src/util/theme.tsx`）下发到导航栏的 `ThemeToggle`；开关本身是 haze-ui `Switch`，其 `checked` prop 原生接受 `Control<boolean>`——无需 `value`/`onChange` 管线。这也是跨远距组件*共享* control 的范本：根部创建一次，其余使用者复用同一枚令牌。
 
 ### 零运行时 CSS
 
@@ -519,6 +579,35 @@ const pushRight = css`
   margin-left: auto;
 `;
 ```
+
+### 错误上报扩展点
+
+模板不携带错误上报 SDK——上报是它拒绝替你做的产品决策。它给的是三个挂载点，一层一个，各自看到失败的不同切片：
+
+- **HTTP 层**（`src/util/http.ts`）——所有通道（路由 loader、`useQuery`、mutation）的每个请求都汇入同一条 fetch-fun 管道，末端的 `mapError` 阶段就是上报器的归属：捕获后原样返回错误，下游 `instanceof HTTPError`、`.status`、`.data` 的语义分毫不动。单个失败的信号最富（状态码、解析后的错误体、请求上下文）——但只覆盖请求失败，且要过滤噪音：被更新的导航取代而中止的请求（`AbortSignal` 透传）是常态，不是错误。
+- **路由层**（`src/views/index.tsx`）——导航期失败按段分流：`params`/`search` 解析失败，以及未自带兜底的路由，落进全局 `errorHandler`（渲染 `RouterError`）；路由自己的 `errorComponent`（如 `/article/:title` 的 `NotFound`）只覆盖该路由 `data` 段的失败。分工是：`errorComponent` 管呈现——页面自己决定「文章不存在」长什么样——而 `errorHandler` 是看得到其余一切 loader 失败的唯一收口，也是上报它们的天然挂点。
+- **渲染层**（`src/index.tsx`）——路由器兜住 resolve 期失败；视图*渲染中*抛出、或事件处理器里抛出的错误不在它的管道内。模板现状刻意未挂根级 `ErrorBoundary`——合适的挂点是 `src/index.tsx` 的 `Root`，包住 `<App />` 作最后防线，配崩溃兜底 UI 而非白屏。
+
+接入一个（Sentry 伪代码——模板不携带该依赖）：
+
+```tsx
+// ① HTTP 层 —— src/util/http.ts 的 mapError 出口：上报后原样返回
+.pipe(ff.mapError, (e) => {
+  if (!isAbort(e)) Sentry.captureException(e); // 被新导航取代的 abort 不是错误
+  return e;
+})
+// ② 路由层 —— src/views/index.tsx 全局 errorHandler（errorComponent 只管呈现）
+errorHandler={(e) => {
+  Sentry.captureException(e);
+  return <RouterError error={e} />;
+}}
+// ③ 渲染层 —— src/index.tsx 根 ErrorBoundary（现状未挂；包住 <App />）
+<ErrorBoundary onError={(e) => Sentry.captureException(e)} fallback={<Crash />}>
+  <App />
+</ErrorBoundary>
+```
+
+三层刻意重叠——loader 的一次 500 早已路过 HTTP 层——按产品所需的信号选取挂载点，去重交给 SDK（Sentry 一类按错误指纹去重）。
 
 ## 快速开始
 

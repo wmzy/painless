@@ -1,4 +1,13 @@
-import {View, HistoryRouter as Router, createRoutes, type Route, type RoutePaths} from '@native-router/react';
+import {useEffect} from 'react';
+import {
+  View,
+  HistoryRouter as Router,
+  createRoutes,
+  useRouter,
+  type Route,
+  type RoutePaths
+} from '@native-router/react';
+import {initHistoryStack} from '@native-router/core';
 
 import Loading from '@/components/Loading';
 import RouterError from '@/components/RouterError';
@@ -120,6 +129,44 @@ const routes = createRoutes({
 // 路径拼写错误在编译期暴露（动态段路由同时要求 params 完整）
 export type AppPaths = RoutePaths<typeof routes>;
 
+// 路由表自身的类型：TypedLink 表形态（TypedLink<AppRoutes>）的判别源
+// ——给组件整个表而非路径联合，to 按模式收窄的同时 search 也按各层
+// search schema 的 input 侧（URL 输入形状）判别并序列化进 query（见
+// Home 分页）。只导出类型：视图侧经 import type 引用，编译后零运行时
+// 依赖，路由表（component: () => import(...) 惰性加载视图）与视图间
+// 不产生真实的模块环
+export type AppRoutes = typeof routes;
+
+// 刷新后的 viewStack 预热（@native-router ≥1.10 initHistoryStack）。
+// 会话栈以有界尾窗序列化进 history.state（maxStackDepth 默认 100），
+// 刷新后 create 恢复 locationStack 但快照全空——不预热则窗内
+// back/forward 每次都退化为惰性重解析（守卫 + loader 重跑）。挂载时
+// 一次性重解析窗内全部可达条目，之后窗内往返直接落快照、零请求。
+// 与冷启动首解析的合流：本组件的 effect 先于 Router 的 subscribe
+//（listen → 首次 refresh）执行，当前条目会被预热与冷启动各解析一次，
+// loader 侧 withCache 的 in-flight 共享（见 util/loaderCache.ts）把两
+// 者并成同一请求；其余条目是预热的本职成本，各至多一次请求。
+// 分层关系（外层命中即短路内层）：bfcache > viewStack > queryCache
+// ——bfcache 管跨文档往返（整页快照，pageshow persisted 的新鲜度补偿
+// 见 Layout），viewStack 管同文档往返（本层），queryCache 管跨视图
+// 共享与 SWR。窗口外条目（超出 maxStackDepth 被裁剪、或浏览器自行
+// 逐出的历史）不在预热范围，落点仍走单次惰性重解析，语义不变。
+// 已知边界：预热经 resolve 直接取快照、不经 beforeLoad 守卫（库的
+// 既定语义，守卫重定向会破坏窗口形状）——会话内守卫语义由登出链路
+// 的 invalidate 清场承担（见 Layout）；刷新后窗口若含守卫路由且登录
+// 态已变，POP 落预热快照不会重跑守卫（loader 数据本身公开，提交侧
+// 有 401 兜底），需要严格语义时可在预热后把守卫路由槽位置空回退。
+export function StackWarmer() {
+  const router = useRouter();
+  useEffect(() => {
+    // 各条目的 resolve 失败已被 errorHandler 兜成错误视图，Promise.all
+    // 实际不会拒绝；万一 errorHandler 自身抛错，这里吞掉避免 unhandled
+    // rejection——预热失败的代价只是窗内回退退回惰性重解析，无需上抛
+    initHistoryStack(router).catch(() => undefined);
+  }, [router]);
+  return null;
+}
+
 export default function App() {
   return (
     <Router
@@ -130,6 +177,9 @@ export default function App() {
     >
       <View />
       <Loading />
+      {/* 刷新预热挂在 Router 内（useRouter 经 context 取实例），子组件
+          effect 先于 Router 的 listen 执行——时序论证见组件注释 */}
+      <StackWarmer />
     </Router>
   );
 }
