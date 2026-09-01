@@ -306,7 +306,7 @@ describe('Register 表单', () => {
       );
       expect(errorEl?.getAttribute('role')).toBe('alert');
       expect(errorEl?.textContent).toBe('Passwords do not match');
-      // 无效提交被拦：不发请求，按钮因 hasErrors 压下
+      // 无效提交被拦：不发请求，canSubmit 的 hasErrors 分量压下按钮
       expect(registerMock).not.toHaveBeenCalled();
       expect(submit.disabled).toBe(true);
 

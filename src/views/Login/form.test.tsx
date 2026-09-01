@@ -146,9 +146,10 @@ describe('Login 表单', () => {
     expect(await screen.findByText('Network down')).toBeDefined();
   });
 
-  // #11 防重复/防无效提交：disabled 组合 isSubmitting + hasErrors。
-  // 初始可点是刻意语义（mode='onSubmit' 下首次校验由提交触发，errors
-  // 初始为空集）——见视图按钮处的 why 注释。复验走逐键触发（默认档
+  // #11 防重复/防无效提交：disabled = !canSubmit（react-f0rm ≥0.8 的
+  // useCanSubmit 复合 flag，= !isSubmitting && !hasErrors）。初始可点是
+  // 刻意语义（mode='onSubmit' 下首次校验由提交触发，errors 初始为
+  // 空集）——见视图按钮处的 why 注释。复验走逐键触发（默认档
   // reValidateMode='onChange'，桥写值即用户变更）。
   it('提交按钮状态迁移：初始可点→无效提交压下→修复即弹起→提交期再压下', async () => {
     // 手动控制 resolve：让 isSubmitting 覆盖整个异步提交期的窗口可控

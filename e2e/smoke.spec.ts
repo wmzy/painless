@@ -722,6 +722,65 @@ test('viewStack back: Home 后退零请求恢复', async ({page}) => {
   expect(feedGets).toBe(before);
 });
 
+// searchDeps 快路径（@native-router ≥1.12，接线见 views/index.tsx 的
+// Home 链：布局层 [] + Home 叶子层 tag/offset/limit 全量键）：同 search
+// 重复导航 → 当前视图快照直接作为新条目复用，零守卫零 loader 零懒加载
+//（与 POP 落 viewStack 同一条路）；声明键变化（翻页 offset）照常整链
+// 重解析——分页行为不变是接线的前置约束，两段在同一用例里互为对照。
+// 列表 fixture 需 ≥2 页（12 篇 × limit 10），复用无限 feed 用例的造数
+// 形态：fulfill 型 handler 注册在 mockApi 之后（后注册先咨询），直接
+// 覆盖 mockApi 的两篇 fixture 响应。
+test('searchDeps: Home 同 search 重复导航零请求，翻页照常重取', async ({page}) => {
+  let feedGets = 0;
+  await mockApi(page, {published: false});
+  const feedArticles: Article[] = Array.from({length: 12}, (_, i) => {
+    const no = String(i + 1).padStart(2, '0');
+    return {
+      ...article1,
+      slug: `e2e-deps-${no}`,
+      title: `Deps Article ${no}`
+    };
+  });
+  await page.route('**/api/articles?*', async (route) => {
+    feedGets++;
+    const {searchParams} = new URL(route.request().url());
+    const offset = Number(searchParams.get('offset') ?? 0);
+    const limit = Number(searchParams.get('limit') ?? 10);
+    return json(route, 200, {
+      articles: feedArticles.slice(offset, offset + limit),
+      articlesCount: feedArticles.length
+    });
+  });
+  // 裸变体只计数（列表请求恒带 query，glob 对完整 URL 匹配——口径见
+  // viewStack 用例注释）
+  await page.route('**/api/articles', (route) => {
+    feedGets++;
+    return route.fallback();
+  });
+
+  await page.goto('/');
+  await expect(
+    page.getByRole('heading', {name: 'Deps Article 01'})
+  ).toBeVisible();
+  await expect.poll(() => feedGets).toBe(1);
+
+  // 同 search 重复导航：导航栏 Home（TypedNavLink to='/'，当前已在 /）
+  const before = feedGets;
+  await page.getByRole('link', {name: 'Home', exact: true}).click();
+  // 负断言的稳定窗（同 viewStack 用例）：给潜在的重解析一个结算窗口
+  await page.waitForTimeout(1000);
+  expect(feedGets).toBe(before);
+
+  // 翻页（声明键 offset 变化）：TypedLink 的 search 序列化进 URL，整链
+  // 重解析、loader 读到新 search → 第二条列表请求，第二页渲染
+  await page.getByRole('link', {name: 'Next →'}).click();
+  await expect(page).toHaveURL(/\/\?offset=10$/);
+  await expect(
+    page.getByRole('heading', {name: 'Deps Article 11'})
+  ).toBeVisible();
+  await expect.poll(() => feedGets).toBe(2);
+});
+
 // 乐观写失败自动回滚（cache.mutation 管道卖点，services/mutations.ts）：
 // 乐观首步同步翻转 → 服务调用 → 失败自动回滚 + 调用方 toast。favorite 是
 // toggle 端点（POST 加 / DELETE 取），route 对方法不敏感、一律拦截，本

@@ -1,7 +1,12 @@
 // 路由 data 管道的收敛工厂：把「withCache 双通道缓存 → DevTool mock →
 // 路由 data」三层包装、视图侧取数、组件通道取数入口收拢为一次
 // createDataLoader 声明——路由表只挂 loader 引用，视图不再手写
-// useData<T>()! / ?? undefined 的来源断言与泛型手工标注。
+// useData<T>()! / ?? undefined 的来源断言与泛型手工标注。库侧
+// （@native-router/react ≥1.11）为裸 useData 消费者提供了类型工具
+// RouteDataOf<S>（useData<RouteDataOf<typeof loadX>>，从 loader 引用
+// 推导返回类型）；本工厂不需要它——T 从 fetch 声明直接流进 UseData<T>，
+// 与 RouteDataOf<typeof loader> 已验证逐类型等价，且额外绑定「声明
+// 身份」（route.data === loader 的 DEV 校验），见 decisions.md 第 15 条。
 // 【上移计划】本工厂与 useQuery / loaderCache 同属项目级胶水层（决策见
 // docs/decisions.md 第 2 条）；三元组形态（loader / useData / queryFn）+
 // 场景层组装（createQueryHook，绑定见 services/dataloaders.ts）即上移包

@@ -77,6 +77,12 @@ const FAMILY: Record<string, string> = {
   StepTimelineItem: 'step-timeline',
   TimelineItem: 'timeline',
   GridItem: 'grid',
+  // 受控核心（*Core）与同名完整组件共用一份家族 css：haze-<X>Core__*
+  // 类就落在 <family>.css 里（1.12.2 接入批换用 *Core 控件时漏登记，
+  // kebab 直拼 input-core.css 不存在令 build 失败——补此三条）
+  InputCore: 'input',
+  TextareaCore: 'textarea',
+  TagInputCore: 'tag-input',
   // 前缀家族：组合件的 Trigger/Content/Item/Separator 等子件
   CollapsibleTrigger: 'collapsible',
   CollapsibleContent: 'collapsible',

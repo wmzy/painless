@@ -36,6 +36,12 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
     withRetry）。
   - **上移形态的预演完成**：将来抽包时 API 面即「createDataLoader 三元组 +
     createQueryHook 工厂」，应用侧只保留 dataloaders.ts 的绑定声明。
+  - **补记（2026-09-01）**：@native-router/react 1.11 起 README 的
+    「Data loading recipe」节官方化了本配方——以 painless 的
+    createDataLoader 三元组为蓝本（文中点名 "extracted from painless，
+    the reference SPA template"），并给出裸 useData 消费者的对应类型工具
+    `RouteDataOf<S>`。库文档与模板实现自此互为镜像；等价性论证与
+    「不接 RouteDataOf」的取舍见第 15 条。
 
 ## 3. native-router beforeLoad context 注入：已解决
 
@@ -411,3 +417,58 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
   ——主要是 CSS 与 react-dom 的 flushSync 引入；预 traded 的
   `Element.startViewTransition` 提案落地或 React stable 通道出
   `<ViewTransition>` 组件时，prop API 形态不变、库内实现可平移。
+
+## 15. 三库发版能力接入批（2026-09-01）
+
+- **版本**：@native-router/core ^1.12.0 + @native-router/react ^1.12.0
+  （自 1.11.0/1.10.1）、react-f0rm ^0.8.0（自 0.7.0），npm 显式版本
+  安装（第 1 条流程），无双实例/类型骤变（tsc 首轮即绿）。
+- **useCanSubmit 替换手组**：Login/Register 的提交按钮 disabled 原由
+  `useIsSubmitting(form) || useHasErrors(form)` 两个订阅 hook 手组
+  （0.6 时代无复合 flag 的过渡形态），0.8 的 `useCanSubmit(form)`
+  （= !isSubmitting && !hasErrors，布尔快照仅翻转重渲染）取代之——
+  按钮 disabled 行为逐字节不变，21 个表单单测全绿零改动断言。Article
+  的评论提交只挂 isSubmitting（无 hasErrors 门）、Editor 组的是
+  isSubmitting × isDirty——语义不同型，均非替换对象。
+- **searchDeps 接线（保守起步）**：只接 Home 链——布局层
+  `searchDeps: []`（不消费 search）+ Home 叶子层
+  `['tag', 'offset', 'limit']`（HomeSearch 全量键：loader 经 keyOf 消费
+  整个 search 组合，且 schema 对三键严格校验——快路径跳过 resolve 期
+  schema，严格校验的键漏声明会让非法值落 URL 无人检查）。收益：该链上
+  无关 search 键变化 / 同 search 重复导航 / 纯 hash 变化 → 快照复用
+  零重跑（守卫/loader/懒加载全跳）；声明键变化（翻页/切 tag）照常整链
+  重解析。**其余路由（article/help/about/login/register/editor×2）刻意
+  不声明**：链覆盖全有或全无，叶子补 `[]` 的收益是「这些链上重复导航/
+  纯 hash 变化零重跑」，但每条链都要独立核对「search schema 严格校验的
+  键全量声明 + 守卫不读未声明键」两个前置——当前这些路由无 search
+  schema 无守卫、收益仅剩重复点击导航栏的场景，viewStack（POP 零重跑）
+  已覆盖主要动线；等某条链真出现「无关键变化触发多余重取」的实际痛点
+  再逐链接入（届时套 Home 链的两条前置核对即可）。行为锚点：
+  `src/views/index.test.tsx` 的 searchDeps 组（含未声明链的对照用例），
+  e2e `searchDeps: Home 同 search 重复导航零请求，翻页照常重取`
+  钉真实路由表。
+- **RouteDataOf 评估：不接**。库侧类型工具 `RouteDataOf<typeof loader>`
+  服务的是裸 `useData<T>()` 消费者（把手写泛型换成从 loader 引用推导）；
+  painless 的 createDataLoader 工厂里 T 从 fetch 声明直接流进
+  `UseData<T>`，视图零泛型标注——已验证
+  `RouteDataOf<typeof homeLoader>` 与工厂的 T（ArticlePage）逐类型
+  等价（双向可赋值编译实验），且工厂额外绑定「声明身份」（第 8 条 DEV
+  校验，RouteDataOf 只保类型不保来源）。回退到 `useData<RouteDataOf<…>>`
+  形态等于放弃工厂换弱保证，不接。
+- **react-f0rm 0.8 其余能力**：form 级 `validate/validateDebounce`
+  （>0 窗口归并 + round gate + 在途轮 abort）评估不接——Register 的
+  异步校验在字段级（FormItem validateDebounce 透传 useField），form 级
+  校验（密码一致性）是同步的，无 form 级 debounce 消费场景。
+- **随批修复（前置基线缺口）**：949ea22（haze-ui 1.12.2 接入）把视图
+  控件换成 InputCore/TextareaCore/TagInputCore 但漏登记
+  vite-plugin-haze-css.mts 的 FAMILY——kebab 直拼 input-core.css 等
+  不存在，`npm run build` 在本批升级前就已必挂（该提交只跑了 tsc/
+  vitest，build 缺口未暴露）。按插件自身约定（家族归并以 .haze-<X>__
+  类实际落点为准，已核 1.12.2 dist/css：haze-InputCore__* 在 input.css
+  等）补三条同名家族映射，build 复绿。
+- **体积**：116.95 KB（size-budget 口径：dist JS+CSS gzip 总和，zlib
+  level 9，含懒加载 chunk），对 VT 批口径数字 116.56 KB +0.39 KB——
+  增量来自三个库升级自身（core 1.11→1.12 的 searchDeps 快路径 +
+  react 1.10.1→1.12 + f0rm 0.7→0.8），模板侧接线零增（searchDeps 是
+  声明式选项、useCanSubmit 是替换不是叠加）。预算 126.00 KB 内
+  （7.2% 余量），棘轮基线不动。

@@ -52,11 +52,21 @@ export const requireLogin: NonNullable<
 // （AppPaths）就提不出来了
 const routes = createRoutes({
   component: () => import('./Layout'),
+  // searchDeps 快路径（@native-router ≥1.12）的链覆盖要求：匹配链
+  // 「每一层」都声明才生效，任一层未声明即整链退回现状（任何 search
+  // 变化都重解析）。布局层不消费任何 search 键，声明 []（本层对 search
+  // 变化全不敏感）；Home 叶子层声明其 schema 严格校验的全量键（见下）。
+  // 收益：布局+Home 全声明链上，无关 search 键变化 / 同 search 重复
+  // 导航 / 纯 hash 变化 → 快照复用零重跑（守卫/loader/懒加载全跳，
+  // 同 POP 落 viewStack 的路径）。其余路由的叶子层刻意不声明——
+  // 见 decisions.md 第 15 条的保守取舍。
+  searchDeps: [],
   children: [
     {
       path: '/',
-      // search 变化即重跑 data（native-router 的视图缓存 key 含 search）；
-      // schema 在 resolve 期解析+校验，loader 拿到的已是 coerce 后的值。
+      // search 变化即重跑 data（native-router 的视图缓存 key 含 search，
+      // searchDeps 声明后收窄为「声明的键变化」才重跑，见下）；schema 在
+      // resolve 期解析+校验，loader 拿到的已是 coerce 后的值。
       // data 管道已收敛为 createDataLoader 三元组（声明见
       // services/dataloaders.ts 的 homeLoader）：withCache(homeCache) 双
       // 通道缓存 + DevTool mock + 视图侧 useHomeData 的 DEV 来源校验——
@@ -65,6 +75,16 @@ const routes = createRoutes({
       // provider.load 共享同一 in-flight；signal 透传给 service，被新
       // 导航取代/cancel/POP 取消的请求随 ctx.signal abort。
       search: homeSearchSchema,
+      // 本层消费的 search 键 = HomeSearch 全量（tag/offset/limit）：loader
+      // 经 keyOf 读完整 search（缓存 key 即整个组合），且 schema 对这三个
+      // 键做严格校验（coerce/补缺省）——快路径跳过 resolve 期 schema，
+      // 严格校验的键不声明就会让非法值落 URL 无人检查，故必须全量。
+      // 声明后：翻页/切 tag（投影变化）照常整链重解析、loader 读到新
+      // search；无关键变化/同 search 重复导航/纯 hash 变化零重跑。
+      // 视图侧 useSearch(homeSearchSchema) 订阅的是 live location，快照
+      // 复用下仍读到新 search（保留视图的 matched ctx 才是 resolve 期
+      // 的旧值——不这么读）。
+      searchDeps: ['tag', 'offset', 'limit'],
       data: homeLoader,
       // 冷启动/刷新（无前视图可保留）时渲染文章卡片骨架；应用内导航
       // 保持旧视图 + 全局 Loading，不进这里

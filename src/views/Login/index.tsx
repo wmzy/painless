@@ -1,7 +1,7 @@
 import type {AppPaths} from '@/views';
 
 import {useState} from 'react';
-import {Form, useForm, useHasErrors, useIsSubmitting} from 'react-f0rm';
+import {Form, useForm, useCanSubmit} from 'react-f0rm';
 import {Card, Title, InputCore, Text, Alert, FormItem} from 'haze-ui';
 // FormItem（haze-ui 1.8 引入、1.11 起随 form 层并入主 barrel）：接管字段
 // id/错误 span/aria 链路——首条错误渲染为 <span role='alert'>。1.12.2
@@ -60,11 +60,11 @@ export default function Login() {
   // 触发 React 的 uncontrolled→controlled 警告）
   type LoginValues = {email: string; password: string};
   const form = useForm<LoginValues>({initialValues: {email: '', password: ''}});
-  // 提交按钮的 disabled 组合（react-f0rm 0.6 无 canSubmit 复合 flag，
-  // 由两个订阅 hook 组出）：isSubmitting 覆盖整个异步提交期；
-  // hasErrors 在任一字段带错（客户端校验或 422 回填）时为 true。
-  const hasErrors = useHasErrors(form);
-  const isSubmitting = useIsSubmitting(form);
+  // 提交按钮的 disabled flag（react-f0rm ≥0.8 的 useCanSubmit 复合订阅，
+  // 语义 = !isSubmitting && !hasErrors，取代此前两个订阅 hook 的手组）：
+  // isSubmitting 覆盖整个异步提交期；hasErrors 在任一字段带错（客户端
+  // 校验或 422 回填）时为 true。布尔快照仅翻转重渲染（库内订阅粒度）。
+  const canSubmit = useCanSubmit(form);
   const router = useRouter();
   // 守卫写入的原目的页（见上方 loginSearchSchema）：URL 侧整体 encode，
   // 这里拿到的是已解码的 pathname+search
@@ -139,12 +139,12 @@ export default function Login() {
         </FormItem>
         {/* 防重复/防无效提交。初始可点是刻意语义：表单默认
             mode='onSubmit'，首次校验由提交触发，errors 初始为空集
-            （useHasErrors 只读错误 Map 的 size，不预跑校验）——若初始
-            就 disabled，提交永远不会发生。首次失败后按钮压下；提交失败
-            后修改字段即逐键复验（默认档 reValidateMode='onChange'，
-            FormItem 的 onChange 即 useField.onChange），错误清即弹起，
-            422 回填的字段错误同理。 */}
-        <button type='submit' disabled={isSubmitting || hasErrors}>
+            （canSubmit 的 hasErrors 分量只读错误 Map 的 size，不预跑
+            校验）——若初始就 disabled，提交永远不会发生。首次失败后
+            按钮压下；提交失败后修改字段即逐键复验（默认档
+            reValidateMode='onChange'，FormItem 的 onChange 即
+            useField.onChange），错误清即弹起，422 回填的字段错误同理。 */}
+        <button type='submit' disabled={!canSubmit}>
           Login
         </button>
       </Form>

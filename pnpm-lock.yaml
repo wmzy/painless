@@ -15,17 +15,17 @@ importers:
         specifier: ^8.2.0
         version: 8.2.0(supports-color@10.2.2)
       '@native-router/core':
-        specifier: ^1.11.0
-        version: 1.11.0
+        specifier: ^1.12.0
+        version: 1.12.0
       '@native-router/react':
-        specifier: ^1.10.1
-        version: 1.10.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        specifier: ^1.12.0
+        version: 1.12.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       fetch-fun:
         specifier: ^0.11.0
         version: 0.11.0
       haze-ui:
-        specifier: ^1.12.2
-        version: 1.12.2(@linaria/core@8.2.0(supports-color@10.2.2))(react-dom@19.2.8(react@19.2.8))(react-f0rm@0.7.0(react@19.2.8)(zod@4.5.4))(react@19.2.8)
+        specifier: ^1.14.0
+        version: 1.14.0(@linaria/core@8.2.0(supports-color@10.2.2))(react-dom@19.2.8(react@19.2.8))(react-f0rm@0.8.0(react@19.2.8)(zod@4.5.4))(react@19.2.8)
       react:
         specifier: ^19.2.8
         version: 19.2.8
@@ -33,14 +33,14 @@ importers:
         specifier: ^19.2.8
         version: 19.2.8(react@19.2.8)
       react-f0rm:
-        specifier: ^0.7.0
-        version: 0.7.0(react@19.2.8)(zod@4.5.4)
+        specifier: ^0.8.0
+        version: 0.8.0(react@19.2.8)(zod@4.5.4)
       react-toolroom:
         specifier: ^0.18.4
         version: 0.18.4(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react-use-control:
-        specifier: ^1.3.2
-        version: 1.3.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        specifier: ^1.5.0
+        version: 1.5.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
     devDependencies:
       '@axe-core/playwright':
         specifier: ^4.13.0
@@ -807,8 +807,8 @@ packages:
       '@csstools/css-parser-algorithms': ^4.0.0
       '@csstools/css-tokenizer': ^4.0.0
 
-  '@csstools/css-color-parser@4.2.1':
-    resolution: {integrity: sha512-YpAJZhaHplYQkG8ib+/Fx5Y0eF2lVWi3tIvMJA6i39TLyUNp2439cifzW8VMjhlqrBjHzK5hVGugRRm2zTKI/A==}
+  '@csstools/css-color-parser@4.2.2':
+    resolution: {integrity: sha512-3QKjR/vxyjcSXBLgb6lP0S3MGdvwbmqSsvLPbYdVORqPDc8FX1HAJ0Spk38bxaRXgvENTA47tlhhbb5Z2e8hEg==}
     engines: {node: '>=20.19.0'}
     peerDependencies:
       '@csstools/css-parser-algorithms': ^4.0.0
@@ -825,6 +825,14 @@ packages:
     engines: {node: '>=20.19.0'}
     peerDependencies:
       '@csstools/css-tokenizer': ^4.0.0
+
+  '@csstools/css-syntax-patches-for-csstree@1.1.10':
+    resolution: {integrity: sha512-xBja6gaAaH2R2c7eNyl0TY4dhnnZ2uhj+KXpLdEQ6M/wuk9bYFZM8wY0ykw3VO4TgEJ56KGlerXS/9KBKVR/Cg==}
+    peerDependencies:
+      css-tree: ^3.2.1
+    peerDependenciesMeta:
+      css-tree:
+        optional: true
 
   '@csstools/css-syntax-patches-for-csstree@1.1.9':
     resolution: {integrity: sha512-iGGw4OsAYsS6pD29MdJ2bX/nJx65a04ZZiw6x+VwWlP2DdXf6f++Zmuv/OzALpdyfVhjbduIIF2cXM7HWBIe9A==}
@@ -1011,12 +1019,12 @@ packages:
       '@emnapi/core': ^1.7.1 || ^2.0.0-alpha.4
       '@emnapi/runtime': ^1.7.1 || ^2.0.0-alpha.4
 
-  '@native-router/core@1.11.0':
-    resolution: {integrity: sha512-g0SpEWjdgmnnowf74eHl6YhQh6V4M9fDps1RaFbic1xgC1Dx9sW1klqFpZWCjvb/Wju+GU1TtTRUNtz3ohYK8w==}
+  '@native-router/core@1.12.0':
+    resolution: {integrity: sha512-a4jRNKcAlRH09GoLxpzuVqb9wdCfr3g5U5b5hhqA/IBqLIrxeDLkkdhv5rmerG6tflpuyN82gzm4JimrqlBjtQ==}
     engines: {node: '>=18'}
 
-  '@native-router/react@1.10.1':
-    resolution: {integrity: sha512-fFZ/BPYravkTtiwqThDkLh3KRnE6VQa9mhdqh8skoJQeET1h1P+m1fn2xzuO7Qhe5b9xmnI8PlWeaumBzg+yZw==}
+  '@native-router/react@1.12.0':
+    resolution: {integrity: sha512-aysdv4h1xt7RwnXxh4IqHk743u8wnF/rL6cEOC5yf7KojgmZkWantxRkivIqtLXTEHd7Oh5mWVt8WzbIvRlItw==}
     engines: {node: '>=18'}
     peerDependencies:
       react: ^17.0.0 || ^18.0.0 || ^19.0.0
@@ -2860,12 +2868,12 @@ packages:
     resolution: {integrity: sha512-T2UbfbBEF32wiepXIsMlTW9+dDYC6wMh/t/vYA4tuOMKqWz/n3vr1NFSxQiyP+zk2mXsoMA/i/7qV6LKut1t1A==}
     engines: {node: '>= 0.4'}
 
-  haze-ui@1.12.2:
-    resolution: {integrity: sha512-xYCAkXMCAPaSAkrq1SR0uSQECiH4j07RR+B+aWtUs+4kXIFHne2D4XLmjz+hdlofzqHQWkEoLYkhvRQzADpAPg==}
+  haze-ui@1.14.0:
+    resolution: {integrity: sha512-Hn611/FIaWDutPWE4xDoFi5b8EPobIoGncZITMC7+IDbEOuWxzv181XRVShXlTbMKgSQOQE1Gb4EsKgt35VX2Q==}
     peerDependencies:
       '@linaria/core': ^7.0.0 || ^8.0.0
       react: ^19.0.0
-      react-f0rm: '>=0.7.0'
+      react-f0rm: '>=0.7.0 <0.9.0'
 
   hermes-estree@0.25.1:
     resolution: {integrity: sha512-0wUoCcLp+5Ev5pDW2OriHC2MJCbwLwuRx+gAqMTOkGKJJiBCLjtrvy4PWUGn6MIVefecRpzoOZ/UV6iGdOr+Cw==}
@@ -2919,6 +2927,10 @@ packages:
 
   ignore@7.0.6:
     resolution: {integrity: sha512-BAg6QkE8W+TuQLrrw0Ugr7HegXduRuuj8/ti2kSOc+jz1dmx8/WNcjr6XGnq5YpDWxFwwaavqD0+jIUOKelTsw==}
+    engines: {node: '>= 4'}
+
+  ignore@7.0.7:
+    resolution: {integrity: sha512-dML0wP6oak21rsNYCJpJB6O1BJIEwNpGrTw0URPfAk4hm0e3pRfCtzkfB6olBcXcVlU2rouCyz7lCyRB0OMVCA==}
     engines: {node: '>= 4'}
 
   import-fresh@3.3.1:
@@ -3724,8 +3736,8 @@ packages:
     peerDependencies:
       react: ^19.2.8
 
-  react-f0rm@0.7.0:
-    resolution: {integrity: sha512-phAceUc+cZI0YUhOl3d6xCBSJVxX+xbeZpcqShE9ODKnxp8gLV5DYbAOKrsECNGUCPBLhra10lIuENP2aQ5IZQ==}
+  react-f0rm@0.8.0:
+    resolution: {integrity: sha512-oAdaTKn7XzyE4NYZpJwyeq/i7J08Nu5OkMyUXs1Q+fvRhC9PAW9akIJR+tvtTEEIm/xXwdrtzdgTqtyrdtBkyg==}
     peerDependencies:
       react: '>=16.8.0'
       valibot: '>=1.0.0'
@@ -3751,8 +3763,8 @@ packages:
       react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
       react-dom: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
-  react-use-control@1.3.2:
-    resolution: {integrity: sha512-LboappJ/V2hlmH2h1huB7t+aoehtpqXjwoVJSPZodqgfCN0xm1qIAt+7HtPiFmpiSPVapMAPf8Kl0fRJJJfbeA==}
+  react-use-control@1.5.0:
+    resolution: {integrity: sha512-A3X53wosf5YhnzPELLxJBrbKg3V80R0ogT2sN9zDsM0KnZ1BDRs6+LAIYl1A0k4PgSx7JPDDcN/AQhWf++CnmA==}
     engines: {node: '>=16.0.0'}
     peerDependencies:
       react: '>=16.8.0'
@@ -4500,7 +4512,7 @@ snapshots:
   '@asamuzakjp/css-color@6.0.7':
     dependencies:
       '@csstools/css-calc': 3.3.0(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)
-      '@csstools/css-color-parser': 4.2.1(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)
+      '@csstools/css-color-parser': 4.2.2(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)
       '@csstools/css-parser-algorithms': 4.0.0(@csstools/css-tokenizer@4.0.0)
       '@csstools/css-tokenizer': 4.0.0
       lru-cache: 11.5.2
@@ -5280,7 +5292,7 @@ snapshots:
       '@csstools/css-parser-algorithms': 4.0.0(@csstools/css-tokenizer@4.0.0)
       '@csstools/css-tokenizer': 4.0.0
 
-  '@csstools/css-color-parser@4.2.1(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)':
+  '@csstools/css-color-parser@4.2.2(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)':
     dependencies:
       '@csstools/color-helpers': 6.1.1
       '@csstools/css-calc': 3.3.0(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)
@@ -5294,6 +5306,10 @@ snapshots:
   '@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0)':
     dependencies:
       '@csstools/css-tokenizer': 4.0.0
+
+  '@csstools/css-syntax-patches-for-csstree@1.1.10(css-tree@3.2.1)':
+    optionalDependencies:
+      css-tree: 3.2.1
 
   '@csstools/css-syntax-patches-for-csstree@1.1.9(css-tree@3.2.1)':
     optionalDependencies:
@@ -5472,14 +5488,14 @@ snapshots:
       '@tybys/wasm-util': 0.10.3
     optional: true
 
-  '@native-router/core@1.11.0':
+  '@native-router/core@1.12.0':
     dependencies:
       history: 5.3.0
       path-to-regexp: 8.4.2
 
-  '@native-router/react@1.10.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
+  '@native-router/react@1.12.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
     dependencies:
-      '@native-router/core': 1.11.0
+      '@native-router/core': 1.12.0
       history: 5.3.0
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
@@ -5869,7 +5885,7 @@ snapshots:
       '@typescript-eslint/utils': 8.68.0(eslint@10.9.1(jiti@2.6.1)(supports-color@10.2.2))(supports-color@10.2.2)(typescript@6.0.3)
       '@typescript-eslint/visitor-keys': 8.68.0
       eslint: 10.9.1(jiti@2.6.1)(supports-color@10.2.2)
-      ignore: 7.0.6
+      ignore: 7.0.7
       natural-compare: 1.4.0
       ts-api-utils: 2.5.0(typescript@6.0.3)
       typescript: 6.0.3
@@ -7344,13 +7360,12 @@ snapshots:
     dependencies:
       function-bind: 1.1.2
 
-  haze-ui@1.12.2(@linaria/core@8.2.0(supports-color@10.2.2))(react-dom@19.2.8(react@19.2.8))(react-f0rm@0.7.0(react@19.2.8)(zod@4.5.4))(react@19.2.8):
+  haze-ui@1.14.0(@linaria/core@8.2.0(supports-color@10.2.2))(react-dom@19.2.8(react@19.2.8))(react-f0rm@0.8.0(react@19.2.8)(zod@4.5.4))(react@19.2.8):
     dependencies:
       '@linaria/core': 8.2.0(supports-color@10.2.2)
       react: 19.2.8
-      react-f0rm: 0.7.0(react@19.2.8)(zod@4.5.4)
-      react-toolroom: 0.18.4(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      react-use-control: 1.3.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      react-f0rm: 0.8.0(react@19.2.8)(zod@4.5.4)
+      react-use-control: 1.5.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
     transitivePeerDependencies:
       - react-dom
 
@@ -7400,6 +7415,8 @@ snapshots:
   ignore@5.3.2: {}
 
   ignore@7.0.6: {}
+
+  ignore@7.0.7: {}
 
   import-fresh@3.3.1:
     dependencies:
@@ -7645,7 +7662,7 @@ snapshots:
       '@asamuzakjp/css-color': 6.0.7
       '@asamuzakjp/dom-selector': 8.3.2
       '@bramus/specificity': 2.4.2
-      '@csstools/css-syntax-patches-for-csstree': 1.1.9(css-tree@3.2.1)
+      '@csstools/css-syntax-patches-for-csstree': 1.1.10(css-tree@3.2.1)
       '@exodus/bytes': 1.15.1
       css-tree: 3.2.1
       data-urls: 7.0.0
@@ -8220,7 +8237,7 @@ snapshots:
       react: 19.2.8
       scheduler: 0.27.0
 
-  react-f0rm@0.7.0(react@19.2.8)(zod@4.5.4):
+  react-f0rm@0.8.0(react@19.2.8)(zod@4.5.4):
     dependencies:
       '@for-fun/event-emitter': 1.0.1
       react: 19.2.8
@@ -8237,7 +8254,7 @@ snapshots:
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
 
-  react-use-control@1.3.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
+  react-use-control@1.5.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
     dependencies:
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)

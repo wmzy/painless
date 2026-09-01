@@ -13,6 +13,8 @@ import {back, forward, navigate} from '@native-router/core';
 import {describe, it, expect, vi} from 'vitest';
 import {render, screen, waitFor} from '@testing-library/react';
 
+import {homeSearchSchema} from '@/types/search';
+
 import {StackWarmer, requireLogin, type RouterContext} from './index';
 
 const user: User = {username: 'ada', email: 'ada@x', token: 't', bio: null, image: null};
@@ -186,5 +188,105 @@ describe('StackWarmer（initHistoryStack 刷新预热）', () => {
     expect(await screen.findByText('b')).toBeDefined();
     expect(loadA).toHaveBeenCalledTimes(2);
     expect(loadB).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('searchDeps 快路径（Home 链声明形态）', () => {
+  // 表形态镜像 src/views/index.tsx 的 Home 链：布局层 searchDeps: [] +
+  // 叶子层挂真实 homeSearchSchema。计数口径同上：loader 调用次数即
+  // 「是否重新解析」的可观测信号（快路径零重跑 = 守卫/loader/懒加载全
+  // 跳，与 POP 落 viewStack 快照同一条路）。
+  const mount = (leafDeps?: string[]) => {
+    const load = vi.fn(async (ctx: any) => `page-${ctx.search.offset}`);
+    const routes = createRoutes({
+      component: () => Promise.resolve(() => <View />),
+      // 布局层不消费 search：声明 []（链覆盖是全有或全无——任一层
+      // 未声明即整链退回「任何 search 变化都重解析」的现状）
+      searchDeps: [],
+      children: [
+        {
+          path: '/',
+          search: homeSearchSchema,
+          // 全量键（tag/offset/limit）：schema 严格校验的键必须全部
+          // 声明——快路径跳过 resolve 期 schema，漏声明的键的非法值
+          // 会落 URL 无人检查
+          ...(leafDeps ? {searchDeps: leafDeps} : {}),
+          data: load,
+          component: () => Promise.resolve(() => <b>home</b>)
+        }
+      ]
+    });
+    let router!: ReturnType<typeof useRouter>;
+    const Probe = () => {
+      router = useRouter();
+      return null;
+    };
+    const view = render(
+      <MemoryRouter routes={routes} initialEntries={['/']}>
+        <View />
+        <Probe />
+      </MemoryRouter>
+    );
+    return {load, router, view};
+  };
+
+  it('声明键变化（翻页 offset）→ 整链重解析，loader 读到新 search', async () => {
+    const {load, router} = mount(['tag', 'offset', 'limit']);
+    expect(await screen.findByText('home')).toBeDefined();
+    expect(load).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await navigate(router, '/?offset=10');
+    });
+    await waitFor(() => expect(load).toHaveBeenCalledTimes(2));
+    // loader 收到的是 schema coerce 后的新 search（分页行为不变）
+    expect(load.mock.calls[1]![0].search).toEqual({offset: 10, limit: 10});
+  });
+
+  it('同 search 重复导航 → 快照复用零重跑', async () => {
+    const {load, router} = mount(['tag', 'offset', 'limit']);
+    expect(await screen.findByText('home')).toBeDefined();
+    expect(load).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await navigate(router, '/');
+    });
+    // 负断言的结算窗：navigate 已 resolve，若走了重解析路径 loader 会
+    // 在 resolve 内同步启动，微任务冲刷后计数仍是 1 才可信
+    await act(async () => { await Promise.resolve(); });
+    expect(load).toHaveBeenCalledTimes(1);
+  });
+
+  it('无关 search 键变化 → 零重跑，URL 照常更新（视图经 useSearch 读 live 值）', async () => {
+    const {load, router} = mount(['tag', 'offset', 'limit']);
+    expect(await screen.findByText('home')).toBeDefined();
+    expect(load).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await navigate(router, '/?foo=bar');
+    });
+    await act(async () => { await Promise.resolve(); });
+    expect(load).toHaveBeenCalledTimes(1);
+    // 快照复用不拦 URL：新条目照常入栈（hash/state 永不参与比较）
+    expect(router.history.location.search).toBe('?foo=bar');
+  });
+
+  it('纯 hash 变化 → 零重跑（hash 不是 resolve 输入）', async () => {
+    const {load, router} = mount(['tag', 'offset', 'limit']);
+    expect(await screen.findByText('home')).toBeDefined();
+    await act(async () => {
+      await navigate(router, '/#section');
+    });
+    await act(async () => { await Promise.resolve(); });
+    expect(load).toHaveBeenCalledTimes(1);
+  });
+
+  it('对照：链上任一层未声明（叶子缺 searchDeps）→ 无关键变化照旧整链重解析', async () => {
+    const {load, router} = mount();
+    expect(await screen.findByText('home')).toBeDefined();
+    expect(load).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await navigate(router, '/?foo=bar');
+    });
+    // 字节级现状：叶子未声明（布局层声明了也没用），任何 search 变化
+    // 都重跑整链——这正是「链覆盖全有或全无」的守门语义
+    await waitFor(() => expect(load).toHaveBeenCalledTimes(2));
   });
 });
