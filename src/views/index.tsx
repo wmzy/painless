@@ -185,9 +185,15 @@ export function StackWarmer() {
   const router = useRouter();
   useEffect(() => {
     // 各条目的 resolve 失败已被 errorHandler 兜成错误视图，Promise.all
-    // 实际不会拒绝；万一 errorHandler 自身抛错，这里吞掉避免 unhandled
-    // rejection——预热失败的代价只是窗内回退退回惰性重解析，无需上抛
-    initHistoryStack(router).catch(() => undefined);
+    // 实际不会拒绝；万一 errorHandler 自身抛错，吞掉避免 unhandled
+    // rejection——预热失败的代价只是窗内回退退回惰性重解析，无需上抛。
+    // DEV 下 console.warn 留定位线索（同 mock 侧 console.error 的先例，
+    // 见 util/mock.ts——告警不抛）；生产保持静默
+    initHistoryStack(router).catch((e: unknown) => {
+      if (import.meta.env.DEV) {
+        console.warn('[StackWarmer] initHistoryStack 预热失败', e);
+      }
+    });
   }, [router]);
   return null;
 }

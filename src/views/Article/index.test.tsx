@@ -324,7 +324,7 @@ describe('Article favorite / follow（写穿缓存 + refresh）', () => {
     expect(await screen.findByText('follow failed')).toBeDefined();
   });
 
-  it('未登录点击 favorite/follow：引导去 /login 且不发请求', () => {
+  it('未登录点击 favorite/follow：引导去 /login（带原目的页 redirect）且不发请求', () => {
     getCurrentUserMock.mockReturnValue(null);
     renderView(<ArticleView />);
 
@@ -332,7 +332,13 @@ describe('Article favorite / follow（写穿缓存 + refresh）', () => {
     fireEvent.click(screen.getByRole('button', {name: 'Follow alice'}));
 
     expect(navigateMock).toHaveBeenCalledTimes(2);
-    expect(navigateMock).toHaveBeenCalledWith(state.router, '/login');
+    // redirect 机制对齐 requireLogin 守卫（favorite 走 useFavorite 的
+    // loginRedirect，follow 走视图内 requireAuth 同款）：pathname
+    // '/article/some-title-1' 整体 encode，登录后回跳本页
+    expect(navigateMock).toHaveBeenCalledWith(
+      state.router,
+      '/login?redirect=%2Farticle%2Fsome-title-1'
+    );
     expect(favoriteMock).not.toHaveBeenCalled();
     expect(followMock).not.toHaveBeenCalled();
   });
@@ -463,5 +469,34 @@ describe('发评论后刷新评论列表', () => {
     } finally {
       clock.mockRestore();
     }
+  });
+});
+
+describe('评论加载失败：Retry 入口（CommentList 错误态）', () => {
+  const comment: Comment = {
+    id: 'c1',
+    body: 'comment after retry',
+    slug: 'some-title-1',
+    // PastDate（date-time 字符串）：对齐上文 commentA 的同款字段契约
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    author: {username: 'bob', bio: null, image: 'https://example.com/b.png', following: false}
+  };
+
+  it('失败呈现错误与 Retry 按钮，点击绕过缓存重拉成功后恢复列表', async () => {
+    fetchCommentsMock
+      .mockRejectedValueOnce(new Error('comments down'))
+      .mockResolvedValueOnce([comment]);
+    renderView(<ArticleView />);
+
+    // 失败态：错误 Alert + Retry（对齐 About/Feed 的错误模式）
+    expect(await screen.findByText('Failed to load comments')).toBeDefined();
+    expect(screen.getByRole('button', {name: 'Retry'})).toBeDefined();
+
+    fireEvent.click(screen.getByRole('button', {name: 'Retry'}));
+
+    // refetch 删条目后重拉：第二条 mock 队列被消费，评论上屏
+    expect(await screen.findByText('comment after retry')).toBeDefined();
+    expect(fetchCommentsMock).toHaveBeenCalledTimes(2);
   });
 });

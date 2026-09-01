@@ -1,6 +1,6 @@
 import {css} from '@linaria/core';
 import {useSearch, useSetSearch} from '@native-router/react';
-import {TagGroup, TagGroupItem, Spinner, Alert, Title} from 'haze-ui';
+import {TagGroup, TagGroupItem, Spinner, Alert, Title, Button} from 'haze-ui';
 
 import {useTagsQuery} from '@/services/dataloaders';
 import {homeSearchSchema, homeSearchWriteSchema} from '@/types/search';
@@ -21,7 +21,7 @@ export default function Tags() {
   // useTagsQuery（场景 hook，声明见 dataloaders.ts）：fetch/cache/initData/
   // mock 全部在场景声明点闭合，调用点只给 args——DevTool 面板的 tagList
   // 条目行为不变
-  const {data: tags, loading, error, stale} = useTagsQuery([]);
+  const {data: tags, loading, error, stale, refetch} = useTagsQuery([]);
 
   const {tag: activeTag} = useSearch(homeSearchSchema);
   const setSearch = useSetSearch(homeSearchWriteSchema);
@@ -43,7 +43,12 @@ export default function Tags() {
   if (error) {
     return (
       <aside>
-        <Alert variant='danger'>Failed to load tags</Alert>
+        {/* 错误态带 Retry（对齐 About/Feed 的错误模式）：refetch 删单例
+            条目后绕过缓存重拉，期间 loading 复归（初载语义） */}
+        <Alert variant='danger'>Failed to load tags</Alert>{' '}
+        <Button variant='outline' size='sm' onClick={() => void refetch()}>
+          Retry
+        </Button>
       </aside>
     );
   }

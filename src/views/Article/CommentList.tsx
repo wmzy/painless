@@ -1,6 +1,6 @@
 import {formatDistanceToNow} from 'date-fns';
 import {zhCN} from 'date-fns/locale';
-import {List, ListItem, Avatar, Text, Spinner, Alert} from 'haze-ui';
+import {List, ListItem, Avatar, Text, Spinner, Alert, Button} from 'haze-ui';
 
 import {useCommentsQuery} from '@/services/dataloaders';
 
@@ -18,10 +18,23 @@ type Props = {
 // loading 为初载语义：重拉期间已有旧结果，loading 保持 false，列表
 // 原样渲染，不闪 Spinner。
 export default function CommentList({title}: Props) {
-  const {data: comments, loading, error, dataUpdatedAt} = useCommentsQuery([title]);
+  const {data: comments, loading, error, dataUpdatedAt, refetch} =
+    useCommentsQuery([title]);
 
   if (loading) return <Spinner />;
-  if (error) return <Alert variant='danger'>Failed to load comments</Alert>;
+  if (error) {
+    // 错误态带 Retry（对齐 About/Feed 的错误模式）：refetch 删当前 args
+    // 的缓存条目后绕过缓存重拉——失败条目本就无 settled 值，重拉即从
+    // 头再来；期间 loading 复归（初载语义），Spinner 接管
+    return (
+      <>
+        <Alert variant='danger'>Failed to load comments</Alert>{' '}
+        <Button variant='outline' size='sm' onClick={() => void refetch()}>
+          Retry
+        </Button>
+      </>
+    );
+  }
 
   return (
     <>

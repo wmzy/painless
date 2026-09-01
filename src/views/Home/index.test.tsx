@@ -15,7 +15,7 @@ import type {ArticlePage} from '@/types';
 import type {AppRoutes} from '@/views';
 
 import {describe, it, expect, vi, beforeEach} from 'vitest';
-import {screen, fireEvent, waitFor} from '@testing-library/react';
+import {screen, fireEvent, waitFor, act} from '@testing-library/react';
 
 import {navigate, refresh} from '@native-router/core';
 import {TypedLink} from '@native-router/react';
@@ -47,6 +47,10 @@ const state = vi.hoisted(() => ({
   router: {history: {}},
   // useToast 替身的调用记录（favorite 失败提示断言用）
   toastMessages: [] as string[],
+  // Card 替身的渲染计数探针（ArticlePreview memo 生效断言用）：本文件
+  // 的视图树里 Card 只出现在文章卡片内（Tags 已 stub、分页走 ButtonLink
+  // 替身），计数即卡片渲染次数
+  cardRenders: 0,
   // go/toggleTag 的写入口（useSetSearch）：断言写入的 search 载荷
   setSearch: vi.fn(),
   // refresh mock 的重渲染广播：补丁缓存写穿后调 refresh(router)，真实
@@ -92,7 +96,15 @@ vi.mock('haze-ui', async () => {
     Title: box('h1'),
     Text: box('span'),
     Badge: box('span'),
-    Card: box('section'),
+    // 计数探针见 state.cardRenders 注释：渲染即自增，断言侧在关键节点
+    // 快照读数（挂载期/翻转后），跨用例由 beforeEach 归零
+    Card: (() => {
+      const C = box('section');
+      return (props: {children?: ReactNode} & Record<string, unknown>) => {
+        state.cardRenders++;
+        return C(props);
+      };
+    })(),
     Avatar: box('img'),
     Flex: box('div'),
     Chip: ({children, onClose}: {children?: ReactNode; onClose?: () => void}) =>
@@ -274,6 +286,7 @@ beforeEach(() => {
   refreshMock.mockImplementation(async () => state.emit());
   state.setSearch.mockReset();
   state.toastMessages = [];
+  state.cardRenders = 0;
   state.data = {articles: makeArticles(10), articlesCount: 25};
   state.search = '';
   getCurrentUserMock.mockReturnValue({
@@ -484,13 +497,74 @@ describe('Home 文章卡片 favorite（补丁缓存 + refresh）', () => {
     pending.resolve(undefined);
   });
 
-  it('未登录点击：引导去 /login 且不发请求', () => {
+  it('未登录点击：引导去 /login（带原目的页 redirect）且不发请求', () => {
     getCurrentUserMock.mockReturnValue(null);
     renderView(<Home />);
 
     fireEvent.click(screen.getByRole('button', {name: '❤ 5'}));
 
-    expect(navigateMock).toHaveBeenCalledWith(state.router, '/login');
+    // redirect 机制对齐 requireLogin 守卫：pathname（'/'）+ search 整体
+    // encodeURIComponent——Login 侧 sanitizeRedirect 白名单原样放行站内
+    // 绝对路径，登录后回跳本页
+    expect(navigateMock).toHaveBeenCalledWith(
+      state.router,
+      '/login?redirect=%2F'
+    );
     expect(favoriteMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('ArticlePreview memo（收藏翻转只重渲染受影响卡片）', () => {
+  // 基线：20 张卡的页 + 同形 key 的 homeCache 预置条目（favorite 写穿的
+  // miss-bail 语义要求 settled 基线，见 favorite describe 同款注释）
+  function setupPage20() {
+    const articles = makeArticles(20);
+    state.data = {articles, articlesCount: 20};
+    homeCache.set([state.parseSearch(state.search)], state.data as ArticlePage);
+    return articles;
+  }
+
+  it('乐观写穿与服务端校正各只重渲染 article 引用变化的那张卡', async () => {
+    const articles = setupPage20();
+    const pending = deferred();
+    favoriteMock.mockReturnValueOnce(pending.promise);
+    renderView(<Home />);
+
+    expect(screen.getByText('title-0')).toBeDefined();
+    // 挂载期：20 张卡各渲染一次（计数基准，无 StrictMode 双渲染）
+    const mounted = state.cardRenders;
+    expect(mounted).toBe(20);
+
+    fireEvent.click(screen.getByRole('button', {name: '❤ 0'}));
+    await screen.findByRole('button', {name: '❤ 1'});
+    // 乐观补丁：patchArticleIn（services/mutations.ts）对页内数组 map
+    // 时只替换目标项，其余 19 项原引用返回 → memo 浅比较跳过；Card
+    // 计数只 +1（slug-0 那张）。若 memo 未生效，bindRefresh 的整页
+    // refresh 会带来 +20
+    expect(state.cardRenders).toBe(mounted + 1);
+
+    // 服务端权威值：刻意取不与任何卡片原计数（i*3 序列）冲突的 100，
+    // 保证 findByRole 命中的是变化后的 slug-0 卡而非同名邻卡
+    pending.resolve({...articles[0], favorited: true, favoritesCount: 100});
+    const applied = await screen.findByRole('button', {name: '❤ 100'});
+    expect(applied.getAttribute('aria-pressed')).toBe('true');
+    // 服务端权威值 apply 同路：仍然只有一张卡重渲染（+2 收口）
+    expect(state.cardRenders).toBe(mounted + 2);
+  });
+
+  it('on* 回调身份每次新建不击穿 memo：父级重渲染（缓存未变）零卡片重渲染', () => {
+    setupPage20();
+    renderView(<Home />);
+
+    const mounted = state.cardRenders;
+    expect(mounted).toBe(20);
+
+    // 直接触发 useData 的重渲染广播（articles 引用全部保持不变）：Home
+    // 重渲染会新建 onFavorite 闭包——react-toolroom memo 对 on* props
+    // 自动稳定化（稳定转发器 + 调用时转发最新闭包），20 张卡全部跳过。
+    // 若稳定化缺失，仅回调身份变化即带来 +20 的重渲染
+    act(() => state.emit());
+
+    expect(state.cardRenders).toBe(mounted);
   });
 });

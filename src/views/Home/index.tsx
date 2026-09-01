@@ -1,35 +1,21 @@
 import type {AppRoutes} from '@/views';
 
 import {css} from '@linaria/core';
-import {navigate} from '@native-router/core';
-import {
-  TypedLink,
-  useMatched,
-  useSearch,
-  useSetSearch
-} from '@native-router/react';
-import {Card, Title, Text, Badge, Avatar, Flex, Chip, Button, ButtonLink} from 'haze-ui';
-import {useMutation} from 'react-toolroom/async';
+import {TypedLink, useSearch, useSetSearch} from '@native-router/react';
+import {Title, Text, Flex, Chip, ButtonLink} from 'haze-ui';
 
-import {Article} from '@/types';
 import {
   homeSearchSchema,
   homeSearchWriteSchema,
   type HomeSearchInput
 } from '@/types/search';
 import {favoriteOnHome} from '@/services/mutations';
-import {getCurrentUser} from '@/services/auth';
 import {useHomeData} from '@/services/dataloaders';
 import {useTitle} from '@/util/useTitle';
-import {useToastError} from '@/util/toastError';
-import PreviewLink from '@/components/PreviewLink';
+import {useFavorite} from '@/views/_shared/useFavorite';
+import ArticlePreview from './ArticlePreview';
 
 import Tags from './Tags';
-
-// 把收藏按钮推到卡片作者行的右端
-const pushRight = css`
-  margin-left: auto;
-`;
 
 export default function Home() {
   // 页标题统一口径「<页名> · Painless」，后缀对齐 index.html 的默认
@@ -40,7 +26,6 @@ export default function Home() {
   // useData<ArticlePage>()! / ?? 空值兜底（DEV 下失配即 throw，见
   // src/util/dataLoader.ts）
   const {articles, articlesCount} = useHomeData();
-  const {router} = useMatched();
   // 路由级 search schema（见 views/index.tsx）解析：coerce 与缺省都在
   // schema 里完成，组件拿到的 tag/offset/limit 直接可用
   const {tag: activeTag, offset, limit} = useSearch(homeSearchSchema);
@@ -66,28 +51,14 @@ export default function Home() {
     ...(target > 0 ? {offset: String(target)} : {})
   });
 
-  // 卡片级乐观收藏：cache.mutation 组合管道（services/mutations.ts）——
-  // 乐观 +1 → 服务调用 → 响应字段选择式 apply（打到全部含该 slug 的
-  // 页缓存）→ 失败自动回滚。scope（react-toolroom 0.11）按 slug 串行
-  // 同一文章的连点：第二次点击排队等第一次 settle 后执行，乐观翻转
-  // 以服务端权威值为基线，不丢点击意图；不同文章互不阻塞。
-  const [favorite] = useMutation(favoriteOnHome, {
-    scope: (slug: string) => `favorite:${slug}`
-  });
-  const toastError = useToastError();
-
-  const toggleFavorite = (a: Article) => {
-    if (!getCurrentUser()) {
-      void navigate(router, '/login');
-      return;
-    }
-    // 失败时乐观值已被 cache.mutation 管道自动回滚，UI 复原；剩余的用户
-    // 侧反馈只有「为什么没反应」——toast 一条 danger 提示补上这一环
-    //（收敛点见 src/util/toastError.ts）。
-    void favorite(a.slug, !a.favorited).catch((e: unknown) =>
-      toastError(e, 'Favorite failed')
-    );
-  };
+  // 卡片级乐观收藏：toggleFavorite 已收敛进 useFavorite（views/_shared/
+  // useFavorite.ts）——requireAuth 跳登录（带 redirect）、toast 失败提示
+  // 与 scope 串行都在 hook 内；乐观 +1 → 服务调用 → apply → 失败回滚的
+  // cache.mutation 组合管道见 services/mutations.ts（favoriteOnHome 组合
+  // article 层 + home 投影层）。onFavorite 身份每渲染新建，经
+  // ArticlePreview 的 react-toolroom memo 稳定化，卡片重渲染只由 article
+  // 引用变化驱动
+  const onFavorite = useFavorite(favoriteOnHome);
 
   return (
     <div
@@ -105,43 +76,12 @@ export default function Home() {
               </Chip>
             </Flex>
           )}
-          {articles.map((a) => {
-            return (
-              <Card key={a.slug}>
-                <Flex align='center' gap='sm'>
-                  <Avatar src={a.author.image ?? undefined} alt={a.author.username} />
-                  <Text>{a.author.username}</Text>
-                  <Button
-                    variant={a.favorited ? 'solid' : 'outline'}
-                    size='sm'
-                    aria-pressed={a.favorited}
-                    className={pushRight}
-                    onClick={() => toggleFavorite(a)}
-                  >
-                    ❤{' '}
-                    <Badge variant={a.favorited ? 'success' : 'default'}>
-                      {a.favoritesCount}
-                    </Badge>
-                  </Button>
-                </Flex>
-                <Title level={2}>
-                  {/* 卡片滚入视口即预取 data+chunk，比 hover 更早，点击近乎零等待 */}
-                  <PreviewLink
-                    to={`/article/${a.slug}`}
-                    prefetch='viewport'
-                  >
-                    {a.title}
-                  </PreviewLink>
-                </Title>
-                <Text>{a.description}</Text>
-                <Flex gap='xs' wrap>
-                  {a.tagList.map((tag) => (
-                    <Badge key={tag}>{tag}</Badge>
-                  ))}
-                </Flex>
-              </Card>
-            );
-          })}
+          {/* 卡片抽成 memo 化的 ArticlePreview（react-toolroom memo）：on*
+              事件 props 自动稳定化 + article 引用浅比较——tag 筛选/翻页
+              的整页数据换新时，引用未变的卡片整卡跳过重渲染 */}
+          {articles.map((a) => (
+            <ArticlePreview key={a.slug} article={a} onFavorite={onFavorite} />
+          ))}
           {/* 分页链接化：TypedLink 表形态（TypedLink<AppRoutes,
               typeof ButtonLink>），to 与
               search 都对路由表编译期判别——search 按 homeSearchSchema 的

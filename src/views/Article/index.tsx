@@ -1,10 +1,9 @@
 import {useState} from 'react';
-import {css} from '@linaria/core';
 import {navigate} from '@native-router/core';
 import {useMatched} from '@native-router/react';
 import {Form, useForm, reset, useIsSubmitting} from 'react-f0rm';
 import {useMutation} from 'react-toolroom/async';
-import {Card, Title, Text, Avatar, Divider, TextareaCore, Alert, Button, Badge, Flex, FormItem} from 'haze-ui';
+import {Card, Title, Text, Avatar, Divider, TextareaCore, Alert, Button, Flex, FormItem} from 'haze-ui';
 
 import * as articleService from '@/services/article';
 import {favoriteOnArticle, followOnArticle} from '@/services/mutations';
@@ -13,17 +12,14 @@ import {useArticleData} from '@/services/dataloaders';
 import {commentsCache} from '@/util/useQuery';
 import {useTitle} from '@/util/useTitle';
 import {useToastError} from '@/util/toastError';
+import FavoriteButton from '@/components/FavoriteButton';
+import {loginRedirect, useFavorite} from '@/views/_shared/useFavorite';
 
 import CommentList from './CommentList';
 
 function errText(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
-
-// 把收藏按钮推到作者行的右端
-const pushRight = css`
-  margin-left: auto;
-`;
 
 export default function ArticleView() {
   // useArticleData（createDataLoader 第二元素）：路由声明了 articleLoader
@@ -34,7 +30,7 @@ export default function ArticleView() {
   // 文章标题进 document.title：loader 已保证进组件前 resolve，title
   // 首帧即有，无「先默认后换」的闪烁；离开恢复入口默认
   useTitle(`${article.title} · Painless`);
-  const {router} = useMatched();
+  const {router, location} = useMatched();
   // 表单值形状：handleCommentSubmit 的 values 与此泛型一致
   const commentForm = useForm<{body: string}>();
   // 同 Editor：react-f0rm ≥0.4 的 onSubmit 被 await，isSubmitting 覆盖整个异步提交
@@ -47,13 +43,11 @@ export default function ArticleView() {
 
   // 乐观写穿管道全在 services/mutations.ts（cache.mutation 组合）：
   // 乐观首步 → 服务调用 → 字段选择式 apply → 失败自动回滚（并发写
-  // 保护）。本视图只保留调用与错误提示——peek 合并/set/refresh 全部
-  // 消失（refresh 由 loaderCache 的 set 事件订阅自动扇出），favorite
-  // 同时写穿 home 投影缓存，返回列表页立即看到新计数。
-  // scope 按 slug 串行同文章的连点（同 Home；follow 独立 scope 互不阻塞）
-  const [favorite] = useMutation(favoriteOnArticle, {
-    scope: (slug: string) => `favorite:${slug}`
-  });
+  // 保护）。favorite 已收敛进 useFavorite（views/_shared/useFavorite.ts，
+  // 与 Home 共用）：article 单层 spec 注入，scope 按 slug 串行连点、
+  // 未登录跳登录与 toast 失败提示都在 hook 内——本视图只保留调用。
+  // follow 留在视图：独立 scope（与 favorite 互不阻塞）。
+  const onFavorite = useFavorite(favoriteOnArticle);
   const [follow] = useMutation(followOnArticle, {
     scope: (slug: string) => `follow:${slug}`
   });
@@ -74,19 +68,16 @@ export default function ArticleView() {
     invalidates: [[commentsCache, article.slug]]
   });
 
-  // 未登录（无 token）时写操作一律引导去登录页
+  // 未登录（无 token）时写操作一律引导去登录页：带原目的页 redirect
+  //（loginRedirect 与 useFavorite 共用——pathname+search 整体 encode，
+  // 登录后回跳本页）
   const requireAuth = (): boolean => {
     if (getCurrentUser()) return true;
-    void navigate(router, '/login');
+    void navigate(router, loginRedirect(location));
     return false;
   };
 
-  const toggleFavorite = () => {
-    if (!requireAuth()) return;
-    void favorite(article.slug, !article.favorited).catch((e: unknown) =>
-      toastError(e, 'Favorite failed')
-    );
-  };
+  const toggleFavorite = () => onFavorite(article.slug, !article.favorited);
 
   const toggleFollow = () => {
     if (!requireAuth()) return;
@@ -118,18 +109,11 @@ export default function ArticleView() {
           {article.author.following ? 'Unfollow' : 'Follow'}{' '}
           {article.author.username}
         </Button>
-        <Button
-          variant={article.favorited ? 'solid' : 'outline'}
-          size='sm'
-          aria-pressed={article.favorited}
-          className={pushRight}
-          onClick={toggleFavorite}
-        >
-          ❤{' '}
-          <Badge variant={article.favorited ? 'success' : 'default'}>
-            {article.favoritesCount}
-          </Badge>
-        </Button>
+        <FavoriteButton
+          favorited={article.favorited}
+          favoritesCount={article.favoritesCount}
+          onToggle={toggleFavorite}
+        />
       </Flex>
       {error && <Alert variant='danger'>{error}</Alert>}
       <Divider />
