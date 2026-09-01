@@ -1,6 +1,7 @@
 // 双通道共享缓存：路由 loader 与场景 query hook（createQueryHook 产物）
-// 共用每实体 cache。【上移计划】本胶水层（withCache/bindRefresh）计划在
-// 稳定后上移为独立包（暂缓，决策记录见 docs/decisions.md）。
+// 共用每实体 cache。【归宿已定】本胶水层（withCache/bindRefresh）评估后
+// 不抽包、常驻模板（2026-09-01，理由与翻案条件见 docs/decisions.md
+// 第 13 条补记）。
 // 两个通道的触发时机与阻塞语义不同——loader 在导航 resolve 期运行（可
 // 阻塞视图切换，pendingComponent 兜底），场景 hook 在组件挂载后运行
 // （非阻塞，loading/error 状态化）——但缓存与失效是同一份：loader 侧

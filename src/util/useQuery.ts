@@ -1,8 +1,8 @@
 // 项目级数据获取层：机制（每实体缓存 createQueryCache + allCaches 注册表 +
 // 可选 localStorage 持久化）与场景组装（createQueryHook，选项在场景声明点
-// 闭合、运行时调用点零 option）。分层与上移计划见 docs/decisions.md 第 2
-// 条；loading / select / 结构共享的语义取舍与 bindQueryFn 绑定机制见第 9
-// 条；持久化决策见第 4 条。
+// 闭合、运行时调用点零 option）。归宿已定（2026-09-01）：评估后不抽包、
+// 常驻模板，见 docs/decisions.md 第 2/13 条；loading / select / 结构共享的
+// 语义取舍与 bindQueryFn 绑定机制见第 9 条；持久化决策见第 4 条。
 import type {Article, ArticlePage, Comment} from '@/types';
 import type {HomeSearch} from '@/types/search';
 

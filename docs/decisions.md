@@ -11,7 +11,7 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
   「库侧 commit 推 main → semantic-release 发版 → painless 按显式版本升级」
   的常规 npm 流程，不用 link/file: 协议。
 
-## 2. useQuery / loaderCache 胶水层上移：暂缓
+## 2. useQuery / loaderCache 胶水层上移：评估后不抽包
 
 - **背景**：`src/util/useQuery.ts`（场景 hook 工厂 createQueryHook + 每实体缓存注册表 + localStorage
   持久化挂载）与 `src/util/loaderCache.ts`（withCache / bindRefresh 双通道共享缓存）
@@ -42,6 +42,9 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
     the reference SPA template"），并给出裸 useData 消费者的对应类型工具
     `RouteDataOf<S>`。库文档与模板实现自此互为镜像；等价性论证与
     「不接 RouteDataOf」的取舍见第 15 条。
+  - **补记（2026-09-01）**：上移问题已评估收口——结论「不抽包」，胶水层
+    常驻模板，本条「暂缓」状态终结。预演过程、五条理由与翻案条件见
+    第 13 条补记；两文件顶部的「上移计划」注释已同步改注归宿。
 
 ## 3. native-router beforeLoad context 注入：已解决
 
@@ -378,6 +381,32 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
     （带上 mock 语义）或留在模板（包只暴露 persist 挂点与订阅面）；
     ②`services/dataloaders.ts` 绑定层已验证「应用侧只留声明」，上移时
     作为包的 README 示范形态。
+- **补记（2026-09-01）：上移评估完成，结论「不抽包」**。完整抽包预演已
+  做完（独立仓库 react-scenario-query，48 条契约测试随拆分全绿，因 npm
+  认证阻断未发版），评估后叫停，胶水层常驻模板。理由：
+  - **组合层不是通用原语**：createQueryCache / createQueryHook /
+    createDataLoader 是「painless 对 react-toolroom × native-router 的
+    组合意见」——换一个业务就是另一个组合。模板被 clone 的意义就是
+    改造组合：胶水在树内是可改性，打成依赖等于把「本该被使用者改造
+    的意见」冻结成「必须绕开或 fork 的约束」。
+  - **单消费者包只剩仪式成本**：跨仓库升级批编排、semantic-release
+    协同、npm 认证——每一项都是本生态反复支付的真实成本，零复用收益。
+  - **分发模型已选定且一致**：native-router README 的「Data loading
+    recipe」节以 painless 为活参考实现（配方走文档 + 参考实现分发，
+    不走 npm install，见第 2 条补记），指针长期指向本仓库源码。
+  - **真正通用的部分另有归宿**：persist 挂载语义（`{v,data}` 版本
+    门禁、hydrate 保留 cachedAt、跨 tab 只清不 hydrate）收敛后上移为
+    react-toolroom 的 `persist()` 原语（第 4 条原计划），不归胶水包。
+  - **mock 恢复模板内直连**：预演中验证的机制/策略边界（mock 探针
+    垫层、persist 写盘 veto 挂点）不再引入模板——解耦形态只在包边界
+    下有意义，模板内第 12 条原语义更简单。
+  - **本条冻结清单继续有效**，语义从「上移包的 API 面」改读为「模板
+    内胶水的契约面」：改冻结面仍须先修订本条再动代码，验收测试清单
+    仍即契约文档。
+  - **翻案条件**：第二个项目复现同一组合时再抽。代码与冻结面都在
+    本仓库与本条清单中，届时成本不变。
+  - 预演仓库 github.com/wmzy/react-scenario-query 保留作过程记录
+    （未发版，可归档）。
 
 ## 14. View Transition：库管时序、CSS 管范围（2026-08-31 VT 批）
 
