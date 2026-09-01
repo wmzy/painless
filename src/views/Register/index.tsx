@@ -65,6 +65,17 @@ export default function Register() {
   };
   const form = useForm<RegisterValues>({
     initialValues: {username: '', email: '', password: '', confirmPassword: ''},
+    // 跨字段依赖清单（react-f0rm ≥0.10 的 validateDeps）：password/
+    // confirmPassword 任一的用户变更都重跑下面的 form 级 validate，且每轮
+    // 先清上一轮 form validate 写下的错误（identity footprint 比对——字段
+    // 级 validator、setServerErrors、手动 setError 的错误永不被动）。门控
+    // 随变更字段的 mode + form 的 reValidateMode（默认 onChange）：两个
+    // 密码字段都无 mode 覆盖（提交时首验），故走 submit-then-fix 流——
+    // mismatch 由提交挂上后，改任一密码字段即重跑清错。此前「改
+    // password 不清 mismatch」的显示局限（字段侧复验只打确认字段自身
+    // 的 validator）随本选项消失；安全边界不变：提交永远重跑 form 级
+    // 校验，不会放行无效提交。
+    validateDeps: ['password', 'confirmPassword'],
     // form 级校验：跨字段一致性（密码 vs 确认密码）——字段级 validate
     // 只收单字段值，比较另一字段要走 useForm 的 validate 选项（收全量
     // values、返回按字段挂错的 record，react-f0rm 官方跨字段形态，见
@@ -73,13 +84,8 @@ export default function Register() {
     // 与其它字段同一条 a11y 链路。
     // 时序：提交时字段级校验全过才会跑 form 级（ensureValidate 先等
     // 字段轮 settle、有错即早退），所以「确认为空」先报字段级
-    // required，「确认非空但不一致」才轮到 mismatch。
-    // 已知显示局限（跨字段校验的通病）：mismatch 挂上后，改 password
-    // 不会重跑 form 级校验（复验只打确认字段自身的 validator）；改
-    // confirmPassword 逐键复验清错也可能「仍不一致却已清空」——安全
-    // 边界不受影响：提交永远重跑 form 级校验，错误至多「早消失」，
-    // 不会放行无效提交。一致时返回空 record（falsy 结果被跳过，
-    // 空 record 展开无键、等价无错）。
+    // required，「确认非空但不一致」才轮到 mismatch。一致时返回空
+    // record（falsy 结果被跳过，空 record 展开无键、等价无错）。
     validate: (values) =>
       values.password === values.confirmPassword
         ? {}
@@ -151,11 +157,11 @@ export default function Register() {
           placeholder='Password'
         />
         {/* 确认密码：一致性校验在 form 级 validate（跨字段，见 useForm
-            注释），这里的字段级 validate 只报必填——它同时承担复验
-            （默认档 reValidateMode='onChange'，桥写值即触发）的清错
-            职责：字段带错后修改即重跑，通过即清（含 form 级挂上来的
-            mismatch，见 useForm 注释里的显示局限）。a11y 链路与 password
-            字段完全一致（均由 input 桥接线）。 */}
+            的 validateDeps 注释），这里的字段级 validate 只报必填。清错
+            双通道：validateDeps 把两个字段的用户变更都接到 form 级重跑
+            （mismatch 随改随清）；本字段自带的 required 复验（默认档
+            reValidateMode='onChange'，桥写值即触发）负责清必填错。a11y
+            链路与 password 字段完全一致（均由 input 桥接线）。 */}
         <FormItem
           form={form}
           name='confirmPassword'

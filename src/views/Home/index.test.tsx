@@ -215,7 +215,11 @@ vi.mock('@native-router/react', async () => {
   };
 });
 
-vi.mock('@native-router/core', () => ({
+// search.ts 的写侧 schema 已改由 core 的 writeSchema 派生（1.13）：
+// importOriginal 展开真实模块再覆写 navigate/refresh——writeSchema 是
+// 纯函数，用真实现即保持「URL 抹缺省」行为与产线一致
+vi.mock('@native-router/core', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@native-router/core')>()),
   navigate: vi.fn(),
   refresh: vi.fn(async () => state.emit())
 }));

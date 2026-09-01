@@ -1,4 +1,5 @@
 import type {StandardSchemaV1} from '@native-router/react';
+import {writeSchema} from '@native-router/core';
 
 // / 路由（Home）的 search 契约：?tag=xxx&offset=20&limit=10。
 // 手写 Standard Schema（zod / valibot / arktype 均实现该标准接口）——
@@ -32,10 +33,11 @@ const parseHomeSearch = (input: unknown): HomeSearch => {
   return value;
 };
 
-// URL 输入侧的 search 形状——读侧 schema 的 Input 位与写侧 schema 的
-// Output 位共用一个口径：链接（TypedLink 的 search prop）与 useSetSearch
-// 都把值 String() 化后序列化进 query，number/string 均是合法写入形态
-//（coerce 交给 schema），故 offset/limit 放宽到 string | number。
+// URL 输入侧的 search 形状——读侧 schema 的 Input 位（链接与 useSetSearch
+// 的写入都把值 String() 化后序列化进 query，number/string 均是合法写入形态
+//（coerce 交给 schema），故 offset/limit 放宽到 string | number。写侧
+// schema 已改由 writeSchema 派生（见文件末尾），其 Output 是推断的
+// 可选化投影，本形状只服务链接契约。
 // Input 位若是 unknown，native-router 的 RouteSearchInputOf 会把链接的
 // search 契约退化为宽松 SearchInput（值仍是 string | string[]，但字段名
 // 不查）；标注为本形状后字段拼错/多传在编译期即报。validate 的运行时
@@ -55,23 +57,15 @@ export const homeSearchSchema: StandardSchemaV1<HomeSearchInput, HomeSearch> = {
   }
 };
 
-// useSetSearch 会把 schema 校验后的输出整体序列化进 URL，而读侧恒定补齐
-// offset/limit 缺省（0/10）——直接复用读 schema 会把缺省值写脏 URL。写侧
-// 先按读侧契约 coerce，再抹去等于缺省的字段：URL 保持「offset 为 0、
-// limit 为缺省时不出现」的干净形态，读写共用同一契约。
-export const homeSearchWriteSchema: StandardSchemaV1<unknown, HomeSearchInput> = {
-  '~standard': {
-    version: 1,
-    vendor: 'painless',
-    validate: (input) => {
-      const {tag, offset, limit} = parseHomeSearch(input);
-      return {
-        value: {
-          ...(tag !== undefined ? {tag} : {}),
-          ...(offset !== 0 ? {offset} : {}),
-          ...(limit !== DEFAULT_LIMIT ? {limit} : {})
-        }
-      };
-    }
-  }
-};
+// 写侧 schema 由 @native-router/core ≥1.13 的 writeSchema 从读 schema 派生
+//（此前是本文件手写的第二份 Standard Schema）：写入值先经读契约
+// validate（coerce、补缺省），再抹去等于缺省的键与 undefined 键——URL
+// 保持「offset 为 0、limit 为缺省时不出现」的干净形态，被抹后的 URL 读回
+// 还原同一值（往返不变量由库保证）。读写共用同一契约、缺省表只此一处；
+// 输出类型 WriteSearchOutputOf<HomeSearch, …> 自动推断（有缺省或本就
+// 可选的键收为可选），手写的 StandardSchemaV1<unknown, HomeSearchInput>
+// 注解随之删除。调用点（Tags/Home 的 useSetSearch）零改动。
+export const homeSearchWriteSchema = writeSchema(homeSearchSchema, {
+  offset: 0,
+  limit: DEFAULT_LIMIT
+});

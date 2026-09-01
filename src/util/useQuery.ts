@@ -372,8 +372,9 @@ export function createQueryHook(
     // 从返回值 error 读，useRun / refetch 不产生悬空 rejection。
     const argsStatus = useArgsStatus(injectable, args);
     const loading = argsStatus.loading && argsStatus.data === undefined;
-    // ArgsStatus.error 库侧是 any（react-toolroom 未收紧）——断言收口
-    const error: Error | undefined = argsStatus.error as Error | undefined;
+    // ArgsStatus.error 自 react-toolroom 0.19 起按 E 泛型收紧（默认
+    // Error | undefined）——直接透传，不再断言收口
+    const error = argsStatus.error;
     const failureCount = argsStatus.failureCount;
     // 透传 per-args 的成功时间戳：provenance 契约由 useArgsStatus 把关
     //（data 为 undefined 的窗口它恒为 undefined），组装层零加工。

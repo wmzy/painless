@@ -335,6 +335,16 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
       （第 8 条）随之冻结；
     - `queryFn` 恒为 `bindQueryFn(fetch, cache)` 产物，第三元素即组件
       通道入口（`createQueryHook` 的唯一合法入参）。
+  - **补记（2026-09-02，第 16 条批次修订）**：`keyOf` 的 ctx 参数从
+    `any` 收紧为泛型 `Ctx`（约束 `LoaderCtx`，默认宽松）——调用方按
+    路由实际形状注解（如 `{params: {title: string}}`，非可选、无非空
+    断言），精确形状流进工厂内部接线（keyOf 返回元组对 cache 的 K、
+    fetch 的参数元组都是编译期检查）；loader 的公开类型保持宽松
+    `DataLoader<T> = (ctx: LoaderCtx) => Promise<T>`，Ctx → 宽 ctx 在
+    返回处一次断言收拢（实测 1.13 的 createRoutes 参数交集中宽松
+    Route 成员以 `Record<string, string>` params 逆变换检查，窄 ctx
+    形状通不过——连字面量内注解窄 ctx 的回调同样被拒，路由表级闭合
+    对工厂产物不可达）。
   - `createQueryHook({queryFn, staleTime?, initData?, mock?})`
     （`util/useQuery.ts`）：选项创建时闭合、运行时调用点只收 args 零
     option 零重载；声明 initData 的场景 data 类型收窄为非空。
@@ -344,7 +354,12 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
   - `withCache(cache, keyOf, fn, {staleTime?})`（`util/loaderCache.ts`）：
     新鲜命中直返零请求 / stale 旧值先行后台重验证 / miss 走 load 三分支
     语义；同参数并发共享 in-flight；key 的 hash 归一（剥 signal 与
-    undefined 键）是两通道同寻址的前提。
+    undefined 键）是两通道同寻址的前提。**补记（2026-09-02，同上修订）**：
+    `keyOf` 的 ctx 同步泛型化（`C` 约束 `LoaderCtx`，与 `F` 的约束联动），
+    `fn`/`keyOf` 的 any 注解消失；`cache.peek`/`cache.load` 的非空断言
+    改 `bind(cache)` 一次收窄（缺失即挂载点早抛，取代首请求处的
+    TypeError——`createQueryCache` 恒由 `createMemoryCacheProvider` 创建
+    的不变量不变）；三分支/in-flight/hash 归一语义逐条不动。
   - `bindRefresh`（内部；测试接缝 `bindCacheRefresh`）：cache set 事件
     → 微任务去抖 refresh 最近使用它的 router；判据是「视图已见过的 key
     换了值」（引用 diff，结构共享等价物）；delete/clear 不订阅。
@@ -503,3 +518,56 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
   react 1.10.1→1.12 + f0rm 0.7→0.8），模板侧接线零增（searchDeps 是
   声明式选项、useCanSubmit 是替换不是叠加）。预算 126.00 KB 内
   （7.2% 余量），棘轮基线不动。
+
+## 16. 三库新 API 接入批（2026-09-02）
+
+- **版本**：react-toolroom ^0.19.0（自 0.18.4）、react-f0rm ^0.10.0
+  （自 0.8.0）、@native-router/core ^1.13.0 + @native-router/react
+  ^1.13.0（自 1.12.0）、haze-ui ^1.16.1（自 1.16.0——纯 peer 放宽
+  `react-f0rm <0.11.0`，无 API 变化无消费面）。npm 显式版本安装 +
+  pnpm dedupe（无双实例），tsc 首轮即绿。
+- **writeSchema 消样板**：`src/types/search.ts` 的手写写侧 schema
+  （先按读契约 coerce 再抹等于缺省键的投影 + 显式
+  `StandardSchemaV1<unknown, HomeSearchInput>` 注解）删除，改
+  `writeSchema(homeSearchSchema, {offset: 0, limit: DEFAULT_LIMIT})`
+  （core 1.13）——写侧投影语义（值先经读契约 validate、再抹等于缺省
+  与 undefined 的键、被抹后的 URL 读回还原同一值）上移为库原语，往返
+  不变量由库背书；输出类型 `WriteSearchOutputOf` 自动推断。HomeSearchInput
+  保留：TypedLink/pageSearch 的链接契约仍按读 schema 的 Input 位判别
+  （写侧 Output 已是推断的可选化投影，两口径不再共用）。调用点
+  （Tags/Home 的 `useSetSearch`）零改动；URL 干净度由既有单测（Home
+  取消 tag → `setSearch({})`、分页 href 断言）与 e2e 守卫。Login 无
+  写侧 search（写入口只在 Home 链），无替换对象。
+- **params 类型链消断言**：1.13 的 createRoutes 闭合（SearchRoutesOf
+  增加 RawP/GuardP 累积——data ctx.params 由匹配前缀的路由段类型流
+  入、并从 loader 声明的 ctx 反推）让 keyOf 的精确形状注解有了库侧
+  依据：`dataloaders.ts` 三处 `{params: {title?: string}}` + 非空断言
+  改 `{params: {title: string}}`（/editor/:slug 的 `{slug: string}`
+  同）。接线走工厂泛型（keyOf 参数 `Ctx`、withCache 联动 `C`），
+  `keyOf`/`fn` 的 ctx any、peek/load 的非空断言全部消失——冻结面修订
+  与「路由表级闭合对工厂产物不可达」的实测边界见第 13 条补记。
+- **Register validateDeps**：`useForm` 加
+  `validateDeps: ['password', 'confirmPassword']`（react-f0rm 0.10）
+  ——两字段的用户变更重跑 form 级一致性校验，且每轮先清上一轮 form
+  validate 写下的错误（round-scoped ownership：字段级 validator、
+  setServerErrors、手动 setError 的错误永不被动）。消掉此前注释自认
+  的显示局限「mismatch 挂上后改 password 不清错」（form.test.tsx 新
+  用例钉住：提交挂 mismatch → 改 password → 错误消失、按钮弹起）。
+  门控走变更字段的 mode + form 的 reValidateMode（默认 onChange，
+  submit-then-fix 流）；提交永远重跑 form 级校验，安全边界不变。
+- **useQuery 消 as Error**：`useArgsStatus<AF, E = Error>`（react-toolroom
+  0.19）把 error 从 any 收紧为 `E | undefined`——createQueryHook 组装
+  层的 `as Error | undefined` 断言删除，直接透传。
+- **useMutation status 不接**：0.19 给 useMutation 返回新增
+  `status: 'idle' | 'pending' | 'success' | 'error'`（与 isMutating
+  同钟，scope 排队即 pending）——模板 mutation 消费点（favorite/follow/
+  评论/编辑）的 UI 只需要 in-flight 门与 catch 侧错误呈现，无终态
+  分支渲染场景，接了就是死代码；等某个 mutation 真需要「失败后常驻
+  错误态 / 成功后短暂反馈」再接（与第 15 条 RouteDataOf 同款取舍：
+  库发了新能力不等于消费方要接）。
+- **体积**：117.99 KB（size-budget 口径：dist JS+CSS gzip 总和，zlib
+  level 9，含懒加载 chunk），对上批 116.95 KB +1.04 KB——增量来自
+  四包升级自身（core 1.13 的 writeSchema 运行时 + react 1.12→1.13 +
+  f0rm 0.8→0.10 的 validateDeps 门控 + toolroom 0.18.4→0.19），模板侧
+  净减（手写写侧 schema 删除、类型收紧零运行时）。预算 126.00 KB 内
+  （6.4% 余量），棘轮基线不动。

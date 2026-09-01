@@ -335,4 +335,41 @@ describe('Register 表单', () => {
       vi.useRealTimers();
     }
   });
+
+  // validateDeps（react-f0rm ≥0.10）：mismatch 挂上后改 password（而非
+  // confirmPassword）也重跑 form 级校验并清错——上一用例钉的是「改确认
+  // 字段」路径（字段级复验即可清），本用例钉 form 级依赖重跑路径：改
+  // password 使两字段一致，错误随上一轮 form validate 的 footprint 消失，
+  // 按钮弹起。此前的显示局限（改 password 不清 mismatch）由本选项消除。
+  it('确认密码不一致：改 password（依赖字段）即重跑 form 级校验清除 mismatch', async () => {
+    vi.useFakeTimers();
+    try {
+      render(<Register />);
+      const submit = screen.getByRole<HTMLButtonElement>('button', {
+        name: 'Register'
+      });
+
+      // 提交挂上 mismatch（password 与 confirm 不一致）
+      fill('alice', 'alice@example.com', 'password123', 'password12');
+      fireEvent.click(submit);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(300);
+      });
+      expect(screen.getByText('Passwords do not match')).toBeDefined();
+      expect(submit.disabled).toBe(true);
+
+      // 改 password 到与 confirm 一致（无失焦）：validateDeps 把
+      // password 的用户变更接到 form 级重跑，mismatch 清除、按钮弹起。
+      // form 级重跑在微任务里落定（异步 act 冲净后断言）
+      await act(async () => {
+        fireEvent.change(screen.getByPlaceholderText('Password'), {
+          target: {value: 'password12'}
+        });
+      });
+      expect(screen.queryByText('Passwords do not match')).toBeNull();
+      expect(submit.disabled).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

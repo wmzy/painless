@@ -19,7 +19,11 @@ import {mockViewData} from './mock';
 import {bindQueryFn, type EntityCache, type QueryFn} from './useQuery';
 
 // 路由 data loader：ctx 即 @native-router 的 loader 上下文（search/params/
-// signal/router 按路由异构，宽松形状见 loaderCache 的 LoaderCtx）
+// signal/router 按路由异构，宽松形状见 loaderCache 的 LoaderCtx）。公开
+// 类型刻意保持宽松：createRoutes 的参数含宽松 Route 成员，其 data 以
+// Record<string, string> 的 params 逆变换检查——窄 ctx 形状（哪怕字面量
+// 内注解的回调，实测 1.13）通不过该成员，精确形状只活在工厂内部的
+// Ctx 泛型里（见 createDataLoader 的 keyOf 注释）
 export type DataLoader<T> = (ctx: LoaderCtx) => Promise<T>;
 
 // 视图取数 hook：
@@ -35,7 +39,7 @@ export type UseData<T> = {
   (opts: {optional: true}): T | undefined;
 };
 
-export function createDataLoader<T, K extends unknown[]>(
+export function createDataLoader<T, K extends unknown[], Ctx extends LoaderCtx = LoaderCtx>(
   spec: {
     // 参数化 service 函数：与 queryFn 同形状（尾参可选 signal——useRun
     // 的 {signal: true} 与路由 ctx.signal 都从这里透传到 fetch）
@@ -44,9 +48,13 @@ export function createDataLoader<T, K extends unknown[]>(
     // 元组、keyOf 的返回形状都向它看齐，错形状编译期暴露
     cache: EntityCache<T, K>;
     // 从路由 ctx 提取 key 元组：key 的定义只此一处，mutation 侧经
-    // cache.mutation 寻址同一实体。ctx 收 any：按本路由的实际形状解构
-    // （同 withCache 的约定）
-    keyOf: (ctx: any) => K;
+    // cache.mutation 寻址同一实体。ctx 按本路由的实际形状注解（如
+    // {params: {title: string}}，路由段保证必有值——非可选、无非空
+    // 断言），Ctx 泛型让精确形状流进工厂内部接线（keyOf 返回值对
+    // cache 的 K 元组、fetch 的参数元组都是编译期检查）；loader 的
+    // 公开类型回到宽松 LoaderCtx（见 DataLoader 注释），收窄经返回处
+    // 一次断言收拢——运行时形状由路由保证
+    keyOf: (ctx: Ctx) => K;
     staleTime?: number;
     mock?: {schema: unknown; key: string};
   }
@@ -60,13 +68,16 @@ export function createDataLoader<T, K extends unknown[]>(
   const cached = withCache(
     cache,
     keyOf,
-    (ctx: LoaderCtx) => fetch(...keyOf(ctx), ctx.signal),
+    (ctx: Ctx) => fetch(...keyOf(ctx), ctx.signal),
     staleTime !== undefined ? {staleTime} : undefined
   );
-  // loader 即路由表要挂的引用——身份校验闭包绑定它
-  const loader: DataLoader<T> = mock
+  // loader 即路由表要挂的引用——身份校验闭包绑定它。cached 的 ctx 是
+  // keyOf 声明的精确形状 Ctx，DataLoader<T> 的宽松 ctx 在此一次断言
+  // 收拢（泛型实现体内不可静态证明；运行时形状由路由保证——与下方
+  // useDataHook 的 UseData<T> 收拢同一手法）
+  const loader: DataLoader<T> = (mock
     ? mockViewData(cached, mock.schema, mock.key)
-    : cached;
+    : cached) as DataLoader<T>;
 
   // 视图取数 + DEV 来源校验。校验的是「声明身份」而非「结果指纹」：
   // route.data === loader 证明本视图读的值就是本 loader resolve 出的值

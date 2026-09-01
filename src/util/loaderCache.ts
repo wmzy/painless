@@ -105,8 +105,9 @@ function bindRefresh(cache: CacheProvider<unknown, unknown[]>, router: unknown) 
   });
 }
 
-// loader 返回值的静态类型（缓存里存的就是它）
-type LoaderValue<F extends (ctx: any) => Promise<any>> = Awaited<ReturnType<F>>;
+// loader 返回值的静态类型（缓存里存的就是它）。约束用 never 参数位收
+// 「任意单参异步函数」——与宽泛签名兼容且不含 any
+type LoaderValue<F extends (ctx: never) => Promise<any>> = Awaited<ReturnType<F>>;
 
 // 把路由 loader 接入实体 cache（SWR 语义）：
 // - 新鲜命中（now - cachedAt < staleTime）：直接返回缓存值，不发请求；
@@ -122,36 +123,45 @@ type LoaderValue<F extends (ctx: any) => Promise<any>> = Awaited<ReturnType<F>>;
 export function withCache<
   T,
   K extends unknown[],
-  F extends (ctx: any) => Promise<any>
+  C extends LoaderCtx = LoaderCtx,
+  F extends (ctx: C) => Promise<any> = never
 >(
   cache: CacheProvider<T, K>,
   // 路由 loader ctx 按路由异构（search/params/signal/router 各异），
-  // keyOf 收 any：调用方按本路由的实际形状解构。返回收 unknown[] 而非
-  // K：keyOf 常是注解-free 的箭头（ctx.search 在字面量内是 any），返回
-  // any[] 会与 cache 推导出的元组 K 冲突；K 的元组形状以 cache 为唯一
+  // keyOf 按本路由的实际形状声明（C 从注解推断，须兼容 LoaderCtx 的
+  // 宽松成员）。返回收 unknown[] 而非 K：K 的元组形状以 cache 为唯一
   // 契约源，key 的运行时形状经 load 的 hash 归一，错形状不产生错误条目
-  keyOf: (ctx: any) => unknown[],
+  keyOf: (ctx: C) => unknown[],
   fn: F,
   opts?: {staleTime?: number}
 ): F {
   const staleTime = opts?.staleTime ?? DEFAULT_STALE_TIME;
-  return (async (ctx: LoaderCtx) => {
+  // load/peek 在 CacheProvider 契约里是可选成员，但 createQueryCache 恒由
+  // createMemoryCacheProvider 创建——bind 一次收窄为必有（this 绑定同源，
+  // 不经解构丢宿主），缺失即早抛：错配的 provider 在挂载点就指向配置
+  // 错误，而非首个请求处一句 TypeError
+  const peek = cache.peek?.bind(cache);
+  const load = cache.load?.bind(cache);
+  if (!peek || !load) {
+    throw new Error(
+      '[withCache] cache 缺少 peek/load 成员——须经 createQueryCache（createMemoryCacheProvider）创建'
+    );
+  }
+  return (async (ctx: C) => {
     if (ctx.router !== undefined) {
     // 泛型 CacheProvider<T, K> 对统一订阅表是逆变的（set 参数），经
     // unknown 收拢——运行时只是注册订阅，无任何成员调用
     bindRefresh(cache as unknown as CacheProvider<unknown, unknown[]>, ctx.router);
   }
     const args = keyOf(ctx) as K;
-    // load/peek 在 CacheProvider 契约里是可选成员，但 createQueryCache
-    // 恒由 createMemoryCacheProvider 创建，二者必然存在
-    const entry = cache.peek!(args);
+    const entry = peek(args);
     if (entry) {
       if (Date.now() - entry.cachedAt < staleTime) {
         return entry.value as LoaderValue<F>;
       }
-      void cache.load!(args, () => fn(ctx)).catch(noop);
+      void load(args, () => fn(ctx)).catch(noop);
       return entry.value as LoaderValue<F>;
     }
-    return cache.load!(args, () => fn(ctx)) as Promise<LoaderValue<F>>;
+    return load(args, () => fn(ctx)) as Promise<LoaderValue<F>>;
   }) as F;
 }

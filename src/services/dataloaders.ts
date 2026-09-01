@@ -19,10 +19,14 @@ import {createDataLoader} from '@/util/dataLoader';
 
 import * as articleService from './article';
 
-// ctx 注解约定（沿收敛前路由表的写法）：literal 内回调的 ctx 按宽松
-// Route 检查，精确类型在 createRoutes 返回表上闭环；params 运行时必有
-// 值由路由段保证（/article/:title 的匹配段、/editor/:slug 的 params
-// schema coerce），可选属性 + ! 收窄兼容宽松检查。
+// ctx 注解约定：keyOf 的 ctx 按本路由的实际形状标注（native-router ≥1.13
+// 的 params 类型闭合后，/article/:title 匹配段流入 data ctx 的
+// params.title 是必有 string——非可选、无非空断言）；声明形状经工厂的
+// Ctx 泛型流进内部接线（keyOf 返回元组对 cache 的 K、fetch 参数元组都是
+// 编译期检查），loader 公开类型保持宽松（见 dataLoader.ts 的 DataLoader
+// 注释——createRoutes 的宽松 Route 成员不接受窄 ctx）。运行时 params 必有
+// 值由路由段保证（/article/:title 的匹配段、/editor/:slug 的 params schema
+// coerce）。
 
 /** Home 路由（/）：query(search) → homeCache[[search]]，DevTool mock 'articlePage' */
 export const [homeLoader, useHomeData] = createDataLoader({
@@ -36,7 +40,7 @@ export const [homeLoader, useHomeData] = createDataLoader({
 export const [articleLoader, useArticleData] = createDataLoader({
   fetch: articleService.findByTitle,
   cache: articleCache,
-  keyOf: ({params}: {params: {title?: string}}): [string] => [params.title!]
+  keyOf: ({params}: {params: {title: string}}): [string] => [params.title]
 });
 
 /**
@@ -47,7 +51,7 @@ export const [articleLoader, useArticleData] = createDataLoader({
 export const [editorLoader, useEditorData] = createDataLoader({
   fetch: articleService.findByTitle,
   cache: articleCache,
-  keyOf: ({params}: {params: {slug?: string}}): [string] => [params.slug!]
+  keyOf: ({params}: {params: {slug: string}}): [string] => [params.slug]
 });
 
 /**
@@ -64,7 +68,7 @@ export const [editorLoader, useEditorData] = createDataLoader({
 export const [, , queryComments] = createDataLoader({
   fetch: articleService.fetchCommentsByTitle,
   cache: commentsCache,
-  keyOf: ({params}: {params: {title?: string}}): [string] => [params.title!]
+  keyOf: ({params}: {params: {title: string}}): [string] => [params.title]
 });
 export const useCommentsQuery = createQueryHook({
   queryFn: queryComments,
