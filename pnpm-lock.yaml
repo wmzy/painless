@@ -24,8 +24,8 @@ importers:
         specifier: ^0.11.0
         version: 0.11.0
       haze-ui:
-        specifier: ^1.14.0
-        version: 1.14.0(@linaria/core@8.2.0(supports-color@10.2.2))(react-dom@19.2.8(react@19.2.8))(react-f0rm@0.8.0(react@19.2.8)(zod@4.5.4))(react@19.2.8)
+        specifier: ^1.16.0
+        version: 1.16.0(@linaria/core@8.2.0(supports-color@10.2.2))(react-dom@19.2.8(react@19.2.8))(react-f0rm@0.8.0(react@19.2.8)(zod@4.5.4))(react@19.2.8)
       react:
         specifier: ^19.2.8
         version: 19.2.8
@@ -2860,8 +2860,8 @@ packages:
     resolution: {integrity: sha512-T2UbfbBEF32wiepXIsMlTW9+dDYC6wMh/t/vYA4tuOMKqWz/n3vr1NFSxQiyP+zk2mXsoMA/i/7qV6LKut1t1A==}
     engines: {node: '>= 0.4'}
 
-  haze-ui@1.14.0:
-    resolution: {integrity: sha512-Hn611/FIaWDutPWE4xDoFi5b8EPobIoGncZITMC7+IDbEOuWxzv181XRVShXlTbMKgSQOQE1Gb4EsKgt35VX2Q==}
+  haze-ui@1.16.0:
+    resolution: {integrity: sha512-ZrYKSrNLH/YJV2bfH4STN2LJzZPvTXFpg7RM74vRT/26QlWFqLjzhGyHcYVDUoMXkOYVXM6tdAHs8fGOOTQt5w==}
     peerDependencies:
       '@linaria/core': ^7.0.0 || ^8.0.0
       react: ^19.0.0
@@ -7344,7 +7344,7 @@ snapshots:
     dependencies:
       function-bind: 1.1.2
 
-  haze-ui@1.14.0(@linaria/core@8.2.0(supports-color@10.2.2))(react-dom@19.2.8(react@19.2.8))(react-f0rm@0.8.0(react@19.2.8)(zod@4.5.4))(react@19.2.8):
+  haze-ui@1.16.0(@linaria/core@8.2.0(supports-color@10.2.2))(react-dom@19.2.8(react@19.2.8))(react-f0rm@0.8.0(react@19.2.8)(zod@4.5.4))(react@19.2.8):
     dependencies:
       '@linaria/core': 8.2.0(supports-color@10.2.2)
       react: 19.2.8

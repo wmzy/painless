@@ -4,7 +4,7 @@ import {navigate} from '@native-router/core';
 import {useMatched} from '@native-router/react';
 import {Form, useForm, reset, useIsSubmitting} from 'react-f0rm';
 import {useMutation} from 'react-toolroom/async';
-import {Card, Title, Text, Avatar, Divider, TextareaCore, Alert, Button, Badge, Flex, useToast, FormItem} from 'haze-ui';
+import {Card, Title, Text, Avatar, Divider, TextareaCore, Alert, Button, Badge, Flex, FormItem} from 'haze-ui';
 
 import * as articleService from '@/services/article';
 import {favoriteOnArticle, followOnArticle} from '@/services/mutations';
@@ -12,6 +12,7 @@ import {getCurrentUser} from '@/services/auth';
 import {useArticleData} from '@/services/dataloaders';
 import {commentsCache} from '@/util/useQuery';
 import {useTitle} from '@/util/useTitle';
+import {useToastError} from '@/util/toastError';
 
 import CommentList from './CommentList';
 
@@ -40,9 +41,9 @@ export default function ArticleView() {
   const commentSubmitting = useIsSubmitting(commentForm);
   const [error, setError] = useState<string | null>(null);
   // favorite/follow 这类轻量写操作的失败反馈走 toast（乐观值已由管道
-  // 自动回滚，无需页内 Alert 占位）；评论提交失败仍走页内 Alert（表单
-  // 就在错误发生处，上下文更强）。
-  const toast = useToast();
+  // 自动回滚，无需页内 Alert 占位，收敛点见 src/util/toastError.ts）；
+  // 评论提交失败仍走页内 Alert（表单就在错误发生处，上下文更强）。
+  const toastError = useToastError();
 
   // 乐观写穿管道全在 services/mutations.ts（cache.mutation 组合）：
   // 乐观首步 → 服务调用 → 字段选择式 apply → 失败自动回滚（并发写
@@ -83,19 +84,14 @@ export default function ArticleView() {
   const toggleFavorite = () => {
     if (!requireAuth()) return;
     void favorite(article.slug, !article.favorited).catch((e: unknown) =>
-      toast(e instanceof Error ? e.message : 'Favorite failed', {
-        variant: 'danger'
-      })
+      toastError(e, 'Favorite failed')
     );
   };
 
   const toggleFollow = () => {
     if (!requireAuth()) return;
     void follow(article.slug, article.author.username, !article.author.following).catch(
-      (e: unknown) =>
-        toast(e instanceof Error ? e.message : 'Follow failed', {
-          variant: 'danger'
-        })
+      (e: unknown) => toastError(e, 'Follow failed')
     );
   };
 
@@ -144,26 +140,17 @@ export default function ArticleView() {
       </div>
       <Divider />
       <Title level={3}>Comments</Title>
-      {/* 同 Editor：FormItem 桥接字段与受控核心（value/onChange 直出 +
-          aria 链路），首条错误由 FormItem 渲染为字段下方的
-          <span role='alert'> */}
+      {/* 同 Editor：FormItem input 声明式桥接字段与受控核心（接线 +
+          aria 链路全由 FormItem 负责），首条错误由 FormItem 渲染为字段
+          下方的 <span role='alert'> */}
       <Form form={commentForm} onSubmit={handleCommentSubmit} aria-label='Comment form'>
         <FormItem
           form={commentForm}
           name='body'
           validate={(v: unknown) => (!v ? 'Comment is required' : undefined)}
-        >
-          {({id, errorId, invalid, value, onChange}) => (
-            <TextareaCore
-              id={id}
-              value={value}
-              onChange={onChange}
-              placeholder='Write a comment...'
-              aria-describedby={invalid ? errorId : undefined}
-              aria-invalid={invalid}
-            />
-          )}
-        </FormItem>
+          input={TextareaCore}
+          placeholder='Write a comment...'
+        />
         <button type='submit' disabled={commentSubmitting}>
           {commentSubmitting ? 'Posting...' : 'Post Comment'}
         </button>

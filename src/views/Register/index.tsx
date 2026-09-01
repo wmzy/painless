@@ -4,10 +4,10 @@ import {useState} from 'react';
 import {Form, useForm, useCanSubmit} from 'react-f0rm';
 import {Card, Title, InputCore, Text, Alert, FormItem} from 'haze-ui';
 // FormItem（haze-ui 1.8 引入、1.11 起随 form 层并入主 barrel）：接管字段
-// id/错误 span/aria 链路——首条错误渲染为 <span role='alert'>。1.12.2
-// 起 binding 改为 value/onChange 直出（react-f0rm useField 通道），配
-// 纯受控的 InputCore 使用；旧的 control 桥（react-use-control Control）
-// 已移除。
+// id/错误 span/aria 链路——首条错误渲染为 <span role='alert'>。1.15 起
+// input 声明式桥：传控件引用即自动接好 id/aria-invalid/aria-describedby/
+// onBlur/onChange/value（接线属性恒定优先），控件其余 props 写在
+// FormItem 上经泛型全类型校验透传。
 // 1.12 起额外透传 react-f0rm ≥0.6 的 validateDebounce / delayError /
 // rules 到 useField，字段校验调度（debounce 窗口）无需再手写。
 import {useRouter, TypedLink} from '@native-router/react';
@@ -113,55 +113,32 @@ export default function Register() {
       <Title>Register</Title>
       {error && <Alert variant='danger'>{error}</Alert>}
       <Form form={form} onSubmit={handleSubmit} aria-label='Register form'>
-        {/* 错误 span 只在 invalid 时渲染，aria-describedby 相应条件传递，
-            避免指向不存在元素的悬空 id */}
         {/* 用户名：异步查重（react-f0rm 异步 validate 协议，查重端点
             services/auth 的 fetchProfile）。mode='onBlur' 同 email——
             失焦/提交才校验，避免每次击键一轮请求；validateDebounce 把
             窗口调度交给 useField（窗口内重复触发只跑最后一轮，提交
-            trigger 会等窗口走完） */}
+            trigger 会等窗口走完）。失焦钩子由 input 桥自动接线 */}
         <FormItem
           form={form}
           name='username'
           mode='onBlur'
           validateDebounce={USERNAME_DEBOUNCE_MS}
           validate={validateUsername}
-        >
-          {({id, errorId, invalid, value, onChange, onBlur}) => (
-            <InputCore
-              id={id}
-              value={value}
-              onChange={onChange}
-              placeholder='Username'
-              aria-invalid={invalid}
-              aria-describedby={invalid ? errorId : undefined}
-              onBlur={onBlur}
-            />
-          )}
-        </FormItem>
+          input={InputCore}
+          placeholder='Username'
+        />
         {/* 同 Login：email 字段失焦即校验（字段级 mode 覆盖 form 默认） */}
         <FormItem
           form={form}
           name='email'
           mode='onBlur'
           validate={compose(required('Email is required'), email('Invalid email'))}
-        >
-          {({id, errorId, invalid, value, onChange, onBlur}) => (
-            <InputCore
-              id={id}
-              value={value}
-              onChange={onChange}
-              type='email'
-              placeholder='Email'
-              aria-invalid={invalid}
-              aria-describedby={invalid ? errorId : undefined}
-              onBlur={onBlur}
-            />
-          )}
-        </FormItem>
-        {/* 同 Login：password 无字段级 mode（提交时首验）。onBlur 仍由
-            FormItem binding 提供并显式传给 Input：blur 档校验只经它
-            可达，删掉会窄化触发面 */}
+          input={InputCore}
+          type='email'
+          placeholder='Email'
+        />
+        {/* 同 Login：password 无字段级 mode（提交时首验）。onBlur 由
+            input 桥自动接线（blur 档校验只经它可达） */}
         <FormItem
           form={form}
           name='password'
@@ -169,45 +146,24 @@ export default function Register() {
             required('Password is required'),
             minLength(8, 'Password must be at least 8 characters')
           )}
-        >
-          {({id, errorId, invalid, value, onChange, onBlur}) => (
-            <InputCore
-              id={id}
-              value={value}
-              onChange={onChange}
-              type='password'
-              placeholder='Password'
-              aria-invalid={invalid}
-              aria-describedby={invalid ? errorId : undefined}
-              onBlur={onBlur}
-            />
-          )}
-        </FormItem>
+          input={InputCore}
+          type='password'
+          placeholder='Password'
+        />
         {/* 确认密码：一致性校验在 form 级 validate（跨字段，见 useForm
             注释），这里的字段级 validate 只报必填——它同时承担复验
             （默认档 reValidateMode='onChange'，桥写值即触发）的清错
             职责：字段带错后修改即重跑，通过即清（含 form 级挂上来的
-            mismatch，见 useForm 注释里的显示局限）。onBlur 接线与其它
-            字段一致（blur 档校验只经它可达）。a11y 链路与 password
-            字段完全一致。 */}
+            mismatch，见 useForm 注释里的显示局限）。a11y 链路与 password
+            字段完全一致（均由 input 桥接线）。 */}
         <FormItem
           form={form}
           name='confirmPassword'
           validate={required('Confirm password is required')}
-        >
-          {({id, errorId, invalid, value, onChange, onBlur}) => (
-            <InputCore
-              id={id}
-              value={value}
-              onChange={onChange}
-              type='password'
-              placeholder='Confirm password'
-              aria-invalid={invalid}
-              aria-describedby={invalid ? errorId : undefined}
-              onBlur={onBlur}
-            />
-          )}
-        </FormItem>
+          input={InputCore}
+          type='password'
+          placeholder='Confirm password'
+        />
         {/* 防重复/防无效提交。初始可点是刻意语义：表单默认
             mode='onSubmit'，首次校验由提交触发，errors 初始为空集
             （canSubmit 的 hasErrors 分量只读错误 Map 的 size，不预跑

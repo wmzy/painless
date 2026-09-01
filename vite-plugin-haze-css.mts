@@ -83,6 +83,9 @@ const FAMILY: Record<string, string> = {
   InputCore: 'input',
   TextareaCore: 'textarea',
   TagInputCore: 'tag-input',
+  // ButtonLink 与 Button 共享 styles.ts：haze-ButtonLink__* 落在
+  // button.css（haze-ui 1.16 新导出，kebab 直拼 button-link.css 不存在）
+  ButtonLink: 'button',
   // 前缀家族：组合件的 Trigger/Content/Item/Separator 等子件
   CollapsibleTrigger: 'collapsible',
   CollapsibleContent: 'collapsible',

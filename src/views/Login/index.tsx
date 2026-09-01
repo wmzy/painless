@@ -4,10 +4,12 @@ import {useState} from 'react';
 import {Form, useForm, useCanSubmit} from 'react-f0rm';
 import {Card, Title, InputCore, Text, Alert, FormItem} from 'haze-ui';
 // FormItem（haze-ui 1.8 引入、1.11 起随 form 层并入主 barrel）：接管字段
-// id/错误 span/aria 链路——首条错误渲染为 <span role='alert'>。1.12.2
-// 起 binding 改为 value/onChange 直出（react-f0rm useField 通道），配
-// 纯受控的 InputCore/TextareaCore/TagInputCore 使用；旧的 control 桥
-//（react-use-control Control）已移除
+// id/错误 span/aria 链路——首条错误渲染为 <span role='alert'>（错误 span
+// 只在 invalid 时渲染，aria-describedby 相应省略，无悬空 id）。1.15 起
+// 支持 input 声明式桥：传控件引用（InputCore 等）即自动接好
+// id/aria-invalid/aria-describedby/onBlur/onChange/value（接线属性恒定
+// 优先，不可覆盖），控件其余 props 直接写在 FormItem 上经泛型全类型
+// 校验透传
 import {
   useRouter,
   TypedLink,
@@ -91,52 +93,30 @@ export default function Login() {
       {error && <Alert variant='danger'>{error}</Alert>}
       {/* react-f0rm ≥0.4：onSubmit 被 await，isSubmitting 覆盖整个异步提交 */}
       <Form form={form} onSubmit={handleSubmit} aria-label='Login form'>
-        {/* 错误 span 只在 invalid 时渲染，aria-describedby 相应条件传递，
-            避免指向不存在元素的悬空 id */}
         {/* mode='onBlur'（react-f0rm 0.6 字段级覆盖 + haze-ui 1.9 FormItem
-            透传）：表单默认 onSubmit 提交时才校验，email 单字段失焦即校验。
-            onBlur 由 FormItem binding 提供，接给 InputCore 才触发失焦钩子 */}
+            透传）：表单默认 onSubmit 提交时才校验，email 单字段失焦即校验
+            ——失焦钩子（onBlur）由 input 桥自动接线，无需再手传给控件 */}
         <FormItem
           form={form}
           name='email'
           mode='onBlur'
           validate={compose(required('Email is required'), email('Invalid email'))}
-        >
-          {({id, errorId, invalid, value, onChange, onBlur}) => (
-            <InputCore
-              id={id}
-              value={value}
-              onChange={onChange}
-              type='email'
-              placeholder='Email'
-              aria-invalid={invalid}
-              aria-describedby={invalid ? errorId : undefined}
-              onBlur={onBlur}
-            />
-          )}
-        </FormItem>
-        {/* password 无字段级 mode（提交时才首验）。onBlur 仍由 FormItem
-            binding 提供并显式传给 InputCore：blur 档校验（mode='onBlur'/
-            'onTouched'/'all' 或 reValidateMode='onBlur'）只经它可达，
-            删掉会窄化触发面 */}
+          input={InputCore}
+          type='email'
+          placeholder='Email'
+        />
+        {/* password 无字段级 mode（提交时才首验）。onBlur 同样由 input 桥
+            自动接线：blur 档校验（mode='onBlur'/'onTouched'/'all' 或
+            reValidateMode='onBlur'）只经它可达，声明式桥让这条链路不再
+            依赖调用点记得手接 */}
         <FormItem
           form={form}
           name='password'
           validate={required('Password is required')}
-        >
-          {({id, errorId, invalid, value, onChange, onBlur}) => (
-            <InputCore
-              id={id}
-              value={value}
-              onChange={onChange}
-              type='password'
-              placeholder='Password'
-              aria-invalid={invalid}
-              aria-describedby={invalid ? errorId : undefined}
-              onBlur={onBlur}
-            />
-          )}
-        </FormItem>
+          input={InputCore}
+          type='password'
+          placeholder='Password'
+        />
         {/* 防重复/防无效提交。初始可点是刻意语义：表单默认
             mode='onSubmit'，首次校验由提交触发，errors 初始为空集
             （canSubmit 的 hasErrors 分量只读错误 Map 的 size，不预跑

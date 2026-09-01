@@ -205,7 +205,10 @@ describe('Login 表单', () => {
     // aria 链路同步复位
     fireEvent.change(email, {target: {value: 'alice@example.com'}});
     await waitFor(() => expect(screen.queryByText('Email is required')).toBeNull());
-    expect(email.getAttribute('aria-invalid')).toBe('false');
+    // 无错态：FormItem 声明式 input 桥省略 aria-invalid（ARIA 缺省值即
+    // 'false'，与显式 "false" 等价）——render-prop 时代手传布尔会显式
+    // 渲染 "false"，断言随之迁移
+    expect(email.getAttribute('aria-invalid')).toBeNull();
 
     // password 仍带错：按钮保持压下；补齐后弹起（按钮弹起不依赖失焦）
     expect(submit.disabled).toBe(true);

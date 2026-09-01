@@ -8,7 +8,7 @@ import {
   useSearch,
   useSetSearch
 } from '@native-router/react';
-import {Card, Title, Text, Badge, Avatar, Flex, Chip, Button,useToast} from 'haze-ui';
+import {Card, Title, Text, Badge, Avatar, Flex, Chip, Button, ButtonLink} from 'haze-ui';
 import {useMutation} from 'react-toolroom/async';
 
 import {Article} from '@/types';
@@ -21,6 +21,7 @@ import {favoriteOnHome} from '@/services/mutations';
 import {getCurrentUser} from '@/services/auth';
 import {useHomeData} from '@/services/dataloaders';
 import {useTitle} from '@/util/useTitle';
+import {useToastError} from '@/util/toastError';
 import PreviewLink from '@/components/PreviewLink';
 
 import Tags from './Tags';
@@ -28,47 +29,6 @@ import Tags from './Tags';
 // 把收藏按钮推到卡片作者行的右端
 const pushRight = css`
   margin-left: auto;
-`;
-
-// 分页链接的锚点样式：按设计 token 复刻 Button variant='outline'（缺省
-// 尺寸 md）的外观。haze-ui 没有按钮外观的链接组件，而 as={Button} 会把
-// href 落到 <button> 上（非法属性，⌘/中键新标签也随之失效）——token 是
-// 设计系统对外的扩展点，锚点直接消费 token，换肤随主题自动跟随。边界
-// 禁用是按钮 disabled 语义的锚点等价物：aria-disabled 上报状态（链接
-// 没有 disabled 属性），pointer-events 断鼠标交互 + tabIndex 移出焦点
-// 序，视觉降半透明
-const pageLink = css`
-  display: inline-flex;
-  align-items: center;
-  border: 1px solid var(--haze-color-border);
-  border-radius: var(--haze-radius-md);
-  padding: var(--haze-space-2) var(--haze-space-4);
-  font-size: var(--haze-text-sm);
-  font-weight: var(--haze-weight-medium);
-  color: var(--haze-color-text);
-  text-decoration: none;
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
-
-  &:hover {
-    border-color: var(--haze-color-border-hover);
-    background: var(--haze-color-bg-subtle);
-  }
-
-  &:active {
-    background: var(--haze-color-bg-muted);
-  }
-
-  &:focus-visible {
-    outline: none;
-    box-shadow: 0 0 0 3px var(--haze-color-focus-ring);
-  }
-
-  &[aria-disabled='true'] {
-    opacity: 0.5;
-    cursor: not-allowed;
-    pointer-events: none;
-  }
 `;
 
 export default function Home() {
@@ -114,7 +74,7 @@ export default function Home() {
   const [favorite] = useMutation(favoriteOnHome, {
     scope: (slug: string) => `favorite:${slug}`
   });
-  const toast = useToast();
+  const toastError = useToastError();
 
   const toggleFavorite = (a: Article) => {
     if (!getCurrentUser()) {
@@ -122,11 +82,10 @@ export default function Home() {
       return;
     }
     // 失败时乐观值已被 cache.mutation 管道自动回滚，UI 复原；剩余的用户
-    // 侧反馈只有「为什么没反应」——toast 一条 danger 提示补上这一环。
+    // 侧反馈只有「为什么没反应」——toast 一条 danger 提示补上这一环
+    //（收敛点见 src/util/toastError.ts）。
     void favorite(a.slug, !a.favorited).catch((e: unknown) =>
-      toast(e instanceof Error ? e.message : 'Favorite failed', {
-        variant: 'danger'
-      })
+      toastError(e, 'Favorite failed')
     );
   };
 
@@ -183,20 +142,32 @@ export default function Home() {
               </Card>
             );
           })}
-          {/* 分页链接化：TypedLink 表形态（TypedLink<AppRoutes>），to 与
+          {/* 分页链接化：TypedLink 表形态（TypedLink<AppRoutes,
+              typeof ButtonLink>），to 与
               search 都对路由表编译期判别——search 按 homeSearchSchema 的
               Input 位（HomeSearchInput）收窄：字段拼错/多传编译期即报，
               offset/limit 的 number/string 均合法（序列化时 String() 化，
               coerce 交给 schema）。href 即目标页真实 URL——⌘/中键新标签、
               爬虫与无 JS 环境都自然可用；普通左键走 SPA 导航（preventDefault +
               navigate，与原 setSearch 同为 push 语义，每次翻页一条
-              history 记录，back 逐页回退且落 viewStack 快照）。边界态语义
-              见 pageLink 注释（aria-disabled + tabIndex）。 */}
+              history 记录，back 逐页回退且落 viewStack 快照）。
+              as={ButtonLink}（haze-ui 1.16）：渲染原生 <a> 穿全套 Button
+              皮肤——variant='outline' + 缺省尺寸 md，即此前手刻 pageLink
+              CSS 复刻的同一外观（该样式已删，换肤随主题自动跟随）。
+              双类型实参显式钉死 A：TypedLink 不像 TypedNavLink 有「单
+              实参 + 宽松 as」的中间重载，只给 AppRoutes 会让 A 落回
+              缺省 'a'（as={ButtonLink} 编译期即报），显式第二实参换来
+              variant、aria 与 tabIndex 对 ButtonLink props 的全类型校验。
+              边界态：链接没有 disabled 属性，ButtonLink 把
+              aria-disabled='true' 样式成 Button 的 :disabled（半透明 +
+              not-allowed + pointer-events 断鼠标），tabIndex={-1} 移出
+              焦点序。 */}
           <Flex align='center' justify='center' gap='sm'>
-            <TypedLink<AppRoutes>
+            <TypedLink<AppRoutes, typeof ButtonLink>
+              as={ButtonLink}
               to='/'
               search={pageSearch(Math.max(0, offset - limit))}
-              className={pageLink}
+              variant='outline'
               aria-disabled={offset <= 0 || undefined}
               tabIndex={offset <= 0 ? -1 : undefined}
             >
@@ -205,10 +176,11 @@ export default function Home() {
             <Text>
               {page} / {totalPages}
             </Text>
-            <TypedLink<AppRoutes>
+            <TypedLink<AppRoutes, typeof ButtonLink>
+              as={ButtonLink}
               to='/'
               search={pageSearch(offset + limit)}
-              className={pageLink}
+              variant='outline'
               aria-disabled={offset + limit >= articlesCount || undefined}
               tabIndex={offset + limit >= articlesCount ? -1 : undefined}
             >

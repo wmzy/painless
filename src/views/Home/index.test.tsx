@@ -119,6 +119,9 @@ vi.mock('haze-ui', async () => {
       onClick?: () => void;
     } & Record<string, unknown>) =>
       React.createElement('button', {type: 'button', disabled, onClick, ...rest}, children),
+    // 分页链接（TypedLink as={ButtonLink}）的替身：原生 <a> 透传 rest
+    //（含 aria-disabled/tabIndex），role='link' 与边界态断言照常可读
+    ButtonLink: box('a'),
     // Home 视图经 useToast 呈现收藏失败提示：替身只记录调用，断言侧
     // 覆盖「失败不吞」即可（toast 渲染本身是 haze-ui 的职责）。
     useToast: () => (message: string) => {
@@ -254,8 +257,9 @@ function makeArticles(n: number) {
   }));
 }
 
-// 分页断言辅助：翻页控件已链接化（TypedLink），以 link 角色定位；
-// 边界禁用态读 aria-disabled（链接无 disabled 属性，见视图 pageLink 注释）
+// 分页断言辅助：翻页控件已链接化（TypedLink as={ButtonLink}），以 link
+// 角色定位；边界禁用态读 aria-disabled（链接无 disabled 属性，样式与
+// 语义见视图分页注释）
 function paginationLinks() {
   return {
     prev: screen.getByRole('link', {name: '← Previous'}),

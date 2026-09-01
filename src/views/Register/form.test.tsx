@@ -176,7 +176,8 @@ describe('Register 表单', () => {
 
       expect(profileMock).toHaveBeenCalledWith('fresh-user', expect.any(AbortSignal));
       expect(screen.queryByText('has already been taken')).toBeNull();
-      expect(username.getAttribute('aria-invalid')).toBe('false');
+      // 无错态：声明式桥省略 aria-invalid（ARIA 缺省即 'false'）
+      expect(username.getAttribute('aria-invalid')).toBeNull();
     } finally {
       vi.useRealTimers();
     }
@@ -203,7 +204,8 @@ describe('Register 表单', () => {
 
       expect(profileMock).toHaveBeenCalledTimes(1);
       expect(screen.queryByText('has already been taken')).toBeNull();
-      expect(username.getAttribute('aria-invalid')).toBe('false');
+      // 无错态：声明式桥省略 aria-invalid（ARIA 缺省即 'false'）
+      expect(username.getAttribute('aria-invalid')).toBeNull();
 
       // 提交不被查重故障阻塞：字段级校验全过（查重放行），注册照发
       fill('offline-user', 'o@example.com', 'password123');

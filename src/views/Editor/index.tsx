@@ -138,79 +138,39 @@ export default function Editor() {
       {error && <Alert variant='danger'>{error}</Alert>}
       {/* react-f0rm ≥0.4：onSubmit 被 await，isSubmitting 覆盖整个异步提交 */}
       <Form form={form} onSubmit={handleSubmit} aria-label='Article editor form'>
-        {/* FormItem（haze-ui）桥接 react-f0rm 字段与受控核心：
-            value/onChange 由 binding 直出（react-f0rm useField 通道，
-            写入即 setValueByPath），id/errorId/invalid 由 FormItem 生成
-            并接好 aria 链路，首条错误由 FormItem 渲染为字段下方的
-            <span role='alert'>（取代 FieldError）。validate 仍走
-            react-f0rm 的 useField 通道，与服务端 422 回填
-            （applyApiFieldErrors → setServerErrors，type: 'server'）共用
-            同一 error 槽位 */}
+        {/* FormItem（haze-ui）input 声明式桥接 react-f0rm 字段与受控核心：
+            id/aria-invalid/aria-describedby/onBlur/onChange/value 全部由
+            FormItem 接线（写入即 setValueByPath），控件 props（placeholder
+            等）直接写在 FormItem 上透传；首条错误由 FormItem 渲染为字段
+            下方的 <span role='alert'>。validate 仍走 react-f0rm 的
+            useField 通道，与服务端 422 回填（applyApiFieldErrors →
+            setServerErrors，type: 'server'）共用同一 error 槽位 */}
         <FormItem
           form={form}
           name='title'
           validate={required('Title is required')}
-        >
-          {({id, errorId, invalid, value, onChange}) => (
-            <InputCore
-              id={id}
-              value={value}
-              onChange={onChange}
-              placeholder='Article Title'
-              aria-describedby={invalid ? errorId : undefined}
-              aria-invalid={invalid}
-            />
-          )}
-        </FormItem>
+          input={InputCore}
+          placeholder='Article Title'
+        />
         <FormItem
           form={form}
           name='description'
           validate={required('Description is required')}
-        >
-          {({id, errorId, invalid, value, onChange}) => (
-            <InputCore
-              id={id}
-              value={value}
-              onChange={onChange}
-              placeholder="What's this article about?"
-              aria-describedby={invalid ? errorId : undefined}
-              aria-invalid={invalid}
-            />
-          )}
-        </FormItem>
+          input={InputCore}
+          placeholder="What's this article about?"
+        />
         <FormItem
           form={form}
           name='body'
           validate={required('Body is required')}
-        >
-          {({id, errorId, invalid, value, onChange}) => (
-            <TextareaCore
-              id={id}
-              value={value}
-              onChange={onChange}
-              placeholder='Write your article...'
-              aria-describedby={invalid ? errorId : undefined}
-              aria-invalid={invalid}
-            />
-          )}
-        </FormItem>
-        {/* TagInputCore 的增删改经 onChange 写回表单（string[] 直写，
-            不再需要 Field 时代的 eventToValue 恒等特判——那是给非 DOM
-            onChange 事件的解包适配，value 通道没有此问题）。
-            haze-ui ≥1.8.1：TagInput 把 id/aria-invalid/aria-describedby
-            转发到内部可聚焦 input，字段 aria 链路与其它字段一致接通 */}
-        <FormItem form={form} name='tagList'>
-          {({id, errorId, invalid, value, onChange}) => (
-            <TagInputCore
-              id={id}
-              value={value}
-              onChange={onChange}
-              placeholder='Add tags'
-              aria-invalid={invalid}
-              aria-describedby={invalid ? errorId : undefined}
-            />
-          )}
-        </FormItem>
+          input={TextareaCore}
+          placeholder='Write your article...'
+        />
+        {/* TagInputCore（string[] 控件）同走 input 桥：onChange 直出下一
+            值（string[]），桥的恒等 eventToValue 原样写回表单——Core 家族
+            无需任何解包适配。TagInputCore 把 id/aria-* 转发到内部可聚焦
+            input，字段 aria 链路与其它字段一致接通 */}
+        <FormItem form={form} name='tagList' input={TagInputCore} placeholder='Add tags' />
         <button type='submit' disabled={isSubmitting}>
           {isSubmitting
             ? article
