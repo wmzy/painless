@@ -100,7 +100,7 @@ All numbers measured the same way on 2026-08-31: esbuild `--bundle --minify` (pe
 | HTTP client | fetch-fun **~5.5 kB** | ky **~9.3 kB** |
 | Routing | @native-router core+react **~11.0 kB** | @tanstack/react-router **~34.8 kB** |
 
-Versions measured: react-toolroom 0.18.2, react-f0rm 0.7.0, fetch-fun 0.10.0, @native-router/core 1.10.0 + react 1.9.0 (the versions painless installs) vs @tanstack/react-query 5.102.8, @tanstack/react-form 1.33.5, @tanstack/react-router 1.170.32, ky 2.1.0 (latest npm at measurement time).
+Versions measured: react-toolroom 0.18.2, react-f0rm 0.7.0, fetch-fun 0.10.0, @native-router/core 1.10.0 + react 1.9.0 (the versions painless installed at measurement time; painless has since upgraded) vs @tanstack/react-query 5.102.8, @tanstack/react-form 1.33.5, @tanstack/react-router 1.170.32, ky 2.1.0 (latest npm at measurement time).
 
 ### What TanStack Has That This Stack Deliberately Doesn't
 

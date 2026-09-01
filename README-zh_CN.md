@@ -100,7 +100,7 @@ Painless 产出标准静态资源。它不与任何特定部署平台耦合—�
 | HTTP 客户端 | fetch-fun **≈5.5 kB** | ky **≈9.3 kB** |
 | 路由 | @native-router core+react **≈11.0 kB** | @tanstack/react-router **≈34.8 kB** |
 
-实测版本：react-toolroom 0.18.2、react-f0rm 0.7.0、fetch-fun 0.10.0、@native-router/core 1.10.0 + react 1.9.0（painless 实装版本）vs @tanstack/react-query 5.102.8、@tanstack/react-form 1.33.5、@tanstack/react-router 1.170.32、ky 2.1.0（测量时 npm latest）。
+实测版本：react-toolroom 0.18.2、react-f0rm 0.7.0、fetch-fun 0.10.0、@native-router/core 1.10.0 + react 1.9.0（测量时 painless 实装版本，此后已升级）vs @tanstack/react-query 5.102.8、@tanstack/react-form 1.33.5、@tanstack/react-router 1.170.32、ky 2.1.0（测量时 npm latest）。
 
 ### TanStack 有、而本生态刻意不做的
 

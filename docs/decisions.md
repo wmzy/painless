@@ -81,7 +81,7 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
   `vite-plugin-haze-css.mts` 自动收集）已控制住体积；等业务组件数量显著
   膨胀再评估。
 
-## 6. View Transition × fetch-fun OpenAPI 嫁接演示：OpenAPI 已收敛，VT 待方案设计
+## 6. View Transition × fetch-fun OpenAPI 嫁接演示：OpenAPI 已收敛（VT 见第 14 条）
 
 - **背景**：两个候选方向——native-router 的视图切换接 View Transition API
   （浏览器侧平滑过渡），fetch-fun 接 OpenAPI schema 生成类型化客户端。
@@ -98,9 +98,10 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
     typedJsonBody/typedJson）把路径/方法/请求体/2xx 响应全部编译期约束。
     fetch-fun 0.11 起官方化为 `fetch-fun/openapi` 子入口
     （`createOpenapi<paths>()` 工厂；JsonOk 的 200|201 联合已吸收本地化
-    差异）。本地依赖尚 0.10（无子入口），`article.openapi.ts` 按官方
-    形态保留逐行同构的本地工厂过渡——升级 0.11 后删本地定义改
-    `import {createOpenapi} from 'fetch-fun/openapi'`，调用点零改动。
+    差异）。过渡形态（本地依赖 0.10 时按官方形态手写逐行同构工厂）
+    已随 0.11 升级删除（de84fee）：`article.openapi.ts` 改
+    `import {createOpenapi} from 'fetch-fun/openapi'`，预演的
+    「调用点零改动」兑现——五个演示端点函数一行未动。
   - **双口径统一**（收敛的主件）：手写领域类型与 spec 的已知漂移修平
     ——Author/User 的 `bio`/`image` 对齐 spec（必填、`string | null`；
     原 `bio?` / 不可 null 的 `Image`），Comment.createdAt 的 number→string
@@ -369,12 +370,13 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
   - ✅ react-toolroom ≥0.18.3 已发版（`npm view` 核实，gitHead 对应
     a40c39c）——CacheProvider 成员改为方法签名，具体元组实例化可赋值
     给宽泛槽位（method-shorthand 类型修复；EntityCache 的 K 逆变收窄
-    依赖它）。painless lockfile 尚钉 0.18.2，随升级批切 0.18.3。
-  - 剩余阻碍（非阻塞、逐项决策后再动）：①fetch-fun 0.11 升级（第 6 条
-    的 openapi 子入口转正）与本清单独立，可并行；②mock/DevTool 与
+    依赖它）。painless lockfile 已随升级批切 0.18.4（de84fee）。
+  - ✅ fetch-fun 0.11 升级已落地（de84fee，第 6 条 openapi 子入口转正
+    同批完成，调用点零改动兑现）——本清单该前置已清。
+  - 剩余阻碍（非阻塞、逐项决策后再动）：①mock/DevTool 与
     `attachPersistence` 的耦合（always 挂镜像）上移时需决定——进包
     （带上 mock 语义）或留在模板（包只暴露 persist 挂点与订阅面）；
-    ③`services/dataloaders.ts` 绑定层已验证「应用侧只留声明」，上移时
+    ②`services/dataloaders.ts` 绑定层已验证「应用侧只留声明」，上移时
     作为包的 README 示范形态。
 
 ## 14. View Transition：库管时序、CSS 管范围（2026-08-31 VT 批）
