@@ -599,7 +599,8 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
 - **版本**：@native-router/core ^1.14.0（自 1.13.0）、react-toolroom
   ^0.20.0（自 0.19.0）、react-f0rm ^0.11.0（自 0.10.0）、fetch-fun
   ^0.11.1（自 0.11.0）、@for-fun/event-emitter ^1.0.2（自 1.0.1）、
-  haze-ui ^1.17.0（自 1.16.1）；@native-router/react 保持 ^1.13.0
+  haze-ui ^1.17.1（自 1.16.1；1.17.1 纯 peer 放宽，产物与 1.17.0
+  逐字节同——npm pack 解包 diff 仅 package.json）；@native-router/react 保持 ^1.13.0
   （本批无改动）。npm 显式版本安装 + pnpm dedupe（无双实例），tsc
   首轮即绿。core 实发 1.14.0 而非编排预期的 1.15.0——a3ed26d（fix）
   与 bd5571a（feat）同批推送，semantic-release 取最高档一次发版，
@@ -641,8 +642,10 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
   （context/form 各有小改，无 API 删除），haze-ui FormItem 桥消费的
   useForm/getValueByPath/setValueByPath/useValueByPath/setServerErrors
   面未动，且模板 265 单测（四表单全覆盖）+ 28 e2e 实测通过——de facto
-  兼容。收口路径：haze-ui 下版放宽 peer 上限后本条冲突自然消除，届时
-  peers check 只剩存量工具链项。
+  兼容。收口（同日完成）：haze-ui 4213bdc 放宽 peer 至
+  `react-f0rm >=0.7.0 <0.12.0` 发 1.17.1（gitHead 已核），本仓随收
+  ^1.17.1——peers check 归零（typescript/eslint 两条存量工具链警告
+  与本批无关，仍存）。
 - **随批模板侧修复（本地四 commit，074e258/04e1056/d786647/6eaecae，
   本条一并随推）**：bindRefresh seen-map 语义修订（每 key 保留最后
   所见值 + 整实体 clear 代际归零，e2e「401 登出后回 Home」反例修正，
