@@ -663,3 +663,44 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
   f0rm leaf 订阅、fetch-fun 组链记忆化、haze 桥适配），模板侧源码
   零改动（唯一编辑是测试断言，不进产物）。预算 126.00 KB 内（5.6%
   余量），棘轮基线不动。
+
+## 18. typescript/eslint 存量 peer 警告收口（2026-09-02）
+
+- **背景**：第 17 条遗留的两条工具链 peer 警告（typescript 6 / eslint 10
+  工具链升级起存在），本批清偿。
+- **实测定性（先证伪「已消失」）**：删 node_modules 后按既有 lockfile 完整
+  重装零警告输出——是假象：pnpm 仅在 resolution 阶段打印 peer 警告，
+  lockfile 未变即跳过 resolution（此前「本地 install 未再现警告」的观测
+  即此掩盖）。删 lockfile 全量重解析即复现 `[WARN] Issues with peer
+  dependencies`，`pnpm peers check` 退出码 1，列明仅两条：
+  - openapi-typescript@7.13.0 声明 peer `typescript ^5.x` vs 实装 6.0.3；
+  - eslint-plugin-react@7.37.5（经 tools-config 0.3.1 引入）声明 peer
+    `eslint ^3 || ^4 || ^5 || ^6 || ^7 || ^8 || ^9.7` vs 实装 10.9.1。
+- **升级路径不存在（registry 实证，2026-09-02）**：两声明方均已是 npm
+  latest 且 latest 的 peer 区间即如上（dist-tags 的 next 是更老的 rc：
+  eslint-plugin-react 7.8.0-rc.0 / openapi-typescript 7.0.0-rc.1）；
+  tools-config 已钉 `eslint-plugin-react ^7.37.5`，放宽范围也无版本可解。
+  另 eslint-plugin-import@2.32.0 的 peer 同封顶 ^9，但其 eslint 声明为
+  optional peer，pnpm 不告警，不属本条。
+- **de facto 兼容实证**：eslint 10 全链路实跑（lint:ci 全绿，react /
+  import / typescript-eslint 规则集真实执行）；openapi-typescript 现环境
+  实跑 codegen 55.5ms、产物与库内 src/types/openapi.d.ts 逐字节同；
+  typecheck（TS 6 编译全仓含生成类型）全绿——两条均为上游元数据迟滞，
+  非实际不兼容。
+- **决定**：用 pnpm 官方豁免机制显式收口——pnpm-workspace.yaml 增
+  `peerDependencyRules.allowedVersions`（eslint `^10` / typescript
+  `^6`，窄区间：仅豁免现装大版本，未来 eslint 11 / TS 7 出现新区间
+  冲突照常告警）。机制经对照实验钉住：同依赖图无规则 → 重解析 WARN +
+  peers check 退出 1；有规则 → 重解析零 peer 警告 + peers check 退出 0
+  （pnpm 11.22 的 peers check 同读该规则）。
+- **移除条件**：eslint-plugin-react 发版接受 eslint 10、或
+  openapi-typescript 发版接受 typescript 6 时，删除 pnpm-workspace.yaml
+  该节；此后新出现的 peer 警告一律当真处理。
+- **验证**：typecheck + 265 单测（24 文件）+ build + size 118.94 KB /
+  126.00 KB（棘轮基线不动）+ lint:ci + 全量重解析安装零 peer 警告 +
+  `pnpm peers check` 退出 0，全绿。
+- **随记**：全量重解析相对既有 lockfile 另有时间窗漂移
+  （typescript-eslint 8.68.0→8.69.0、tsc-alias 1.9.2→1.9.3、
+  @cacheable/memory 2.0.9→2.2.0 等 minimumReleaseAge 窗口移动所致）与
+  一条 deprecated 子依赖提示（glob@7/8、inflight@1，长期存在项）——均
+  与本收口无关，不捎带，留周期性升级冒烟（upgrade-smoke）处理。

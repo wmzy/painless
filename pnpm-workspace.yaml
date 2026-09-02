@@ -4,6 +4,14 @@ allowBuilds:
   core-js: true
   esbuild: true
   unrs-resolver: true
+# 存量工具链 peer 迟滞的显式豁免（详见 docs/decisions.md 第 18 条）：
+# 声明方均已是 npm latest 且未接受现版本——eslint-plugin-react@7.37.5
+# （peer eslint 封顶 ^9.7 vs 实装 10）、openapi-typescript@7.13.0
+# （peer typescript ^5.x vs 实装 6）。上游放开区间后删除本节。
+peerDependencyRules:
+  allowedVersions:
+    eslint: '^10'
+    typescript: '^6'
 minimumReleaseAgeExclude:
   - react-f0rm
   - react-toolroom
