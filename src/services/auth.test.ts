@@ -11,6 +11,15 @@ vi.mock('@/util/http', () => ({
   setUnauthorizedHandler: vi.fn()
 }));
 
+// 401 处置链（bindUnauthorizedRedirect）依赖 core 的 navigate/invalidate
+// （router 实例形态由调用方注入）：mock 成 vi.fn 断言调用契约。refresh
+// 是传递依赖（useQuery → mock）的具名导入，一并提供避免 undefined 绑定
+vi.mock('@native-router/core', () => ({
+  navigate: vi.fn(),
+  invalidate: vi.fn(),
+  refresh: vi.fn()
+}));
+
 describe('auth service', () => {
   let http: typeof import('@/util/http');
   let auth: typeof import('@/services/auth');
@@ -111,18 +120,12 @@ describe('auth service', () => {
       expect(getter()).toBeUndefined();
     });
 
-    it('should register an unauthorized handler that logs out unconditionally', async () => {
-      expect(http.setUnauthorizedHandler).toHaveBeenCalledTimes(1);
-      const handler = vi.mocked(http.setUnauthorizedHandler).mock.calls[0]![0];
-
-      // 判空在 http 层完成：只有「401 且 token 非空」（已登录态凭据
-      // 失效）才会调到这里，handler 直接登出；未登录态（登录失败的 401）
-      // 不会触发，无义务自查。
-      vi.mocked(http.post).mockResolvedValue({user});
-      await auth.login('test@test.com', 'password');
-      handler();
-      expect(auth.getCurrentUser()).toBeNull();
-      expect(localStorage.getItem('painless.user')).toBeNull();
+    it('should not register an unauthorized handler at module load (registration moved to bindUnauthorizedRedirect)', async () => {
+      // 401 处置链需要 router 实例（登出后 invalidate/navigate），注册点
+      // 移到 Router 树内（views/index.tsx）——模块加载只注册 token 供应商
+      //（冷刷新首个 data 请求就要带凭据）
+      expect(http.setUnauthorizedHandler).not.toHaveBeenCalled();
+      expect(http.setTokenGetter).toHaveBeenCalledTimes(1);
     });
 
     it('should persist user to localStorage after login', async () => {
@@ -205,6 +208,66 @@ describe('auth service', () => {
       off();
       auth.logout();
       expect(handler).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  // 401 处置链（增强段）：登出清场 + 回跳 /login?redirect=…（Layout 手动
+  // 登出的 invalidate+navigate 同款语义）。注册点在 Router 树内
+  //（views/index.tsx），本组直接驱动导出的注册函数拿 handler 断言契约；
+  // http 层的触发条件（仅 401 且 token 非空）在 util/http.test.ts 的 401 组。
+  describe('bindUnauthorizedRedirect（401 处置链）', () => {
+    const user = {username: 'test', email: 'test@test.com', token: 'tok'};
+
+    // 进入已登录态并注册处置链：返回注册进 http 的 handler。jsdom 的
+    // location 经 pushState 设定回跳场景（pathname+search）
+    async function setup(pathname: string, search = '') {
+      window.history.pushState({}, '', `${pathname}${search}`);
+      const router = {history: {}};
+      auth.bindUnauthorizedRedirect(router);
+      expect(http.setUnauthorizedHandler).toHaveBeenCalledTimes(1);
+      const handler = vi.mocked(http.setUnauthorizedHandler).mock.calls[0]![0];
+      vi.mocked(http.post).mockResolvedValue({user});
+      await auth.login('test@test.com', 'password');
+      return {handler, router};
+    }
+
+    it('已登录 401：登出 + invalidate + navigate 回 /login，redirect 整体 encode', async () => {
+      const {handler, router} = await setup('/editor/my-slug', '?a=1&b=2');
+      const {navigate, invalidate} = await import('@native-router/core');
+
+      handler();
+
+      expect(auth.getCurrentUser()).toBeNull();
+      expect(localStorage.getItem('painless.user')).toBeNull();
+      expect(invalidate).toHaveBeenCalledTimes(1);
+      expect(invalidate).toHaveBeenCalledWith(router);
+      expect(navigate).toHaveBeenCalledTimes(1);
+      // 与 requireLogin 守卫重定向同款编码：'/'、'?'、'&' 全部转义
+      expect(navigate).toHaveBeenCalledWith(
+        router,
+        `/login?redirect=${encodeURIComponent('/editor/my-slug?a=1&b=2')}`
+      );
+    });
+
+    it('并发 401 去重：首个触发已登出，后续直接返回（导航只一次）', async () => {
+      const {handler} = await setup('/editor');
+      const {navigate} = await import('@native-router/core');
+
+      handler();
+      handler(); // 第二个触发（http 侧同拍竞态或直调）
+
+      expect(navigate).toHaveBeenCalledTimes(1);
+    });
+
+    it('已在 /login：只登出，不 invalidate 不导航', async () => {
+      const {handler} = await setup('/login');
+      const {navigate, invalidate} = await import('@native-router/core');
+
+      handler();
+
+      expect(auth.getCurrentUser()).toBeNull();
+      expect(navigate).not.toHaveBeenCalled();
+      expect(invalidate).not.toHaveBeenCalled();
     });
   });
 });

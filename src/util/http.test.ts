@@ -247,6 +247,24 @@ describe('http utilities', () => {
       expect(handler).not.toHaveBeenCalled();
     });
 
+    it('should fire the unauthorized handler once per qualifying 401 (dedupe is the handler contract)', async () => {
+      // http 层不去重：token 非空期间每个 401 都如实触发（这里 handler
+      // 是纯 vi.fn，不登出、token 一直非空）。并发 401 只导航一次的语义
+      // 由处置方负责（services/auth.ts 的 bindUnauthorizedRedirect 以
+      // 「首个触发已登出、后续未登录态直接返回」去重）——本用例把这条
+      // 责任边界钉在 http 侧
+      const handler = vi.fn();
+      setUnauthorizedHandler(handler);
+      setTokenGetter(() => 'tok123');
+      fetchMock.mockResolvedValue(mockResponse({}, false, 401));
+
+      await Promise.all(
+        [fetchJSON('a'), fetchJSON('b')].map((p) => p.catch(() => undefined))
+      );
+
+      expect(handler).toHaveBeenCalledTimes(2);
+    });
+
     it('should tolerate a throwing unauthorized handler', async () => {
       setUnauthorizedHandler(() => {
         throw new Error('handler boom');
@@ -539,6 +557,28 @@ describe('http utilities', () => {
       expect(issue.label).toBe('GET articles');
       expect(issue.path).toBe('/articles/0/title');
       expect(validation.data).toEqual({articles: [{title: 42}], articlesCount: 1});
+    });
+
+    it('label 只大写 method，URL 原样（fetchJSON 自带 init.method 的口径）', async () => {
+      // fetchJSON 的 method 来自调用方 init（get/del/post/put 出口的
+      // label 是常量拼接无此问题）：标签应保留 URL 原始大小写——路径段
+      // 大小写是服务器语义，toUpperCase() 整串会改写定位信息
+      fetchMock.mockResolvedValue(
+        mockResponse({articles: [{title: 42}], articlesCount: 1})
+      );
+
+      const error = await fetchJSON('Articles/Feed', {
+        method: 'post',
+        schema: pageSchema
+      }).then(
+        () => undefined,
+        (e: unknown) => e
+      );
+
+      expect(error).toBeInstanceOf(ff.ValidationError);
+      const validation = error as ff.ValidationError;
+      expect(validation.message).toContain('POST Articles/Feed');
+      expect(validation.message).not.toContain('POST ARTICLES/FEED');
     });
 
     it('should resolve untouched when the body matches the schema', async () => {

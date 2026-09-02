@@ -11,7 +11,12 @@ import {initHistoryStack} from '@native-router/core';
 
 import Loading from '@/components/Loading';
 import RouterError from '@/components/RouterError';
-import {getCurrentUser, type User} from '@/services/auth';
+import {
+  bindUnauthorizedRedirect,
+  getCurrentUser,
+  logout,
+  type User
+} from '@/services/auth';
 import {articleLoader, editorLoader, homeLoader} from '@/services/dataloaders';
 import {homeSearchSchema} from '@/types/search';
 import {editorParamsSchema} from '@/types/params';
@@ -198,6 +203,20 @@ export function StackWarmer() {
   return null;
 }
 
+// 401 处置注册：auth 的 bindUnauthorizedRedirect 需要 router 实例
+//（登出后 invalidate/navigate 的处置链语义见 services/auth.ts），注册点
+// 挂在本组件——Router 树内。时序同 StackWarmer：本组件的 effect 先于
+// Router 的 subscribe（listen → 首次 refresh）执行，冷刷新时首个路由
+// data 请求就带着旧 token 发出，它的 401 也要有人接，注册晚了会退化成
+// 纯错误页（auth 模块加载侧因此只保留 token 供应商注册）。
+export function UnauthorizedRedirect() {
+  const router = useRouter();
+  useEffect(() => {
+    bindUnauthorizedRedirect(router);
+  }, [router]);
+  return null;
+}
+
 export default function App() {
   return (
     <Router
@@ -214,8 +233,10 @@ export default function App() {
       <View />
       <Loading />
       {/* 刷新预热挂在 Router 内（useRouter 经 context 取实例），子组件
-          effect 先于 Router 的 listen 执行——时序论证见组件注释 */}
+          effect 先于 Router 的 listen 执行——时序论证见组件注释。
+          401 处置注册同款挂法（见 UnauthorizedRedirect 注释） */}
       <StackWarmer />
+      <UnauthorizedRedirect />
     </Router>
   );
 }

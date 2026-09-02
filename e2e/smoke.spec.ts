@@ -512,18 +512,23 @@ test('401 on authenticated request auto-logs-out', async ({page}) => {
   await page.getByRole('button', {name: /❤\s*3/}).click();
   await expect(page.getByRole('alert')).toContainText('token expired');
 
-  // 导航栏切回匿名态：用户名消失、Sign in 回归；本地凭据已清
+  // 导航栏切回匿名态：用户名消失、Sign in 回归；本地凭据已清。401
+  // 处置链（增强）在此之外还回跳 /login?redirect=<原 path+search>（与
+  // requireLogin 守卫重定向同款整体编码；当前页 '/'，redirect 值即
+  // 编码后的 '/'）——视图随导航切到 Login
   await expect(page.getByText(user.username)).toHaveCount(0);
   await expect(page.getByRole('link', {name: 'Login'})).toBeVisible();
   await expect
     .poll(() => page.evaluate(() => localStorage.getItem('painless.user')))
     .toBeNull();
+  await expect(page.getByRole('heading', {name: 'Login'})).toBeVisible();
+  await expect(page).toHaveURL(/\/login\?redirect=%2F$/);
 
-  // 后续匿名请求正常：登出后整页重载（缓存已清、旧账号数据不作数），
-  // feed GET /articles 匿名发出（无 Authorization 头）且照常成功渲染。
+  // 后续匿名请求正常：登出已清全部实体缓存，回 Home（SPA 导航）feed
+  // GET /articles 匿名发出（无 Authorization 头）且照常成功渲染。
   // 内容可见后轮询 feed 账本到新增一条，再断言头值
   const before = feedAuth.length;
-  await page.reload();
+  await page.getByRole('link', {name: 'Home'}).click();
   await expect(
     page.getByRole('heading', {name: article1.title})
   ).toBeVisible();

@@ -167,7 +167,9 @@ export function fetchJSON<T = unknown>(
   const o = withSchema(
     ff.url(withInit(baseClient, init), url),
     init,
-    `${init?.method ?? 'GET'} ${url}`.toUpperCase()
+    // 只大写 method：URL 原样保留——路径段大小写是服务器语义（RealWorld
+    // 的 /articles 与 /Articles 不同址），校验错误的定位信息不得改写它
+    `${(init?.method ?? 'GET').toUpperCase()} ${url}`
   );
   // 双重断言：泛型 T 与 ResolveData 互不可证（其余出口的单断言因 o 的
   // 具体类型可直转，这里经 unknown 中转），eslint 与 tsc 同时接受。

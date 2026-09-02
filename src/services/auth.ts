@@ -1,5 +1,6 @@
 import type {Author} from '@/types';
 
+import {invalidate, navigate} from '@native-router/core';
 import {create, on, emit} from '@for-fun/event-emitter';
 import {fillPath} from 'fetch-fun';
 
@@ -42,12 +43,11 @@ let currentUser: User | null = readStoredUser();
 // token 供应商交给 http，登录/登出后管道自动取到最新 token。
 http.setTokenGetter(() => currentUser?.token);
 
-// 401 自动登出：已登录态凭据过期时后端返回 401，http 层在错误映射处
-// 判「401 且 tokenGetter() 非空」后触发此回调。登录/注册失败的 401
-// （密码错误）发生在未登录态，token 为空，天然不触发，这里无需再判。
-// logout/getCurrentUser 是函数声明，回调真正执行时模块早已初始化完成，
-// 不存在 TDZ 问题。
-http.setUnauthorizedHandler(() => logout());
+// 401 处置链的注册移出模块加载（原 setUnauthorizedHandler(() => logout())
+// 只清登录态）：处置在登出之外还要回跳登录页，链路需要 router 实例
+//（invalidate/navigate），模块加载时拿不到——注册点在 Router 树内
+//（views/index.tsx 经下方 bindUnauthorizedRedirect 挂载，时序论证见彼处
+// 注释），token 供应商注册保持在此（冷刷新首个 data 请求就要带凭据）。
 
 const authEvents = create<['change', [User | null]]>();
 
@@ -78,6 +78,34 @@ export function onAuthChange(handler: (user: User | null) => void) {
 export function logout() {
   clearAllCaches();
   setUser(null);
+}
+
+// 401 处置链（http 层判「401 且 token 非空」后触发——登录/注册失败的
+// 401 发生在未登录态，token 为空，天然不进来）：登出清场后回跳登录页，
+// 复用 Layout 手动登出的同一套语义（logout 清缓存+登录态 → invalidate
+// 丢旧账号 viewStack 快照 → navigate 接管当前视图），目标换成
+// /login?redirect=<原 path+search>（window.location 整体 encodeURIComponent
+// ，与 requireLogin 守卫重定向同款编码，Login 侧读回完整原目的页）。
+// 两级去重：未登录态直接返回——并发 401 里首个触发已登出（token 清空
+// 后 http 侧也不再触发，这里兜测试直调与同拍竞态），导航只发生一次；
+// 已在 /login 只登出不导航（回跳目标无意义）。注册点需 router 实例，
+// 由 views/index.tsx 在 Router 树内挂载（bindUnauthorizedRedirect 的
+// 调用方），本模块加载时不再注册。
+export function bindUnauthorizedRedirect(router: unknown) {
+  http.setUnauthorizedHandler(() => {
+    if (!getCurrentUser()) return;
+    const {pathname, search} = window.location;
+    logout();
+    if (pathname === '/login') return;
+    // 宽参经一次断言收拢（同 util/mock.ts 的 refresh 闭包先例）：调用
+    // 方注入的就是真 router 实例（views/index.tsx 的 useRouter() 产物）
+    const r = router as Parameters<typeof navigate>[0];
+    invalidate(r);
+    void navigate(
+      r,
+      `/login?redirect=${encodeURIComponent(`${pathname}${search}`)}`
+    );
+  });
 }
 
 export async function login(email: string, password: string) {
