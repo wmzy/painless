@@ -27,6 +27,8 @@ import {
 import {useMock} from '@/util/mock';
 import {getMockConfigs} from '@/util/mock-config';
 
+import {resetRefreshSeen} from './loaderCache';
+
 // 对齐 TanStack Query 的 gcTime 默认值；低频全局实体可单独放长（见 tagsCache）
 const DEFAULT_CACHE_TIME = 5 * 60_000;
 const DEFAULT_STALE_TIME = 2000;
@@ -187,11 +189,23 @@ export function createQueryCache<T, K extends unknown[]>(
   cacheTime = DEFAULT_CACHE_TIME,
   opts: {persist?: string} = {}
 ): EntityCache<T, K> {
-  // memory provider 运行时恒携带 mutation/patchWhere，类型上经 as 收成必有
-  const cache = createMemoryCacheProvider<T, K>({
+  const provider = createMemoryCacheProvider<T, K>({
     cacheTime,
     hash: hashArgs
-  }) as EntityCache<T, K>;
+  });
+  // clear 的代际包装：provider 的 clear 与单键 delete 发同形 delete 事件，
+  // bindRefresh 的 seen 保留语义只挂单键 delete（refetch 链），整实体
+  // clear 在此显式归零——否则登出/DevTool 清场后首轮导航 loader 的
+  // miss settle 会被残留 seen 判成换值、排出的 refresh 劫杀在飞导航链
+  //（e2e 实测；机制与分家论证见 loaderCache 的 resetRefreshSeen）。
+  // 闭包风格包装不动 provider 其余成员（方法全走工厂闭包，无 this 依赖）
+  const rawClear = provider.clear.bind(provider);
+  provider.clear = () => {
+    rawClear();
+    resetRefreshSeen(provider);
+  };
+  // memory provider 运行时恒携带 mutation/patchWhere，类型上经 as 收成必有
+  const cache = provider as EntityCache<T, K>;
 
   if (opts.persist) attachPersistence(cache, opts.persist);
   allCaches.push({name, cache});

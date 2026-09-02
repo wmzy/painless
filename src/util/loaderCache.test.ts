@@ -33,8 +33,11 @@ function deferred<T>() {
 
 const fakeRouter = {history: {}};
 // withCache 机制用本地类型化 cache（与 Article 实体解耦）：值形状即本
-// 文件的 {article: string} 假数据
-const entryCache = createQueryCache<{article: string}, [string]>('loader-test');
+// 文件的 {article: string} 假数据。每用例新建（useQuery.test 的临时
+// cache 同款）：bindRefresh 的 seen 现在跨 delete/clear 保留最后所见值
+//（decisions.md 第 13 条补记），模块级共享会让上一用例的 seen 泄漏进
+// 下一用例的 set diff，新建 cache 即新建绑定，天然隔离
+let entryCache = createQueryCache<{article: string}, [string]>('loader-test');
 // Article 形态的 ctx：路由无 search schema → 寻址落到 params
 const ctx = {params: {title: 'some-title'}, router: fakeRouter};
 // key 由 withCache 的 keyOf 定义——测试侧与 loader 同源（同一表达式）
@@ -48,8 +51,9 @@ const articleLoader = (fn: (ctx: any) => Promise<any>, opts?: {staleTime?: numbe
 beforeEach(() => {
   vi.resetAllMocks();
   clearAllCaches();
-  // 本地机制 cache 不在注册表内，自行清（防跨用例的绑定 seen 污染）
-  entryCache.clear();
+  // 本地机制 cache 每用例重建：清旧值之外更重置 bindRefresh 绑定与
+  // seen（见上——seen 跨 clear 保留是修订后的正经语义，不是要修的 bug）
+  entryCache = createQueryCache<{article: string}, [string]>('loader-test');
 });
 
 describe('withCache', () => {
@@ -131,6 +135,49 @@ describe('withCache', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('delete→set(新值)：refresh 触发——seen 保留最后所见值，delete 不摘 key', async () => {
+    // refetch 链契约（decisions.md 第 13 条补记）：useQuery 的 refetch
+    // = cache.delete(args) + 重发，若 delete 事件把 key 摘出 seen，重拉
+    // set 新值会被判成「新 key 的 miss settle」不触发 refresh——「失效
+    // 即刷路由」静默失效。delete 事件本身始终不 refresh（不订阅）
+    const fn = vi.fn(async () => ({article: 'again'}));
+    const loader = articleLoader(fn);
+    const v1 = {article: 'v1'};
+    entryCache.set(args, v1);
+    await loader(ctx); // 建立绑定并同步 seen = {key: v1}（新鲜命中零请求）
+    expect(fn).not.toHaveBeenCalled();
+    expect(refreshMock).not.toHaveBeenCalled();
+
+    // refetch 前半：删条目——delete 事件不产生 refresh
+    entryCache.delete(args);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(refreshMock).not.toHaveBeenCalled();
+
+    // refetch 后半：重拉 settle 写新值——已见 key 换值，refresh 触发
+    entryCache.set(args, {article: 'v2'});
+    await waitFor(() => expect(refreshMock).toHaveBeenCalledTimes(1));
+    expect(refreshMock).toHaveBeenCalledWith(fakeRouter);
+  });
+
+  it('clear→set(新值)：不 refresh——整实体清空开新代际（与单键 delete 分家）', async () => {
+    // 反例契约（e2e「401 登出后回 Home」实测钉住）：清场（登出/DevTool
+    // Clear 的 cache.clear）常伴随导航，随后导航 loader 的 miss settle
+    // 若被 seen 残留判成「已见 key 换值」，排出的 refresh 会 supersede
+    // 在飞导航链（URL 不落、视图停留）。createQueryCache 包装 clear 调
+    // resetRefreshSeen 归零 seen——set 按新 key 处理，不 refresh
+    const fn = vi.fn(async () => ({article: 'again'}));
+    const loader = articleLoader(fn);
+    entryCache.set(args, {article: 'v1'});
+    await loader(ctx);
+    expect(refreshMock).not.toHaveBeenCalled();
+
+    entryCache.clear(); // 包装后的 clear：清条目 + seen 代际归零
+    await new Promise((r) => setTimeout(r, 0));
+    entryCache.set(args, {article: 'v2'}); // 清场后导航 loader 的 miss settle
+    await new Promise((r) => setTimeout(r, 0));
+    expect(refreshMock).not.toHaveBeenCalled();
   });
 
   it('miss：走 load 并把结果写回缓存，失败原样上抛', async () => {

@@ -46,8 +46,11 @@ export type LoaderCtx = {
 // 成败 settle（失败 settle 也发 set，provider 靠它刷新 pending 态），
 // 靠前后快照 diff 才能只回写真正的数据变化（写穿/回滚/patch/成功
 // settle）。这同时是结构共享的等价物：重验证结果引用不变则不
-// refresh，视图零重渲染。delete/clear 不订阅（登出清场走 Layout 的
-// invalidate + navigate，DevTool Clear 自带 refresh）。
+// refresh，视图零重渲染。delete/clear 事件本身不订阅（登出清场走
+// Layout 的 invalidate + navigate，DevTool Clear 自带 refresh）；seen
+// 对单键 delete 保留最后所见值（refetch 的 delete→set 新值仍算换值，
+// 不静默失效），整实体 clear 开新代际——分家理由与劫杀在飞链的实测
+// 见 resetRefreshSeen 注释与 decisions.md 第 13 条补记。
 const bindings = new WeakMap<
   CacheProvider<unknown, unknown[]>,
   {router: unknown; scheduled: boolean; seen: Map<string, unknown>}
@@ -58,12 +61,36 @@ function snapshotValues(cache: CacheProvider<unknown, unknown[]>) {
 }
 
 // 导出供测试与非常规接入点使用：把「cache 写穿 → refresh(router)」订阅
-// 显式建立（withCache 首跑时内部调用同一函数）
+// 显式（重）建立。与 withCache 每次 loader 运行的常规重绑（只改 router
+// 指向）不同，显式重绑定整体重置——seen 以调用时刻的缓存快照为基线：
+// seen 跨 delete/clear 保留最后所见值是修订后的正经语义（decisions.md
+// 第 13 条补记），测试每用例重建订阅需要干净基线时经本接缝显式重置。
 export function bindCacheRefresh<T, K extends unknown[]>(
   cache: CacheProvider<T, K>,
   router: unknown
 ) {
-  bindRefresh(cache as unknown as CacheProvider<unknown, unknown[]>, router);
+  const wide = cache as unknown as CacheProvider<unknown, unknown[]>;
+  bindRefresh(wide, router);
+  bindings.set(wide, {router, scheduled: false, seen: snapshotValues(wide)});
+}
+
+// 整实体 clear 的 seen 代际重置（导出供 createQueryCache 的 clear 包装
+// 调用）：provider 的 clear() 与单键 delete() 发同一形状的 delete 事件
+//（都是 {type:'delete', deleted: [...]}，元组多寡不可判），两者的 seen
+// 语义却必须分家——单键 delete 保留最后所见值（refetch 的 delete→set
+// 新值要触发 refresh）；整实体 clear 开新代际按新 key 处理：清场
+//（登出/DevTool Clear）常伴随导航，随后导航 loader 的 miss settle 写入
+// 若被 seen 残留判成「已见 key 换值」，排出的 refresh 会劫杀这条在飞
+// 导航链（supersede：URL 不落、视图停留原地——e2e 实测）。
+export function resetRefreshSeen<T, K extends unknown[]>(
+  cache: CacheProvider<T, K>
+) {
+  const binding = bindings.get(
+    cache as unknown as CacheProvider<unknown, unknown[]>
+  );
+  // 只重置 seen：router 指向与在途去抖旗标原样（挂起的 refresh 微任务
+  // 照常落定，幂等无害）
+  if (binding) binding.seen = new Map();
 }
 
 function bindRefresh(cache: CacheProvider<unknown, unknown[]>, router: unknown) {
@@ -91,7 +118,13 @@ function bindRefresh(cache: CacheProvider<unknown, unknown[]>, router: unknown) 
         }
       }
     }
-    cur.seen = next;
+    // seen 合并写入而非整体替换：key 保留最后所见值，单键 delete 不摘
+    // key——后续同 key set 新值仍是「已见 key 换值」，refetch 的
+    // delete→set 链不会静默失效（语义修订见 decisions.md 第 13 条补记；
+    // 判据只遍历 next 里存在的 key，摘除与否对 delete 事件本身无影响，
+    // 保留的旧值只用于之后 set 的 diff。整实体 clear 的代际归零在
+    // resetRefreshSeen——provider 事件分不清单键 delete 与 clear）
+    for (const [k, v] of next) cur.seen.set(k, v);
     if (!changed || !cur.router || cur.scheduled) return;
     cur.scheduled = true;
     queueMicrotask(() => {

@@ -363,6 +363,28 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
   - `bindRefresh`（内部；测试接缝 `bindCacheRefresh`）：cache set 事件
     → 微任务去抖 refresh 最近使用它的 router；判据是「视图已见过的 key
     换了值」（引用 diff，结构共享等价物）；delete/clear 不订阅。
+    **补记（2026-09-02，seen-map 语义修订）**：seen 从「随快照整体替换
+    的当前键集」改为「每 key 保留最后所见值」——set 事件合并写入，
+    delete/clear 不摘 key。原实现所有事件都整体替换 seen，delete 事件
+    会把 key 摘出 seen，后续同 key 重拉 set 新值被判成「新 key 的
+    miss settle」不触发 refresh——「失效即刷路由」静默失效（refetch
+    的 delete→set 链、DevTool Refresh / 登出清场的 clear→set 链均在
+    列，此前属未文档化不变量）。修订后 delete→set(新值) 恢复触发
+    refresh；代价是清场后的首轮 set 会多排一次 refresh，由既有收敛性
+    兜底（refresh 重跑 loader 新鲜命中只读不写，链即终止），无害。
+    **同批修正（e2e 反例）**：整实体 clear 不能与单键 delete 同语义
+    ——清场（登出/DevTool Clear）常伴随导航，随后导航 loader 的 miss
+    settle 写入若被 seen 残留判成「已见 key 换值」，排出的 refresh 会
+    supersede 这条在飞导航链（URL 不落、视图停留原地，e2e「401 自动
+    登出后回 Home」实测复现）。而 provider 的 clear() 与 delete() 发
+    同形 delete 事件（元组多寡不可判），分家在模板自己的组合点做：
+    `createQueryCache` 包装 `clear()` 调 `resetRefreshSeen`（整实体清空
+    = seen 代际归零，后续 set 按新 key 处理），单键 delete 保留最后
+    所见值（refetch 契约不受影响）。测试接缝 `bindCacheRefresh` 的
+    显式重绑定随之改为整体重置（seen 以调用时刻快照为基线）——seen
+    保留语义下测试每用例重建订阅需要干净基线；`withCache` 内部的
+    常规重绑（每次 loader 运行）仍只改 router 指向，不洗单键 delete
+    保留的最后所见值。
   - `bindQueryFn(fetch, cache)` / `getCache(queryFn)`（`util/useQuery.ts`）：
     WeakMap 配对、函数身份零改动、phantom brand 编译期门槛、未绑定
     早抛（第 9 条）。
