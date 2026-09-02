@@ -13,7 +13,6 @@ export default defineConfig({
     include: ['src/**/*.test.{ts,tsx}'],
     // e2e/ 是 Playwright 用例（自带 dev server），vitest 不得误捞
     exclude: ['node_modules', 'dist', 'mock', 'typings', 'fixtures', 'e2e/**'],
-    passWithNoTests: true,
     // haze-ui 1.11（wyw-in-js 构建）：dist 各模块副作用导入 *.wyw-in-js.css，
     // Node 原生 ESM 解析不了 .css 说明符——inline 后走 vite 管道即可正常
     // 渲染。旧版 inline 的 babel-runtime-jsx-plus（UMD 具名导出问题）随

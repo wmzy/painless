@@ -189,6 +189,155 @@ describe('StackWarmer（initHistoryStack 刷新预热）', () => {
     expect(loadA).toHaveBeenCalledTimes(2);
     expect(loadB).toHaveBeenCalledTimes(3);
   });
+
+  // 守卫缓解（组件头注释的「已知边界与缓解」）：预热 resolve 不经
+  // beforeLoad，未登录刷新后窗口含守卫路由时 POP 会落预热快照绕过
+  // requireLogin。两组用例分别钉「未登录跳过（守卫重新生效）」与
+  // 「已登录照常预热（快照无绕过可言）」，登录态经 Router 的 context
+  // 注入驱动（decisions 第 3 条的每实例形态）
+  it('未登录且窗口含守卫路由：整窗跳过预热——POP 落重解析路径，守卫重新生效', async () => {
+    const loadA = vi.fn(async () => 'a');
+    const loadG = vi.fn(async () => 'editor');
+    const routes = createRoutes([
+      {path: '/a', data: loadA, component: () => Promise.resolve(() => <b>a</b>)},
+      {
+        path: '/editor',
+        beforeLoad: requireLogin,
+        data: loadG,
+        component: () => Promise.resolve(() => <b>editor</b>)
+      },
+      {path: '/login', component: () => Promise.resolve(() => <b>login</b>)}
+    ]);
+
+    // 会话 1（已登录）：建立 ['/a','/editor'] 窗口——守卫在登录态放行
+    let router1!: ReturnType<typeof useRouter>;
+    const Probe1 = () => {
+      router1 = useRouter();
+      return null;
+    };
+    const session1 = render(
+      <MemoryRouter routes={routes} initialEntries={['/a']} context={{getUser: () => user}}>
+        <View />
+        <Probe1 />
+      </MemoryRouter>
+    );
+    expect(await screen.findByText('a')).toBeDefined();
+    await act(async () => {
+      await navigate(router1, '/editor');
+    });
+    expect(await screen.findByText('editor')).toBeDefined();
+    expect(loadA).toHaveBeenCalledTimes(1);
+    expect(loadG).toHaveBeenCalledTimes(1);
+    const refreshState = router1.history.location.state;
+    session1.unmount();
+
+    // 会话 2（= 刷新后，未登录）：落点 '/editor'。冷启动 resolve 照常跑守卫
+    // → 重定向 /login（URL 不落守卫路由）；StackWarmer 检出「未登录 +
+    // 守卫窗口」整窗跳过预热
+    let router2!: ReturnType<typeof useRouter>;
+    const Probe2 = () => {
+      router2 = useRouter();
+      return null;
+    };
+    render(
+      <MemoryRouter
+        routes={routes}
+        initialEntries={[{pathname: '/a'}, {pathname: '/editor', state: refreshState}]}
+        initialIndex={1}
+        context={{getUser: () => null}}
+      >
+        <View />
+        <Probe2 />
+        <StackWarmer />
+      </MemoryRouter>
+    );
+    expect(await screen.findByText('login')).toBeDefined();
+    expect(screen.queryByText('editor')).toBeNull();
+    // 预热被跳过的可观测信号：'/a' 的 loader 未被预热触碰（不跳过则
+    // 此处已是 2）、'/a' 槽位无快照。flush 让「本会发生的预热」有机会
+    // 跑完，负断言才可信
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(loadA).toHaveBeenCalledTimes(1);
+    expect(router2.viewStack[0] == null).toBe(true);
+
+    // POP 回 '/a'：无快照可落 → 惰性重解析（守卫语义换重解析成本，
+    // 正是缓解的取舍面）
+    act(() => {
+      back(router2);
+    });
+    expect(await screen.findByText('a')).toBeDefined();
+    expect(loadA).toHaveBeenCalledTimes(2);
+  });
+
+  it('已登录：窗口含守卫路由照常预热——POP 落快照零重解析', async () => {
+    const loadA = vi.fn(async () => 'a');
+    const loadG = vi.fn(async () => 'editor');
+    const routes = createRoutes([
+      {path: '/a', data: loadA, component: () => Promise.resolve(() => <b>a</b>)},
+      {
+        path: '/editor',
+        beforeLoad: requireLogin,
+        data: loadG,
+        component: () => Promise.resolve(() => <b>editor</b>)
+      }
+    ]);
+
+    let router1!: ReturnType<typeof useRouter>;
+    const Probe1 = () => {
+      router1 = useRouter();
+      return null;
+    };
+    const session1 = render(
+      <MemoryRouter routes={routes} initialEntries={['/a']} context={{getUser: () => user}}>
+        <View />
+        <Probe1 />
+      </MemoryRouter>
+    );
+    expect(await screen.findByText('a')).toBeDefined();
+    await act(async () => {
+      await navigate(router1, '/editor');
+    });
+    expect(await screen.findByText('editor')).toBeDefined();
+    const refreshState = router1.history.location.state;
+    session1.unmount();
+
+    // 会话 2（登录态未变）：落点 '/editor' 守卫放行；预热照常——守卫在登录
+    // 态本就放行，快照不构成绕过。计数口径同首例：落点被冷启动与预热
+    // 各 1 次（loadG 共 3），'/a' 被预热 1 次（共 2）
+    let router2!: ReturnType<typeof useRouter>;
+    const Probe2 = () => {
+      router2 = useRouter();
+      return null;
+    };
+    render(
+      <MemoryRouter
+        routes={routes}
+        initialEntries={[{pathname: '/a'}, {pathname: '/editor', state: refreshState}]}
+        initialIndex={1}
+        context={{getUser: () => user}}
+      >
+        <View />
+        <Probe2 />
+        <StackWarmer />
+      </MemoryRouter>
+    );
+    expect(await screen.findByText('editor')).toBeDefined();
+    await waitFor(() =>
+      expect(router2.viewStack.every((v) => v != null)).toBe(true)
+    );
+    expect(loadA).toHaveBeenCalledTimes(2);
+    expect(loadG).toHaveBeenCalledTimes(3);
+
+    // POP 回 '/a'：落预热快照直出，零重解析
+    act(() => {
+      back(router2);
+    });
+    expect(await screen.findByText('a')).toBeDefined();
+    expect(loadA).toHaveBeenCalledTimes(2);
+    expect(loadG).toHaveBeenCalledTimes(3);
+  });
 });
 
 describe('searchDeps 快路径（Home 链声明形态）', () => {

@@ -11,12 +11,7 @@ import {initHistoryStack} from '@native-router/core';
 
 import Loading from '@/components/Loading';
 import RouterError from '@/components/RouterError';
-import {
-  bindUnauthorizedRedirect,
-  getCurrentUser,
-  logout,
-  type User
-} from '@/services/auth';
+import {bindUnauthorizedRedirect, getCurrentUser, type User} from '@/services/auth';
 import {articleLoader, editorLoader, homeLoader} from '@/services/dataloaders';
 import {homeSearchSchema} from '@/types/search';
 import {editorParamsSchema} from '@/types/params';
@@ -159,6 +154,16 @@ const routes = createRoutes({
 // 路径拼写错误在编译期暴露（动态段路由同时要求 params 完整）
 export type AppPaths = RoutePaths<typeof routes>;
 
+// StackWarmer 守卫缓解的窗口判定前缀：路由表中 beforeLoad:
+// requireLogin 的 /editor 与 /editor/:slug 的共同前缀（新增守卫路由时
+// 同步此处）。刻意手写前缀而非复用路由匹配器——缓解是保守判定，宁可
+// 多跳过（预热只是优化），前缀误伤面足够小；'/editorfoo' 类前缀撞车
+// 由段边界匹配排除
+const GUARDED_PATH_PREFIX = '/editor';
+const isGuardedPath = (pathname: string) =>
+  pathname === GUARDED_PATH_PREFIX ||
+  pathname.startsWith(`${GUARDED_PATH_PREFIX}/`);
+
 // 路由表自身的类型：TypedLink 表形态（TypedLink<AppRoutes>）的判别源
 // ——给组件整个表而非路径联合，to 按模式收窄的同时 search 也按各层
 // search schema 的 input 侧（URL 输入形状）判别并序列化进 query（见
@@ -179,16 +184,32 @@ export type AppRoutes = typeof routes;
 // 分层关系（外层命中即短路内层）：bfcache > viewStack > queryCache
 // ——bfcache 管跨文档往返（整页快照，pageshow persisted 的新鲜度补偿
 // 见 Layout），viewStack 管同文档往返（本层），queryCache 管跨视图
-// 共享与 SWR。窗口外条目（超出 maxStackDepth 被裁剪、或浏览器自行
-// 逐出的历史）不在预热范围，落点仍走单次惰性重解析，语义不变。
-// 已知边界：预热经 resolve 直接取快照、不经 beforeLoad 守卫（库的
-// 既定语义，守卫重定向会破坏窗口形状）——会话内守卫语义由登出链路
-// 的 invalidate 清场承担（见 Layout）；刷新后窗口若含守卫路由且登录
-// 态已变，POP 落预热快照不会重跑守卫（loader 数据本身公开，提交侧
-// 有 401 兜底），需要严格语义时可在预热后把守卫路由槽位置空回退。
+// 窗外条目（超出 maxStackDepth 被裁剪、或浏览器自行逐出的历史）不在
+// 预热范围，落点仍走单次惰性重解析，语义不变。
+// 已知边界与缓解：预热经 resolve 直接取快照、不经 beforeLoad 守卫
+//（库的既定语义，守卫重定向会破坏窗口形状）。缓解：未登录
+//（router.context 的 getUser() 为空，未注入按未登录 fail-safe）且历史
+// 窗口含守卫路由（/editor、/editor/:slug，见 GUARDED_PATH_PREFIX）时
+// 整窗跳过预热——POP 落回惰性重解析路径，守卫照常重跑；代价是这类
+// 窗口内的普通条目也退回重解析（预热只是优化，跳过无正确性损失）。
+// 会话内守卫语义由登出链路的 invalidate 清场承担（见 Layout）；残余
+// 边界：跨 tab 登出（本 tab 收不到登出事件）后 POP 仍可能落登录期
+// 预热快照，loader 数据本身公开、提交侧有 401 兜底（处置链见
+// services/auth.ts 的 bindUnauthorizedRedirect）。
 export function StackWarmer() {
   const router = useRouter();
   useEffect(() => {
+    // 守卫缓解判定：登录态读 Router 注入的 context（decisions 第 3 条
+    // 的每实例形态，测试换 context 驱动；App 恒注入 routerContext），
+    // 窗口枚举走 core 公开面 RouterInstance.locationStack。整窗跳过——
+    // 不逐条摘守卫条目：快照槽位与守卫语义耦合（POP 落点的守卫重跑
+    // 依赖整窗重解析），保守跳过宁可全退
+    const getUser = (router.context as RouterContext | undefined)?.getUser;
+    const loggedOut = !getUser?.();
+    const windowHasGuarded = router.locationStack.some((l) =>
+      isGuardedPath(l.pathname)
+    );
+    if (loggedOut && windowHasGuarded) return;
     // 各条目的 resolve 失败已被 errorHandler 兜成错误视图，Promise.all
     // 实际不会拒绝；万一 errorHandler 自身抛错，吞掉避免 unhandled
     // rejection——预热失败的代价只是窗内回退退回惰性重解析，无需上抛。
