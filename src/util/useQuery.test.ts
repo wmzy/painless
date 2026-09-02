@@ -13,7 +13,7 @@ import {renderHook, act, waitFor} from '@testing-library/react';
 
 import {stableHash} from 'react-toolroom/async';
 
-import {setMockConfig} from './mock-config';
+import {getMockConfigs, setMockConfig} from './mock-config';
 import {
   bindQueryFn,
   clearAllCaches,
@@ -724,6 +724,67 @@ describe('createQueryHook（场景 hook）', () => {
     expect(cache.peek!([])).toBeUndefined();
 
     localStorage.removeItem(KEY);
+  });
+
+  // 编译期反向用例（tsc --noEmit 守门，vitest 本身不跑类型检查）：
+  // QueryHookConfig 泛型化后 initData 收紧到 queryFn 的场景数据类型，
+  // 错形状必须在编译期报错；判别若失效（initData 退回 unknown），下方
+  // 钉子会反向报 Unused directive 的告警。
+  // 正向对照（同 cache 的合法 initData）在上一用例与 dataLoader.test 的
+  // 场景 hook 组里。两段调用只作类型检查消费，运行时零副作用（真实
+  // bindQueryFn 产物，getCache 不会抛）。
+  it('initData 类型收紧：错形状在声明点编译期报错（@ts-expect-error 钉住）', () => {
+    const cache = createQueryCache<string[], []>('init-data-type');
+    const fetchTags = async (): Promise<string[]> => ['x'];
+    const queryFn = bindQueryFn(fetchTags, cache);
+    expect(typeof createQueryHook({queryFn, initData: ['ok']})).toBe('function');
+    void createQueryHook({
+      queryFn,
+      // @ts-expect-error initData 必须是 queryFn 的场景数据类型 string[]，对象形状应被拒
+      initData: {wrong: true}
+    });
+  });
+
+  // DevTool 面板 Refresh（query 通道）语义 = useMock 存进配置的 refresh
+  // 闭包。粒度契约：只删当前 args 的条目 + 重发本请求——多 key 实体
+  //（articleCache 各 slug 形态）的其他条目不得误伤（原实现 cache.clear()
+  // 清整个实体，面板点一条 mock 的 Refresh 会把别的视图的缓存基线连
+  // 带清空）。when 固定 'disabled'（透传分支），隔离出 中间件注册 →
+  // 请求流过 → 闭包捕获 args 的纯链路
+  it('DevTool Refresh（query 通道）只删当前 key：同实体其他 key 不误伤', async () => {
+    const MOCK_KEY = 'mock-refresh-granularity';
+    setMockConfig(MOCK_KEY, {when: 'disabled'});
+    try {
+      const cache = createQueryCache<{id: string}, [string]>('mock-refresh');
+      const fetcher = vi.fn(async (id: string) => ({id}));
+      const useQ = createQueryHook({
+        queryFn: bindQueryFn(fetcher, cache),
+        mock: {schema: {}, key: MOCK_KEY}
+      });
+      const {result} = renderHook(() => useQ(['a']));
+      await waitFor(() => expect(result.current.data).toEqual({id: 'a'}));
+
+      // 同实体另一条目（别的视图写进来的真实数据）
+      cache.set(['b'], {id: 'b'});
+
+      const refresh = getMockConfigs()[MOCK_KEY]!.refresh as
+        | (() => void)
+        | undefined;
+      expect(typeof refresh).toBe('function');
+      refresh!();
+
+      // 当前 key 的条目已删（重发在飞）；无关 key 原样保留
+      expect(cache.peek!(['a'])).toBeUndefined();
+      expect(cache.peek!(['b'])?.value).toEqual({id: 'b'});
+      // 重发经注入链回填：消费者拿到新结果（引用换新、data 就位）
+      await waitFor(() =>
+        expect(cache.peek!(['a'])?.value).toEqual({id: 'a'})
+      );
+      expect(fetcher.mock.calls.filter(([id]) => id === 'a').length)
+        .toBeGreaterThanOrEqual(2);
+    } finally {
+      setMockConfig(MOCK_KEY, {when: 'disabled'});
+    }
   });
 
   // mock always 挂起镜像写入（决策见 docs/decisions.md 第 12 条）：组件

@@ -97,7 +97,7 @@ export function useMock(
   fn: (...params: unknown[]) => Promise<unknown>,
   schema: unknown,
   key: string,
-  cache?: Pick<CacheProvider, 'clear'>
+  cache?: Pick<CacheProvider, 'delete'>
 ) {
   // 生产旁路：useInject 非 React hook，可按环境有无条件调用
   if (import.meta.env.PROD) return;
@@ -114,7 +114,12 @@ export function useMock(
         location: null,
         schema,
         refresh: () => {
-          cache?.clear();
+          // 只删当前条目：Refresh 语义是「重新生成本条 mock」，不是
+          // 「清空整个实体」——多 key 实体（articleCache 各 slug）的
+          // 无关条目不得误伤。捕获的 args 与缓存条目同 key：stableHash
+          // 把每个 signal 实例归一到同一占位（useRun 每次追加的 signal
+          // 不同实例不拆 key），元组长度与写入时一致
+          cache?.delete(args);
           void fn(...args);
         }
       };

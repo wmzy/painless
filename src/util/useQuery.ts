@@ -26,12 +26,12 @@ import {
 
 import {useMock} from '@/util/mock';
 import {getMockConfigs} from '@/util/mock-config';
+import {DEFAULT_STALE_TIME} from './loaderCache';
 
 import {resetRefreshSeen} from './loaderCache';
 
 // 对齐 TanStack Query 的 gcTime 默认值；低频全局实体可单独放长（见 tagsCache）
 const DEFAULT_CACHE_TIME = 5 * 60_000;
-const DEFAULT_STALE_TIME = 2000;
 
 // select 已按调用点裁剪，恒等投影是唯一投影：useResultSelect 只要结果存在
 // 就会调 select，传 undefined 会在首个结果到达时抛「select is not a
@@ -312,13 +312,15 @@ export type QueryResult<T> = {
 };
 
 // 场景声明点的全部选项：创建时闭合，之后不可变；cache 不在其中——已由
-// queryFn 绑定携带，组装点不重复配对。
-export type QueryHookConfig = {
-  queryFn: QueryFn<any, any[]>;
+// queryFn 绑定携带，组装点不重复配对。泛型 T 是场景数据类型（queryFn
+// 的 resolve 类型，公开重载从 queryFn 实参推断）：initData 随之收紧到
+// T——错形状（误用别场景的兜底值）在声明点即编译错，不再被 unknown 吞
+export type QueryHookConfig<T = unknown> = {
+  queryFn: QueryFn<T, any[]>;
   /** 缓存多久后标记为 stale（ms），默认 2000 */
   staleTime?: number;
   /** 初始数据，避免首屏取到 undefined；声明后 data 类型收窄为非空 */
-  initData?: unknown;
+  initData?: T;
   /**
    * 接入 DevTool mock 面板。做成配置项而非暴露 injectable 给调用方自行
    * useMock：mock 中间件必须注册在 useCache 内层（直接包住原始请求函
@@ -331,16 +333,19 @@ export type QueryHookConfig = {
 // args 元组从 queryFn 参数剥尾参可选 signal（与 hashArgs 的运行时归一同
 // 构）；data 是否非空由「声明了 initData」的条件类型决定——initData / 无
 // initData 的重载对就此消失，调用点只剩 (args) => QueryResult。
-type SceneArgs<C extends QueryHookConfig> =
+type SceneArgs<C extends QueryHookConfig<any>> =
   C['queryFn'] extends (...args: [...infer K, signal?: AbortSignal]) => Promise<any>
     ? K
     : never;
-type SceneData<C extends QueryHookConfig> =
+type SceneData<C extends QueryHookConfig<any>> =
   | Awaited<ReturnType<C['queryFn']>>
   | (C extends {initData: unknown} ? never : undefined);
 
-export function createQueryHook<C extends QueryHookConfig>(
-  config: C
+// 公开重载的双参接线：T 从 queryFn 推断场景数据类型，C 保留字面量形状
+//（initData 是否声明决定 data 非空）；交集成员 {queryFn: QueryFn<T, any[]>}
+// 让 C 的约束按推断出的 T 检查——initData 错形状在此报错
+export function createQueryHook<T, C extends QueryHookConfig<T>>(
+  config: C & {queryFn: QueryFn<T, any[]>}
 ): (args: SceneArgs<C>) => QueryResult<SceneData<C>>;
 export function createQueryHook(
   config: QueryHookConfig

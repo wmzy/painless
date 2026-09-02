@@ -27,7 +27,10 @@ import type {CacheProvider} from 'react-toolroom/async';
 
 import {refresh} from '@native-router/core';
 
-const DEFAULT_STALE_TIME = 2000;
+// 两条通道共用的 staleTime 缺省（withCache 与 createQueryHook 的
+// opts.staleTime 缺省同值）：单一来源在此导出，useQuery（组装层）import
+// 收敛——依赖方向组装层→机制层无环，两通道缺省不会各自漂移
+export const DEFAULT_STALE_TIME = 2000;
 // 显式带返回值，规避 no-empty-function；语义即吞掉后台重验证的拒绝
 const noop = () => undefined;
 
