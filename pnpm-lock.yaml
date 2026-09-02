@@ -24,8 +24,8 @@ importers:
         specifier: ^0.11.1
         version: 0.11.1
       haze-ui:
-        specifier: ^1.17.1
-        version: 1.17.1(@linaria/core@8.2.0(supports-color@10.2.2))(react-dom@19.2.8(react@19.2.8))(react-f0rm@0.11.0(react@19.2.8)(zod@4.5.4))(react@19.2.8)
+        specifier: ^1.18.0
+        version: 1.18.0(@linaria/core@8.2.0(supports-color@10.2.2))(react-dom@19.2.8(react@19.2.8))(react-f0rm@0.11.1(react@19.2.8)(zod@4.5.4))(react@19.2.8)
       react:
         specifier: ^19.2.8
         version: 19.2.8
@@ -33,8 +33,8 @@ importers:
         specifier: ^19.2.8
         version: 19.2.8(react@19.2.8)
       react-f0rm:
-        specifier: ^0.11.0
-        version: 0.11.0(react@19.2.8)(zod@4.5.4)
+        specifier: ^0.11.1
+        version: 0.11.1(react@19.2.8)(zod@4.5.4)
       react-toolroom:
         specifier: ^0.20.0
         version: 0.20.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -2860,8 +2860,8 @@ packages:
     resolution: {integrity: sha512-T2UbfbBEF32wiepXIsMlTW9+dDYC6wMh/t/vYA4tuOMKqWz/n3vr1NFSxQiyP+zk2mXsoMA/i/7qV6LKut1t1A==}
     engines: {node: '>= 0.4'}
 
-  haze-ui@1.17.1:
-    resolution: {integrity: sha512-D4iuKV3PaLkIdyoHffxrwTpz0zvbvz+FXChwZgl0KoRF7hWkew6nyOvD4XESuyt4ECAoWjcqGIPFzx0jNMnkbg==}
+  haze-ui@1.18.0:
+    resolution: {integrity: sha512-cUMC50vLS1ezZNEADeJHw2qM2PcEqx7g2NE54SnqtgpO/p1dXzOKWrk6Mq5xz57LrBpLgBZ1FflBrQmU3nj1CA==}
     peerDependencies:
       '@linaria/core': ^7.0.0 || ^8.0.0
       react: ^19.0.0
@@ -3724,8 +3724,8 @@ packages:
     peerDependencies:
       react: ^19.2.8
 
-  react-f0rm@0.11.0:
-    resolution: {integrity: sha512-Dpd3fyOMR9p6RFblR/rckMQYsf9aAI3Fp1BHCWxB0rqtvgFIaQsWvm/UsJJvfVowPu1yoeMW1k9Fri/16DMrwA==}
+  react-f0rm@0.11.1:
+    resolution: {integrity: sha512-GP7pTtMQjV5dJa93j+5SmKlfzh7BJScCgSaB+QjtPfltKVdst6i/Pf3giE9P1TFR7NGbnKpZhuWqCAz6WV46JQ==}
     peerDependencies:
       react: '>=16.8.0'
       valibot: '>=1.0.0'
@@ -7344,11 +7344,11 @@ snapshots:
     dependencies:
       function-bind: 1.1.2
 
-  haze-ui@1.17.1(@linaria/core@8.2.0(supports-color@10.2.2))(react-dom@19.2.8(react@19.2.8))(react-f0rm@0.11.0(react@19.2.8)(zod@4.5.4))(react@19.2.8):
+  haze-ui@1.18.0(@linaria/core@8.2.0(supports-color@10.2.2))(react-dom@19.2.8(react@19.2.8))(react-f0rm@0.11.1(react@19.2.8)(zod@4.5.4))(react@19.2.8):
     dependencies:
       '@linaria/core': 8.2.0(supports-color@10.2.2)
       react: 19.2.8
-      react-f0rm: 0.11.0(react@19.2.8)(zod@4.5.4)
+      react-f0rm: 0.11.1(react@19.2.8)(zod@4.5.4)
       react-use-control: 1.5.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
     transitivePeerDependencies:
       - react-dom
@@ -8219,7 +8219,7 @@ snapshots:
       react: 19.2.8
       scheduler: 0.27.0
 
-  react-f0rm@0.11.0(react@19.2.8)(zod@4.5.4):
+  react-f0rm@0.11.1(react@19.2.8)(zod@4.5.4):
     dependencies:
       '@for-fun/event-emitter': 1.0.2
       react: 19.2.8

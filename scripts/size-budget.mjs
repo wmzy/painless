@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 // 口径名：dist JS+CSS gzip 总和（zlib level 9，含懒加载 chunk）。
-// 基线：121794 B = 118.94 KB（34 个文件，2026-09-02，Node 24 内置 zlib；
-// 本轮增量 +0.95 KB：core 1.14 / react-toolroom 0.20 / react-f0rm 0.11 /
-// fetch-fun 0.11.1 / event-emitter 1.0.2 / haze-ui 1.17.0 六库升级自身，
-// 模板侧源码零改动——数字与 decisions.md 第 17 条同批实测，阈值与
-// BASELINE_BYTES 代码不动，仅头注释随批同步）。
+// 基线：121890 B = 119.03 KB（34 个文件，2026-09-02，Node 24 内置 zlib；
+// 本轮增量 +0.09 KB：react-f0rm 0.11.1 修复运行时小增量（leaf 读跟随
+// 整分支写入）；haze-ui 1.18.0 新增 TransferCore/UploadCore 纯新导出、
+// 模板零消费被 tree-shake 零字节（dist 全文零命中，transfer 字样仅为
+// dataTransfer/transferSize 平台 API）——数字与 decisions.md 第 19 条
+// 同批实测，阈值与 BASELINE_BYTES 代码不动，仅头注释随批同步）。
 // 阈值：126 KB = 129024 B（基线 +10% 余量，取整到 KB）。
 //
 // 口径必须可复现（项目教训：bundle 增量报告曾出现无任何口径能复现的数字）：

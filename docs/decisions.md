@@ -704,3 +704,36 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
   @cacheable/memory 2.0.9→2.2.0 等 minimumReleaseAge 窗口移动所致）与
   一条 deprecated 子依赖提示（glob@7/8、inflight@1，长期存在项）——均
   与本收口无关，不捎带，留周期性升级冒烟（upgrade-smoke）处理。
+
+## 19. 两库新发版集成批（2026-09-02）
+
+- **版本**：react-f0rm ^0.11.1（自 0.11.0）、haze-ui ^1.18.0（自
+  1.17.1）。npm 显式版本安装 + pnpm dedupe（全树无双实例），tsc 首轮
+  即绿。gitHead 双核：react-f0rm@0.11.1 = ce8e1af、haze-ui@1.18.0 =
+  71a8d94，均与本批上游推送 commit 一致。
+- **react-f0rm 0.11.1（bug 修复，模板零可观察变化）**：leaf 读改为
+  跟随整分支写入、不再回退 initialValues 快照——根因三层：getValueByPath
+  代际回退（旧代快照遮蔽新写入）、setValueByPath 后代键遮蔽、数字
+  segment 数组腐化。模板四表单（Login/Register/Editor/Article 评论）的
+  `FormItem` control 经 `useValueByPath` 订阅 + `reset(form, {...})` 整值
+  写入正是该修复硬化的路径，但既有场景本就落在正确行为侧：265 单测与
+  28 e2e 断言零改动全绿（预期影响面兑现——模板表单行为无变化）。上游
+  566/566、perf 中性、leaf 订阅粒度不变；模板不接新 API、无断言修订。
+- **haze-ui 1.18.0（纯新增能力，零接触）**：TransferCore/UploadCore
+  值直出核心变体（经 FormItem input 桥零适配接入表单），Transfer/Upload
+  外壳公开面不变（上游 860/860）。模板无 Transfer/Upload 消费场景，
+  属「库发了能力、消费方暂不接」（同第 16 条 useMutation status /
+  第 17 条 FormItem raw DOM 桥取舍）；dist 全文检索零命中（transfer
+  字样仅为 dataTransfer/transferSize 平台 API），按需导入下零字节
+  进包体。
+- **peer 检查**：升级重装零 peer 警告，`pnpm peers check` 退出 0——
+  第 18 条 eslint ^10 / typescript ^6 窄区间豁免仍适用，无新增豁免
+  需求（haze-ui 1.18.0 的 react-f0rm peer 区间 `<0.12.0` 覆盖 0.11.1）。
+- **体积**：119.03 KB（size-budget 口径：dist JS+CSS gzip 总和，zlib
+  level 9，含懒加载 chunk；实测 121890 B / 34 文件），对上批实测
+  121794 B（118.94 KB）+0.09 KB——增量全部来自 react-f0rm 0.11.1 修复
+  运行时；haze-ui 新组件 tree-shake 零贡献。预算 126.00 KB 内（5.5%
+  余量），棘轮基线不动（BASELINE_BYTES 与阈值代码不动，脚本头注释随批
+  同步本批实测）。
+- **验证**：typecheck + lint:ci + 265 单测（24 文件）+ build + size +
+  28 e2e 全绿。
