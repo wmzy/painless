@@ -737,3 +737,45 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
   同步本批实测）。
 - **验证**：typecheck + lint:ci + 265 单测（24 文件）+ build + size +
   28 e2e 全绿。
+
+## 20. f0rm 1.0 路径收紧 + haze peer 收口集成批（2026-09-02）
+
+- **版本**：react-f0rm ^1.0.0（自 0.11.1）、haze-ui ^1.18.2（自
+  1.18.0）。npm 显式版本安装 + pnpm dedupe（全树无双实例），tsc 首轮
+  即绿。gitHead 双核：react-f0rm@1.0.0 = c4fa94e（feat! 2fb54db 的直接
+  子代 docs 提交——两提交同批推送，semantic-release 以 push 头打 tag，
+  feat! 已包含、docs 不另发版；且 feat! 经默认 commit-analyzer 直升
+  major，1.0.0 是既定行为、非 0.12.0 预期落空）、haze-ui@1.18.2 =
+  02fdf05，均与本批上游推送头一致。
+- **react-f0rm 1.0.0（feat!: 路径语法收紧，模板零可观察变化）**：
+  parsePath 对纯数字的点分标识段（items.0 / items.0.name / 顶层 0）抛
+  TypeError 并在报错文案中给出 bracket 拼写（items.0 → items[0]）；
+  items[0] 与 items["0"] 语义不变；FieldPath<T> 类型层同步不再枚举
+  点数字段段（编译期即拦）；getErrors/getDirtyFields/getTouchedFields
+  输出侧仍为 dotted 展示字符串、不受影响。模板兼容面预检（grep 全量
+  字段绑定）：四表单字段名全为平面字符串（title/description/body/
+  tagList/email/password/username/confirmPassword），tagList 整体寻址
+  无索引拼写，applyApiFieldErrors 字段清单同为平面名——零点数字段
+  路径，收紧对合法拼写零影响；265 单测与 28 e2e 断言零改动全绿兑现。
+- **haze-ui 1.18.2（纯 peer 元数据收口，零产物字节）**：1.18.0→1.18.2
+  三连发均止于 package.json 层——1.18.1 放宽 react-f0rm peer 至
+  <0.13.0（按当时 0.12.0 预期写下），f0rm 实发 1.0.0 后区间不覆盖，
+  1.18.2 再放宽至 >=0.7.0 <2.0.0；上游 devDependencies 同步
+  ^0.8.0→^1.0.0 并以全量 860 测试 + tsc --noEmit + build 实证兼容后
+  才声明（证据链见 02fdf05 提交）。demo CacheProvider 泛型修复与
+  typecheck CI 门禁（61b1d6c，chore 不计版本）均不入产物。本模板
+  dist 与 haze 1.18.1 中间态逐字节同（122005 B），即 1.18.0→1.18.2
+  对包体零字节。
+- **peer 检查**：升级重装零 peer 警告，`pnpm peers check` 退出 0——
+  f0rm 1.0.0 与 haze 1.18.1 的区间冲突经上游正式发版收口，而非本仓
+  豁免（与第 18 条「上游确实无法声明兼容」的豁免前提不同，故不动
+  peerDependencyRules）；第 18 条 eslint ^10 / typescript ^6 窄区间
+  豁免仍适用、无新增。
+- **体积**：119.15 KB（size-budget 口径：dist JS+CSS gzip 总和，zlib
+  level 9，含懒加载 chunk；实测 122005 B / 34 文件），对上批实测
+  121890 B（119.03 KB）+0.11 KB——增量全部来自 react-f0rm 1.0.0
+  parsePath 收紧的抛错分支与错误树字符串段处理；haze-ui 纯元数据
+  发版零贡献。预算 126.00 KB 内（5.4% 余量），棘轮基线不动（阈值与
+  BASELINE_BYTES 代码不动，脚本头注释随批同步本批实测）。
+- **验证**：typecheck + lint:ci + 265 单测（24 文件）+ build + size +
+  28 e2e 全绿。
