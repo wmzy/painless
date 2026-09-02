@@ -39,6 +39,10 @@ export type UseData<T> = {
   (opts: {optional: true}): T | undefined;
 };
 
+// Ctx 泛型单用在 keyOf 参数位，但价值在调用点——精确形状（如
+// {params: {title: string}}）经它流进工厂内部接线（decisions #13 补记），
+// 非冗余参数化。
+// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters
 export function createDataLoader<T, K extends unknown[], Ctx extends LoaderCtx = LoaderCtx>(
   spec: {
     // 参数化 service 函数：与 queryFn 同形状（尾参可选 signal——useRun

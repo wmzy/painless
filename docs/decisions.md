@@ -593,3 +593,70 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
   f0rm 0.8→0.10 的 validateDeps 门控 + toolroom 0.18.4→0.19），模板侧
   净减（手写写侧 schema 删除、类型收紧零运行时）。预算 126.00 KB 内
   （6.4% 余量），棘轮基线不动。
+
+## 17. 六库修复批集成（2026-09-02）
+
+- **版本**：@native-router/core ^1.14.0（自 1.13.0）、react-toolroom
+  ^0.20.0（自 0.19.0）、react-f0rm ^0.11.0（自 0.10.0）、fetch-fun
+  ^0.11.1（自 0.11.0）、@for-fun/event-emitter ^1.0.2（自 1.0.1）、
+  haze-ui ^1.17.0（自 1.16.1）；@native-router/react 保持 ^1.13.0
+  （本批无改动）。npm 显式版本安装 + pnpm dedupe（无双实例），tsc
+  首轮即绿。core 实发 1.14.0 而非编排预期的 1.15.0——a3ed26d（fix）
+  与 bd5571a（feat）同批推送，semantic-release 取最高档一次发版，
+  gitHead=bd5571a 已核两 commit 均含于 v1.14.0。
+- **fetch-fun 0.11.1 三修（唯一改模板断言的库）**：退避期 abort 停止
+  重试循环——用户中止在旧版会被 retry 策略当瞬态错误重放（1+2 趟全部
+  立即失败），现在退避 sleep 察觉 signal 已中止即终止循环，单次调用以
+  AbortError 落定；身份断言（不被误标 TimeoutError）不变，仅调用数
+  断言 3→1（http.test 注释同步改写新契约）。Request 输入读取重试方法
+  （Request 实例作输入时 body 可重读供重试）与中间件排序/组链记忆化
+  （纯 perf）对模板零可观察影响（http 层传路径与 options 对象，不传
+  Request 实例）。
+- **core 1.14.0 两项零影响**：ranked 匹配修复兄弟短路 + 匹配器记忆化
+  ——平铺路由表无同前缀兄弟竞争模式（/editor 与 /editor/:slug 由参数
+  段区分、非静态竞争），匹配结果集不变，265 单测 + 28 e2e 路由断言
+  零改动全绿；预取有界并发 FIFO abort（preloadConcurrency 默认 4）
+  ——StackWarmer 尾窗预热与 PrefetchLink 单路由预取的并发远低于上限，
+  有界化的可观察收益是「预取风暴不再无限并发」，模板无需配置。
+- **react-toolroom 0.20.0**：usePolling tick 失败记入错误通道——模板
+  未消费 usePolling（轮询场景不存在），零影响；useRun 并发同参共享
+  （无缓存路径去重）——组件通道的 useCache 路径本就经 provider.load
+  去重（README 口径不变），新去重覆盖的是 Feed 的 useInfinite 首页
+  驱动这类「无缓存直跑」路径，模板零改动全绿（预期风险点未兑现）。
+- **react-f0rm 0.11.0 未消费**：useFieldArrayItem per-item leaf 订阅
+  纯新增能力，模板无字段数组场景（Editor tagList 走 TagInput 非数组
+  表单域），不接。
+- **haze-ui 1.17.0**：FormItem input 桥接 raw DOM（eventToValue 适配
+  器）——桥现已接受原生受控组件（不经 useControl 的裸 input/select），
+  模板四表单全部用 haze 自家 Control 系组件（InputCore/TextareaCore/
+  TagInputCore），新桥接面无消费点，属「库发了能力、消费方暂不接」
+  （同第 16 条 useMutation status 取舍）。
+- **@for-fun/event-emitter 1.0.2**：emit 空订阅早退（纯 perf），模板
+  用于 auth 变更与 mock 配置事件，零可观察变化。
+- **haze-ui peer 上限与 react-f0rm 0.11 的声明冲突（如实记录）**：
+  haze-ui 1.17.0 的 peerDependencies 仍声明 `react-f0rm >=0.7.0
+  <0.11.0`，与本批安装的 0.11.0 冲突（pnpm peers check 报 unmet；
+  typescript/eslint 两条 peer 警告为存量工具链项，与本批无关）。实际
+  风险评估：react-f0rm 0.10→0.11 全量 diff 仅 useFieldArrayItem 新增
+  （context/form 各有小改，无 API 删除），haze-ui FormItem 桥消费的
+  useForm/getValueByPath/setValueByPath/useValueByPath/setServerErrors
+  面未动，且模板 265 单测（四表单全覆盖）+ 28 e2e 实测通过——de facto
+  兼容。收口路径：haze-ui 下版放宽 peer 上限后本条冲突自然消除，届时
+  peers check 只剩存量工具链项。
+- **随批模板侧修复（本地四 commit，074e258/04e1056/d786647/6eaecae，
+  本条一并随推）**：bindRefresh seen-map 语义修订（每 key 保留最后
+  所见值 + 整实体 clear 代际归零，e2e「401 登出后回 Home」反例修正，
+  详见第 13 条补记）；QueryHookConfig initData 泛型收紧（错形状声明
+  点即编译错）；useMock 面板 Refresh 改单 key 粒度删除；http label
+  只大写 method、URL 原样保留；401 处置链升级为登出+回跳
+  （bindUnauthorizedRedirect 挂 Router 树内，冷刷新首个请求也有人
+  接）；StackWarmer 未登录守卫缓解（历史窗含守卫路由整窗跳过预热）；
+  工具链两小项（vitest 删 passWithNoTests、size-budget 头注释基线
+  同步）。
+- **体积**：118.94 KB（size-budget 口径：dist JS+CSS gzip 总和，zlib
+  level 9，含懒加载 chunk；实测 121794 B / 34 文件），对脚本头注释
+  记录的上批实测 120825 B（117.99 KB）+0.95 KB——增量全部来自六库
+  升级自身（core ranked 匹配器 + preload 队列、toolroom 去重层、
+  f0rm leaf 订阅、fetch-fun 组链记忆化、haze 桥适配），模板侧源码
+  零改动（唯一编辑是测试断言，不进产物）。预算 126.00 KB 内（5.6%
+  余量），棘轮基线不动。

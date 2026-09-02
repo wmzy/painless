@@ -1,4 +1,5 @@
 import type {StandardSchemaV1} from '@native-router/react';
+
 import {writeSchema} from '@native-router/core';
 
 // / 路由（Home）的 search 契约：?tag=xxx&offset=20&limit=10。

@@ -9,23 +9,23 @@ importers:
   .:
     dependencies:
       '@for-fun/event-emitter':
-        specifier: ^1.0.1
-        version: 1.0.1
+        specifier: ^1.0.2
+        version: 1.0.2
       '@linaria/core':
         specifier: ^8.2.0
         version: 8.2.0(supports-color@10.2.2)
       '@native-router/core':
-        specifier: ^1.13.0
-        version: 1.13.0
+        specifier: ^1.14.0
+        version: 1.14.0
       '@native-router/react':
         specifier: ^1.13.0
         version: 1.13.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       fetch-fun:
-        specifier: ^0.11.0
-        version: 0.11.0
+        specifier: ^0.11.1
+        version: 0.11.1
       haze-ui:
-        specifier: ^1.16.1
-        version: 1.16.1(@linaria/core@8.2.0(supports-color@10.2.2))(react-dom@19.2.8(react@19.2.8))(react-f0rm@0.10.0(react@19.2.8)(zod@4.5.4))(react@19.2.8)
+        specifier: ^1.17.0
+        version: 1.17.0(@linaria/core@8.2.0(supports-color@10.2.2))(react-dom@19.2.8(react@19.2.8))(react-f0rm@0.11.0(react@19.2.8)(zod@4.5.4))(react@19.2.8)
       react:
         specifier: ^19.2.8
         version: 19.2.8
@@ -33,11 +33,11 @@ importers:
         specifier: ^19.2.8
         version: 19.2.8(react@19.2.8)
       react-f0rm:
-        specifier: ^0.10.0
-        version: 0.10.0(react@19.2.8)(zod@4.5.4)
+        specifier: ^0.11.0
+        version: 0.11.0(react@19.2.8)(zod@4.5.4)
       react-toolroom:
-        specifier: ^0.19.0
-        version: 0.19.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        specifier: ^0.20.0
+        version: 0.20.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react-use-control:
         specifier: ^1.5.0
         version: 1.5.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -931,8 +931,8 @@ packages:
     resolution: {integrity: sha512-3RQHgEtvL1Frl/d1cSreo7qhJ3Gk1OdNUai/CtZ8G+wYeRQnJih3s9xJ9/kgYekPQRdwgh0HXRPqMlzWGwivIQ==}
     engines: {node: ^20.19.0 || ^22.13.0 || ^23.5.0 || >=24.0.0, npm: '>=10'}
 
-  '@for-fun/event-emitter@1.0.1':
-    resolution: {integrity: sha512-uyBUDaIJp0n0+O5dv9+N2qo+GMMDdNc43ndC+Oma6VHkiwdZkvAU4rjiZBw9GZKrFl4xbmwRjyCCqhkt5LRGMA==}
+  '@for-fun/event-emitter@1.0.2':
+    resolution: {integrity: sha512-mzNk20EKzpkFuEBqFWl5h20IPcEvqMmjeaVq9s5BTyvgftRh2+4eR4XBFepmrpB6APspsP/J9A+NdGzR81fTFw==}
 
   '@humanfs/core@0.19.2':
     resolution: {integrity: sha512-UhXNm+CFMWcbChXywFwkmhqjs3PRCmcSa/hfBgLIb7oQ5HNb1wS0icWsGtSAUNgefHeI+eBrA8I1fxmbHsGdvA==}
@@ -1011,8 +1011,8 @@ packages:
       '@emnapi/core': ^1.7.1 || ^2.0.0-alpha.4
       '@emnapi/runtime': ^1.7.1 || ^2.0.0-alpha.4
 
-  '@native-router/core@1.13.0':
-    resolution: {integrity: sha512-Z0ONpV7lihIU4zT22078s9TyNecgD5rho31DMBdhpZs0jEJLHhw0vAhLgK3ikIjsvPnLNceV0ZaBkICOSoMz5Q==}
+  '@native-router/core@1.14.0':
+    resolution: {integrity: sha512-fjE63NavGXM9KbRVPi/aag3eUOWyKic+OYqo1poPzJ9sTk7HDUnnqRwVKC9rcUVlqI/AUZE9GIfPekRMl+luKw==}
     engines: {node: '>=18'}
 
   '@native-router/react@1.13.0':
@@ -2625,8 +2625,8 @@ packages:
       picomatch:
         optional: true
 
-  fetch-fun@0.11.0:
-    resolution: {integrity: sha512-wHDebRB08gLnzKAgezMlA9y/4hXXqcTagsx6wNr67jKCVIVLPD0dG5F63ydKp5Qq47MEVEl7TNXQYcTBY0765Q==}
+  fetch-fun@0.11.1:
+    resolution: {integrity: sha512-djv/8uJonK5BO9r8gjo84SGZbp+0rpgrTS2AJYvMAbZCBREtTZwuXBWTplH5dEYIdWLB4qG2ee3IUHXzwvXBOg==}
     engines: {node: '>=20.3'}
 
   fflate@0.8.3:
@@ -2860,8 +2860,8 @@ packages:
     resolution: {integrity: sha512-T2UbfbBEF32wiepXIsMlTW9+dDYC6wMh/t/vYA4tuOMKqWz/n3vr1NFSxQiyP+zk2mXsoMA/i/7qV6LKut1t1A==}
     engines: {node: '>= 0.4'}
 
-  haze-ui@1.16.1:
-    resolution: {integrity: sha512-F52xrmuVco3E/DIOxztSf6ZzWjAGX9aj7WqYVUwgh/wt9TsmdOefdY2JN6ghNnuXh/NSG6iHKN2uUAcMGHk43g==}
+  haze-ui@1.17.0:
+    resolution: {integrity: sha512-Z/Qix31zq75prYh9ClpgZSNxyoay+nKUqFHGVV8EEh6gp2yeK2O3/6xZOKlGoghXIwak5KDsAIegYHclZ7w5Vw==}
     peerDependencies:
       '@linaria/core': ^7.0.0 || ^8.0.0
       react: ^19.0.0
@@ -3724,8 +3724,8 @@ packages:
     peerDependencies:
       react: ^19.2.8
 
-  react-f0rm@0.10.0:
-    resolution: {integrity: sha512-h2pOZaGfb4RPXYcAthDEvVmOBqJfmMe5W62vSZfAKv4MK41sLR10nYfHuN799qk0nz5ECMCjnGNTay+wpK53rA==}
+  react-f0rm@0.11.0:
+    resolution: {integrity: sha512-Dpd3fyOMR9p6RFblR/rckMQYsf9aAI3Fp1BHCWxB0rqtvgFIaQsWvm/UsJJvfVowPu1yoeMW1k9Fri/16DMrwA==}
     peerDependencies:
       react: '>=16.8.0'
       valibot: '>=1.0.0'
@@ -3745,8 +3745,8 @@ packages:
   react-is@17.0.2:
     resolution: {integrity: sha512-w2GsyukL62IJnlaff/nRegPQR94C/XXamvMWmSHRJ4y7Ts/4ocGRmTHvOs8PSE6pB3dWOrD/nueuU5sduBsQ4w==}
 
-  react-toolroom@0.19.0:
-    resolution: {integrity: sha512-dfUIZpCI2A6HZKYeSbEe6I9YgUu0mmXINK0Paei1dGtzxJQsUivk/DHwjBteXkGSMvrQcfQ6iwUNTmn5Sv1QOA==}
+  react-toolroom@0.20.0:
+    resolution: {integrity: sha512-XUM9H79gCukixSKR60hbkxQH69FhHWZVsHQZ9KHIzexpl2rgNy29HaS3smtUE/UzGKaElOaj5P1hQK5d//hHSg==}
     peerDependencies:
       react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
       react-dom: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
@@ -5386,7 +5386,7 @@ snapshots:
 
   '@faker-js/faker@10.6.0': {}
 
-  '@for-fun/event-emitter@1.0.1': {}
+  '@for-fun/event-emitter@1.0.2': {}
 
   '@humanfs/core@0.19.2':
     dependencies:
@@ -5472,14 +5472,14 @@ snapshots:
       '@tybys/wasm-util': 0.10.3
     optional: true
 
-  '@native-router/core@1.13.0':
+  '@native-router/core@1.14.0':
     dependencies:
       history: 5.3.0
       path-to-regexp: 8.4.2
 
   '@native-router/react@1.13.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
     dependencies:
-      '@native-router/core': 1.13.0
+      '@native-router/core': 1.14.0
       history: 5.3.0
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
@@ -7061,7 +7061,7 @@ snapshots:
     optionalDependencies:
       picomatch: 4.0.7
 
-  fetch-fun@0.11.0: {}
+  fetch-fun@0.11.1: {}
 
   fflate@0.8.3: {}
 
@@ -7344,11 +7344,11 @@ snapshots:
     dependencies:
       function-bind: 1.1.2
 
-  haze-ui@1.16.1(@linaria/core@8.2.0(supports-color@10.2.2))(react-dom@19.2.8(react@19.2.8))(react-f0rm@0.10.0(react@19.2.8)(zod@4.5.4))(react@19.2.8):
+  haze-ui@1.17.0(@linaria/core@8.2.0(supports-color@10.2.2))(react-dom@19.2.8(react@19.2.8))(react-f0rm@0.11.0(react@19.2.8)(zod@4.5.4))(react@19.2.8):
     dependencies:
       '@linaria/core': 8.2.0(supports-color@10.2.2)
       react: 19.2.8
-      react-f0rm: 0.10.0(react@19.2.8)(zod@4.5.4)
+      react-f0rm: 0.11.0(react@19.2.8)(zod@4.5.4)
       react-use-control: 1.5.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
     transitivePeerDependencies:
       - react-dom
@@ -8219,9 +8219,9 @@ snapshots:
       react: 19.2.8
       scheduler: 0.27.0
 
-  react-f0rm@0.10.0(react@19.2.8)(zod@4.5.4):
+  react-f0rm@0.11.0(react@19.2.8)(zod@4.5.4):
     dependencies:
-      '@for-fun/event-emitter': 1.0.1
+      '@for-fun/event-emitter': 1.0.2
       react: 19.2.8
       use-sync-external-store: 1.6.0(react@19.2.8)
     optionalDependencies:
@@ -8231,7 +8231,7 @@ snapshots:
 
   react-is@17.0.2: {}
 
-  react-toolroom@0.19.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
+  react-toolroom@0.20.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
     dependencies:
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)

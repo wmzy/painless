@@ -13,6 +13,7 @@ import {favoriteOnHome} from '@/services/mutations';
 import {useHomeData} from '@/services/dataloaders';
 import {useTitle} from '@/util/useTitle';
 import {useFavorite} from '@/views/_shared/useFavorite';
+
 import ArticlePreview from './ArticlePreview';
 
 import Tags from './Tags';

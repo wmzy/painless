@@ -1,7 +1,8 @@
+import type {Article} from '@/types';
+
 import {memo} from 'react-toolroom';
 import {Card, Title, Text, Badge, Avatar, Flex} from 'haze-ui';
 
-import type {Article} from '@/types';
 import FavoriteButton from '@/components/FavoriteButton';
 import PreviewLink from '@/components/PreviewLink';
 

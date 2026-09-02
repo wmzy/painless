@@ -468,9 +468,8 @@ describe('http utilities', () => {
         signal: controller.signal
       }).catch((e: unknown) => e);
       // 用户主动取消：AbortError 身份原样穿透（不会被误标 TimeoutError）。
-      // retry 策略把未知错误视为瞬态，用户中止也会重放，但复合 signal 已
-      // 中止，每趟立即失败且退避 sleep 对已中止 signal 即刻返回——最终
-      // 1 + 2 次调用后以 AbortError 落定。
+      // fetch-fun 0.11.1 起退避期察觉 signal 已中止即停止重试循环——用户
+      // 中止不再重放任何一趟（旧版会 1+2 次全部立即失败），单次调用即落定。
       controller.abort(
         new DOMException('The user aborted a request.', 'AbortError')
       );
@@ -478,7 +477,7 @@ describe('http utilities', () => {
       const error = (await outcome) as DOMException;
 
       expect(error.name).toBe('AbortError');
-      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
     it('should reject with TimeoutError once the whole-request budget elapses', async () => {

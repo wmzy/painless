@@ -26,9 +26,9 @@ import {
 
 import {useMock} from '@/util/mock';
 import {getMockConfigs} from '@/util/mock-config';
-import {DEFAULT_STALE_TIME} from './loaderCache';
 
-import {resetRefreshSeen} from './loaderCache';
+import {DEFAULT_STALE_TIME, resetRefreshSeen} from './loaderCache';
+
 
 // 对齐 TanStack Query 的 gcTime 默认值；低频全局实体可单独放长（见 tagsCache）
 const DEFAULT_CACHE_TIME = 5 * 60_000;
