@@ -46,12 +46,31 @@ describe('RouterError', () => {
     expect(link.closest('a')!.getAttribute('href')).toBe('/');
   });
 
-  it('should render error stack trace', () => {
+  // stack 的 DEV 分支（vitest 环境 import.meta.env.DEV 恒 true）：
+  // 开发期保留定位线索
+  it('should render error stack trace (DEV)', () => {
     const error = new Error('Stack test');
     render(<RouterError error={error} />);
     const pre = document.querySelector('pre');
     expect(pre).toBeDefined();
     expect(pre!.textContent).toContain('Stack test');
+  });
+
+  // 生产分支（vi.stubEnv 关 DEV，同 useQuery.test 非 DEV 用例惯例）：
+  // 只渲染 message + Refresh + Home，stack 整块不渲染——不向用户泄露
+  // 文件路径/源码片段等内部信息
+  it('生产模式不渲染 stack，仅保留 message 与操作项', () => {
+    vi.stubEnv('DEV', false);
+    try {
+      const error = new Error('Prod leak check');
+      render(<RouterError error={error} />);
+      expect(screen.getByText('Prod leak check')).toBeDefined();
+      expect(screen.getByText('Refresh')).toBeDefined();
+      expect(screen.getByText('Home')).toBeDefined();
+      expect(document.querySelector('pre')).toBeNull();
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it('should call refresh when refresh button is clicked', async () => {
