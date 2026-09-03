@@ -16,6 +16,16 @@ import {render, screen, waitFor} from '@testing-library/react';
 import {homeSearchSchema} from '@/types/search';
 
 import {StackWarmer, requireLogin, type RouterContext} from './index';
+import NotFound from './NotFound';
+
+// 页级 404 用例渲染真 NotFound 视图：haze-ui 整体替换为最小 stub
+//（同 Article/NotFound.test.tsx 的三件套），@native-router/react 走真
+// 模块——本文件其余用例不消费 haze-ui，mock 不影响它们
+vi.mock('haze-ui', () => ({
+  Card: ({children}: any) => <div>{children}</div>,
+  Title: ({children}: any) => <h1>{children}</h1>,
+  Text: ({children}: any) => <p>{children}</p>
+}));
 
 const user: User = {username: 'ada', email: 'ada@x', token: 't', bio: null, image: null};
 
@@ -100,6 +110,37 @@ describe('Router context → requireLogin 链路（MemoryRouter 集成）', () =
       </MemoryRouter>
     );
     expect(await screen.findByText('secret')).toBeDefined();
+  });
+});
+
+describe('未匹配路径 → notFound 视图（MemoryRouter 集成）', () => {
+  // App 的 notFound={NotFound} 接线（@native-router/react ≥1.14）：表
+  // 结构最小化，但 prop 形态同 src/views/index.tsx——验证 NotFoundError
+  // 落 notFound 且不进 errorHandler（未匹配路径此前走全局错误页，裸
+  // stack 对用户无意义）
+  it('未匹配路径渲染页面级 404：Page not found + 回首页链接，errorHandler 不触发', async () => {
+    const onError = vi.fn(() => <b>error</b>);
+    const routes = createRoutes([
+      {path: '/', component: () => Promise.resolve(() => <b>home</b>)}
+    ]);
+    render(
+      <MemoryRouter
+        routes={routes}
+        initialEntries={['/definitely/not/matched']}
+        notFound={NotFound}
+        errorHandler={onError}
+      >
+        <View />
+      </MemoryRouter>
+    );
+    expect(await screen.findByText('Page not found')).toBeDefined();
+    expect(
+      screen.getByText('The page does not exist or has been moved.')
+    ).toBeDefined();
+    const link = screen.getByText('Back to home');
+    expect(link.closest('a')!.getAttribute('href')).toBe('/');
+    // NotFoundError 专属通道：errorHandler 只接其它错误
+    expect(onError).not.toHaveBeenCalled();
   });
 });
 

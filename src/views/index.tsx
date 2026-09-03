@@ -16,8 +16,9 @@ import {articleLoader, editorLoader, homeLoader} from '@/services/dataloaders';
 import {homeSearchSchema} from '@/types/search';
 import {editorParamsSchema} from '@/types/params';
 
-import NotFound from './Article/NotFound';
+import ArticleNotFound from './Article/NotFound';
 import HomeSkeleton from './Home/Skeleton';
+import NotFound from './NotFound';
 
 // 应用级 router context（@native-router ≥1.10）：一个同步值随 router
 // 实例注入，data loader 与 beforeLoad 守卫经 ctx.context 取用。auth
@@ -101,7 +102,7 @@ const routes = createRoutes({
       data: articleLoader,
       // 路由级错误组件：文章不存在/加载失败渲染页面级提示（含返回首页），
       // 其它路由仍走全局 errorHandler → RouterError
-      errorComponent: NotFound
+      errorComponent: ArticleNotFound
     },
     {
       path: '/help',
@@ -144,7 +145,7 @@ const routes = createRoutes({
       // 同时生效。无参的 /editor（新建）不声明 params、不挂 data，本
       // schema 只作用于本层，行为不变。
       data: editorLoader,
-      errorComponent: NotFound,
+      errorComponent: ArticleNotFound,
       component: () => import('./Editor')
     }
   ]
@@ -245,6 +246,12 @@ export default function App() {
       context={routerContext}
       // baseUrl={import.meta.env.BASE_URL.slice(0, -1)}
       errorHandler={(e) => <RouterError error={e} />}
+      // 未匹配路径 → 页面级 404（@native-router/react ≥1.14 notFound
+      // prop：解析以 core 的 NotFoundError 拒绝时渲染，优先于
+      // errorHandler；组件类型以无参渲染，back/forward 重放该条目同样
+      // 落 404）。与 errorComponent 的分工不变：/article/:title 的 data
+      // 段失败仍走路由级 Article/NotFound，这里只接路径不存在
+      notFound={NotFound}
       // 视图过渡（@native-router/react ≥1.10）：push/pop 双向开（库默认
       // 仅 push——pop 走 viewStack 快照恢复，动画会拖慢返回；这里显式
       // 双开展示方向感，replace/守卫重定向不动画）。动画范围由
