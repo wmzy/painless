@@ -773,13 +773,70 @@ describe('createQueryHook（场景 hook）', () => {
     expect(cache.peek!([])?.value).toEqual(['v1']);
 
     // 另一 tab 登出擦盘：removeItem 广播 newValue=null——本 tab 不能继续
-    // 用旧会话留在内存里的镜像（与冷启动「不得 hydrate 回上个账号数
-    // 据」同一语义的会话内对偶）
+    // 用旧会话留在内存里的镜像（与冷启动「不得 hydrate 回上个账号
+    // 数据」同一语义的会话内对偶）
     window.dispatchEvent(
       new StorageEvent('storage', {key: KEY, newValue: null, storageArea: localStorage})
     );
     expect(cache.peek!([])).toBeUndefined();
 
+    localStorage.removeItem(KEY);
+  });
+
+  it('跨 tab 互写收敛：两个监听 tab 的写盘乒乓经 diff 一轮收敛不死循环', () => {
+    // 回环防护的收敛性契约（useQuery.ts 镜像写盘的写前 diff）：两个 tab
+    // 都在监听 storage、各自持有镜像写盘回调时，一轮事件→清内存→写回
+    // 空表之后盘上稳定——第二个写回 diff 到同值跳过，链路不再产生新
+    // 写盘（若 diff 失效，写回→广播→再清→再写回会无限乒乓）。
+    // jsdom 不自动广播 storage 事件，手动派发还原浏览器行为；两个
+    // cache 都挂在本 window 上、事件同时命中两者，是真实「只有其它
+    // tab 收到」的保守超集——超集下收敛则真实链路必收敛
+    const KEY = 'painless.test.crosstab-pingpong';
+    localStorage.clear();
+    const tabA = createQueryCache<string[], []>('tab-a', 60_000, {
+      persist: KEY
+    });
+    const tabB = createQueryCache<string[], []>('tab-b', 60_000, {
+      persist: KEY
+    });
+
+    // tabA 拿到新数据落盘（真实浏览器此刻会向 tabB 广播）
+    tabA.set([], ['v1']);
+    expect(tabB.peek!([])).toBeUndefined(); // 未 hydrate 别 tab 的字节
+    const mirror = localStorage.getItem(KEY)!;
+
+    const setItemSpy = vi.spyOn(Storage.prototype, 'setItem');
+    window.dispatchEvent(
+      new StorageEvent('storage', {
+        key: KEY,
+        newValue: mirror,
+        storageArea: localStorage
+      })
+    );
+
+    // 两 tab 各自清内存；clear 的 delete 事件驱动各自的镜像写回空表：
+    // 第一个写回发现盘上是 v1 镜像（不同值）→ 落盘；第二个写回 diff
+    // 发现盘上已是同一份空表 → 跳过。全链路只多一次写盘
+    expect(tabA.peek!([])).toBeUndefined();
+    expect(tabB.peek!([])).toBeUndefined();
+    expect(setItemSpy).toHaveBeenCalledTimes(1);
+    const empty = JSON.stringify({v: 1, data: {}});
+    expect(localStorage.getItem(KEY)).toBe(empty);
+
+    // 广播链回环（真实浏览器会把这次空表写盘广播给另一 tab）：再派发
+    // 一轮事件，两 tab 再清（已空，no-op）——写回 diff 同值跳过，无新
+    // 写盘，链路就此收敛
+    window.dispatchEvent(
+      new StorageEvent('storage', {
+        key: KEY,
+        newValue: empty,
+        storageArea: localStorage
+      })
+    );
+    expect(setItemSpy).toHaveBeenCalledTimes(1);
+    expect(localStorage.getItem(KEY)).toBe(empty);
+
+    setItemSpy.mockRestore();
     localStorage.removeItem(KEY);
   });
 

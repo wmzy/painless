@@ -299,6 +299,28 @@ test('invalid slug on /editor/:slug: params schema 拒绝并走全局 errorHandl
   await expect(page.getByRole('button', {name: 'Publish Article'})).toHaveCount(0);
 });
 
+// 文章详情 404：data 段失败走路由级 errorComponent（与上一条 params 段
+// 失败走全局 errorHandler 构成双通道对照——native-router 的通道边界）。
+// mockApi 对未知 slug 的详情端点回 404 {errors}（bySlug 找不到 fixture），
+// 无需追加路由；errorText 把 errors 拼进 message，HTTPError.status=404
+// 被 NotFound 的 duck-typing 判别命中「不存在」文案分支。
+test('missing article slug: loader 404 → route-level errorComponent NotFound', async ({page}) => {
+  await mockApi(page, {published: false});
+
+  await page.goto('/article/does-not-exist');
+
+  await expect(page.getByRole('heading', {name: 'Article not found'})).toBeVisible();
+  await expect(
+    page.getByText('The article does not exist or has been removed.')
+  ).toBeVisible();
+
+  // errorComponent 内的返回首页链接可用：点击回到 Home（fixture 首篇）
+  await page.getByRole('link', {name: 'Back to home'}).click();
+  await expect(
+    page.getByRole('heading', {name: article1.title})
+  ).toBeVisible();
+});
+
 // 未保存离开拦截（beforeunload 通道）。导航栏 NavLink as 组合 SPA 化
 // 后，点导航链接不再跨文档卸载（走 in-app 通道，见下一条用例），整页
 // 卸载只剩刷新/关闭两个入口——此处以 location.reload() 触发：dirty 时
