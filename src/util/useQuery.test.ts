@@ -5,13 +5,14 @@
 // 后：config 在用例内创建 hook 时全量闭合，renderHook 调用点只给 args——
 // 与生产调用点（Tags/CommentList）同款零 option 形态。select/retry 已按
 // YAGNI 裁剪未实现，对应旧用例随之移除。
+import type {Article} from '@/types';
+
 import {describe, it, expect, vi} from 'vitest';
 import {renderHook, act, waitFor} from '@testing-library/react';
 
 // mock 钩子在 @/util/mock（无 haze-ui 依赖），本测试无需 mock haze-ui
 //（早期链路在 vitest ESM 下无法提供 UMD 命名导出，故曾整体 mock）。
 
-import type {Article} from '@/types';
 import {stableHash} from 'react-toolroom/async';
 
 import {getMockConfigs, setMockConfig} from './mock-config';
@@ -970,7 +971,7 @@ describe('resetAllCaches（测试工具：注册表还原基线）', () => {
     // （logout / DevTool Clear / mock refresh 闭包的既有链路不受重置影响）。
     // 实体经注册表寻址取得——同时验证还原的是原实例而非空表
     const entry = allCaches.find(({name}) => name === 'article')!;
-    entry.cache.set(['reset-probe'] as [string], {} as Article);
+    entry.cache.set(['reset-probe'] as [string], {});
     expect(entry.cache.peek!(['reset-probe'] as [string])).toBeDefined();
     clearAllCaches();
     expect(entry.cache.snapshot?.()).toEqual([]);

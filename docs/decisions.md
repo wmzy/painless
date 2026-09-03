@@ -786,3 +786,54 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
   BASELINE_BYTES 代码不动，脚本头注释随批同步本批实测）。
 - **验证**：typecheck + lint:ci + 265 单测（24 文件）+ build + size +
   28 e2e 全绿。
+
+## 21. 生态评审修复批：七库修复 + 模板加固集成（2026-09-04）
+
+- **背景**：对模板 + 七个自研库（native-router / react-toolroom /
+  fetch-fun / react-f0rm / haze-ui / react-use-control / @for-fun/
+  event-emitter）的全面评审（对比 TanStack / ky / mitt / RHF / Radix）
+  产出 P0-P3 修复清单；库侧由 CI semantic-release 发版、模板从 npm
+  集成（不用 workspace link），共 7 库 35 commit + 模板 9 commit。
+- **版本**：@native-router/core ^1.15.0 + @native-router/react ^1.14.0
+  （回摆竞态/零 delta veto/getParams 窗口外 undefined/setSearch 兜底四
+  fix；route 级 context 合并注入、Router notFound、pendingDelayMs 应用
+  内导航骨架、createRoute 工厂编写时类型化、initHistoryStack 并发限流
+  五 feat——模板暂未消费新 API，仅升级锁定兼容面，后续按需采用）、
+  react-toolroom ^0.21.0（useRetry abort 纪律 + 抖动、focus/reconnect
+  重验证 staleTime 门控 + rejection 兜底、per-key stale）、react-f0rm
+  ^1.1.0（字段卸载精确事件、trigger 作用域等待、字段级 validateDeps、
+  getValues 缓存、初值 render 期 seed 等九项）、fetch-fun ^0.12.1
+  （timeout 能力降级、beforeRetry 钩子、Retry-After、mapError 语义、
+  openapi 2xx/typedQuery；0.12.1 修跨 realm 超时判别，见下）、
+  haze-ui ^1.19.0（Popover 键盘可达、FormItem asProps 优先级、Toast
+  WCAG 2.2.1 暂停/上限/位置、tier-2 视口翻转、子路径 exports、axe
+  基线）、react-use-control ^1.5.1（watch 副作用出 updater、受控切换
+  DEV warn、字符串 brand 双副本互识）、@for-fun/event-emitter ^1.1.0
+  （off/removeAllListeners、emit 异常隔离、DEV maxListeners；semantic-
+  release 单 push 聚合发一版，1.1.0 已含全部）。
+- **fetch-fun 0.12.0→0.12.1 集成期修复**：0.12.0 的超时判别用
+  `instanceof Error`，在 vitest 内嵌 jsdom 的双 realm 环境失效（其
+  DOMException 原型链上的 Error 与本模块 realm 的 Error 非同一对象，
+  instanceof 恒 false）→ 降级包装不触发、DOMException 裸漏；0.12.1 改
+  name 鸭子判别（自有信号中止范围限定内）修复。连带修正本仓
+  http.test 超时用例：原 mock 将 30s 总预算与 10s 单次预算共用同一
+  signal——旧断言 10000ms 是 0.11.x 外层 totalTimeout 判别失效（同一
+  realm bug）从不认领的副产物；0.12.1 起外层合法认领（30000ms），用例
+  改为区分两个预算 signal（同 totalTimeout 用例模式）后断言 10000ms
+  成立，语义与真实管线一致。
+- **模板侧同批加固**（与库发版并行，独立成 commit）：bindQueryFn 换绑
+  不同 cache DEV 早抛（第 9 条不变量升级为运行时守护，重绑同 cache 幂
+  等放行）；loaderCache 多 router 覆盖 DEV 告警；hashArgs 递归剥嵌套
+  signal（stripVolatile 与递归剥 undefined 对称）；get() init 类型收
+  Omit<..., 'method'> + 运行时后置合并兜底；withCache 新增 maxAge 硬
+  过期（默认不启用，第 13 条冻结面已补记）；三条契约测试（跨 tab
+  storage 互写收敛 / mock always 期间持久化挂起核实 / e2e 文章 404 →
+  errorComponent）；resetAllCaches 测试工具收拢清场样板。
+- **体积**：121.54 KB（实测 124454 B / 34 文件），对上批 122005 B
+  （119.15 KB）+2.39 KB——增量主要来自 react-f0rm 1.1.0（字段级
+  validateDeps/初值 render 期 seed）与 react-toolroom 0.21.0（per-key
+  stale/abort 纪律）的运行时新增；预算 126.00 KB 内（3.5% 余量），棘
+  轮基线不动（BASELINE_BYTES 与阈值代码不动，脚本头注释随批同步本批
+  实测）。
+- **验证**：typecheck + 275 单测（24 文件，净增 10 条）+ build + size +
+  29 e2e（新增 404 → NotFound 一条）全绿。

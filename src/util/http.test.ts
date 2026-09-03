@@ -116,7 +116,7 @@ describe('http utilities', () => {
       // Options（原生 fetch 不认识该字段；透传等于把指令当参数发出去）
       await fetchJSON('test', {schema: {type: 'object'}});
 
-      const init = fetchMock.mock.calls[0]![1] as RequestInit;
+      const init = fetchMock.mock.calls[0]![1]!;
       expect('schema' in init).toBe(false);
     });
 
@@ -461,17 +461,24 @@ describe('http utilities', () => {
       vi.useFakeTimers();
       // Node 的 AbortSignal.timeout 走内部定时器，fake timers 拦不到，
       // 换成受控 controller：拿到预算值的同时能手动触发到点中止。
-      const controller = new AbortController();
+      // 区分两个预算的 signal（同 totalTimeout 用例的 mock 模式）：30s
+      // 总预算换新 controller，10s 单次预算共享 attempt 信号——共用同一
+      // signal 会让外层总预算同样认领（fetch-fun 0.12.1 起 name 鸭子判别
+      // 在本环境生效，外层认领后 message 变 30000ms；旧断言 10000ms 是
+      // 0.11.x instanceof 判别在 jsdom 双 realm 下失效、外层从不认领的
+      // 副产物）。
+      const attempt = new AbortController();
       const timeoutSpy = vi
         .spyOn(AbortSignal, 'timeout')
-        .mockReturnValue(controller.signal);
+        .mockImplementation((ms: number) =>
+          ms === 30_000 ? new AbortController().signal : attempt.signal
+        );
       fetchMock.mockImplementation(hangingFetch());
 
       const outcome = get('articles').catch((e: unknown) => e);
-      // 到点：模拟超时中止（DOMException name=TimeoutError 是库的判别依据）
-      controller.abort(
-        new DOMException('Signal timed out.', 'TimeoutError')
-      );
+      // 到点：模拟单次预算超时中止（DOMException name=TimeoutError 是库
+      // 的判别依据；总预算信号未中止，totalTimeout 层透传不认领）
+      attempt.abort(new DOMException('Signal timed out.', 'TimeoutError'));
       // 驱动 fake timers 走完两次重试的退避（重试把 TimeoutError 视为
       // 瞬态故障；后续尝试拿到的是已中止的同一 signal，立即失败）
       await vi.advanceTimersByTimeAsync(60_000);
