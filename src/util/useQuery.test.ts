@@ -452,6 +452,63 @@ describe('createQueryHook（场景 hook）', () => {
     second.unmount();
   });
 
+  it('hash 归一：对象参数内嵌的 AbortSignal 递归剥除，与不嵌同 key', async () => {
+    // 顶层剥 signal（useRun 尾附）与递归剥 undefined 键原是两层不对称的
+    // 归一：signal 嵌在对象参数内时不剥——stableHash 虽把 signal 值折叠
+    // 为固定占位，多出的键仍参与结构比较，同逻辑参数被拆成两条 key。
+    // 场景：service 形参是 options 对象且调用方把 AbortSignal 混进对象
+    const fn: (args: Record<string, unknown>) => Promise<string[]> = vi.fn(
+      () => Promise.resolve(['v1'])
+    );
+    const cache = createQueryCache<any, any>('hash-nested-signal');
+    const useQ = createQueryHook({
+      queryFn: bindQueryFn(fn, cache),
+      initData: [] as string[]
+    });
+
+    const first = renderHook(
+      ({args}) => useQ([args]),
+      {initialProps: {args: {page: 1, signal: new AbortController().signal}}}
+    );
+    await waitFor(() => expect(first.result.current.data).toEqual(['v1']));
+    first.unmount();
+
+    // 不带 signal 的同逻辑参数（loader 侧 schema 输出形态）与带另一个
+    // 新 signal 实例的调用（signal 身份每次 run 都换）都命中同一 key，
+    // 不重发
+    const second = renderHook(
+      ({args}) => useQ([args]),
+      {initialProps: {args: {page: 1}}}
+    );
+    await waitFor(() => expect(second.result.current.data).toEqual(['v1']));
+    second.unmount();
+    const third = renderHook(
+      ({args}) => useQ([args]),
+      {initialProps: {args: {page: 1, signal: new AbortController().signal}}}
+    );
+    await waitFor(() => expect(third.result.current.data).toEqual(['v1']));
+    third.unmount();
+    expect(fn).toHaveBeenCalledTimes(1);
+
+    // 更深一层（对象参数内嵌对象再嵌 signal）：同形状带/不带 signal
+    // 仍归一为同一 key。形状与前述不同是新 key，fn 第二次调用合理
+    const fourth = renderHook(
+      ({args}) => useQ([{filters: args}]),
+      {initialProps: {args: {page: 1, signal: new AbortController().signal}}}
+    );
+    await waitFor(() => expect(fourth.result.current.data).toEqual(['v1']));
+    fourth.unmount();
+    expect(fn).toHaveBeenCalledTimes(2);
+
+    const fifth = renderHook(
+      ({args}) => useQ([{filters: args}]),
+      {initialProps: {args: {page: 1}}}
+    );
+    await waitFor(() => expect(fifth.result.current.data).toEqual(['v1']));
+    fifth.unmount();
+    expect(fn).toHaveBeenCalledTimes(2);
+  });
+
   // 断网恢复重验证（useReconnectRevalidate）：toolroom 监听 window 的
   // 'online' 事件（内部再经 navigator.onLine 守卫，jsdom 默认 true 不
   // 拦截），触发时对 miss/stale 条目后台重拉，新鲜期内零请求。

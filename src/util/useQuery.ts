@@ -39,26 +39,32 @@ const DEFAULT_CACHE_TIME = 5 * 60_000;
 // memo 桶不随渲染击穿）。
 const identity = <T,>(r: T) => r;
 
-// 统一 hash 的两层归一，缺一则同一参数会被拆成不同 key：
-// 1. 剥掉参数中混入的 AbortSignal（useRun({signal: true}) 每次 run 附加）
-//   ——否则 refetch 的 cache.delete(args) 与 useRun 存下的带 signal 条目
-//   不同 key；
+// 统一 hash 的归一层，缺一则同一参数会被拆成不同 key：
+// 1. 剥掉混入的 AbortSignal（useRun({signal: true}) 每次 run 附加）——
+//   顶层参数位与对象参数内嵌的一样递归剥：判定与 react-toolroom 的
+//   isAbortSignal 同源（instanceof + 跨 realm 鸭子探测，不用 instanceof
+//   直判），否则 refetch 的 cache.delete(args) 与 useRun 存下的带
+//   signal 条目不同 key；嵌在对象参数里的 signal 同样拆 key——
+//   stableHash 只把 signal 值折叠为固定占位，多出的键仍参与结构比较；
 // 2. 递归剥掉对象里值为 undefined 的键——loader 侧拿 schema 输出（缺省
 //   字段无键），视图侧拿组件状态（缺省字段是 undefined 属性），归一后
 //   两侧永远同 key。
-const stripUndefined = (v: unknown): unknown => {
-  if (Array.isArray(v)) return v.map(stripUndefined);
+const stripVolatile = (v: unknown): unknown => {
+  if (isAbortSignal(v)) return undefined;
+  if (Array.isArray(v)) {
+    return v.filter((e) => !isAbortSignal(e)).map(stripVolatile);
+  }
   if (v !== null && typeof v === 'object') {
     const out: Record<string, unknown> = {};
     for (const [k, val] of Object.entries(v)) {
-      if (val !== undefined) out[k] = stripUndefined(val);
+      const next = stripVolatile(val);
+      if (next !== undefined) out[k] = next;
     }
     return out;
   }
   return v;
 };
-const hashArgs = (args: unknown[]) =>
-  stableHash(stripUndefined(args.filter((a) => !isAbortSignal(a))));
+const hashArgs = (args: unknown[]) => stableHash(stripVolatile(args));
 
 // mutation 从可选收成必有：createQueryCache 恒由 createMemoryCacheProvider
 // 创建（运行时必然携带），调用方零断言。值类型与 key 元组类型都在 cache 上
