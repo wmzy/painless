@@ -1,19 +1,16 @@
 import {useState} from 'react';
-import {navigate} from '@native-router/core';
-import {useMatched} from '@native-router/react';
 import {Form, useForm, reset, useIsSubmitting} from 'react-f0rm';
 import {useMutation} from 'react-toolroom/async';
 import {Card, Title, Text, Divider, TextareaCore, Alert, Button, FormItem} from 'haze-ui';
 
 import * as articleService from '@/services/article';
 import {favoriteOnArticle, followOnArticle} from '@/services/mutations';
-import {getCurrentUser} from '@/services/auth';
 import {useArticleData} from '@/services/dataloaders';
 import {commentsCache} from '@/util/useQuery';
 import {useTitle} from '@/util/useTitle';
 import {useToastError} from '@/util/toastError';
 import FavoriteButton from '@/components/FavoriteButton';
-import {loginRedirect, useFavorite} from '@/views/_shared/useFavorite';
+import {useFavorite, useRequireAuth} from '@/views/_shared/useFavorite';
 import {AuthorLine} from '@/views/_shared/AuthorLine';
 
 import CommentList from './CommentList';
@@ -31,7 +28,6 @@ export default function ArticleView() {
   // 文章标题进 document.title：loader 已保证进组件前 resolve，title
   // 首帧即有，无「先默认后换」的闪烁；离开恢复入口默认
   useTitle(`${article.title} · Painless`);
-  const {router, location} = useMatched();
   // 表单值形状：handleCommentSubmit 的 values 与此泛型一致
   const commentForm = useForm<{body: string}>();
   // 同 Editor：react-f0rm ≥0.4 的 onSubmit 被 await，isSubmitting 覆盖整个异步提交
@@ -69,14 +65,10 @@ export default function ArticleView() {
     invalidates: [[commentsCache, article.slug]]
   });
 
-  // 未登录（无 token）时写操作一律引导去登录页：带原目的页 redirect
-  //（loginRedirect 与 useFavorite 共用——pathname+search 整体 encode，
-  // 登录后回跳本页）
-  const requireAuth = (): boolean => {
-    if (getCurrentUser()) return true;
-    void navigate(router, loginRedirect(location));
-    return false;
-  };
+  // 未登录（无 token）时写操作一律引导去登录页：requireAuth 闸门已与
+  // favorite 收敛进 views/_shared/useFavorite.ts（useRequireAuth——
+  // pathname+search 整体 encode 进 redirect，登录后回跳本页）
+  const requireAuth = useRequireAuth();
 
   const toggleFavorite = () => onFavorite(article.slug, !article.favorited);
 
