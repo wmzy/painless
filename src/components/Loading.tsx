@@ -13,9 +13,10 @@ export default function Loading(): ReactPortal | null {
   const {key, status} = loading || {};
 
   useEffect(() => {
-    requestAnimationFrame(() => {
+    const raf = requestAnimationFrame(() => {
       setPercent(0);
     });
+    return () => cancelAnimationFrame(raf);
   }, [key]);
 
   useEffect(() => {
@@ -36,13 +37,21 @@ export default function Loading(): ReactPortal | null {
         });
       }, 500);
 
-      return () => clearInterval(timer);
+      // 卸载清理必须连带 remove()：只清定时器会把灰条容器 div 残留在
+      // body（pending 中途卸载场景，节点泄漏到组件生命周期之外）
+      return () => {
+        clearInterval(timer);
+        remove();
+      };
     } else if (status === 'resolved') {
-      requestAnimationFrame(() => {
+      // rAF 持 id、卸载时取消：放任回调在卸载后执行是对已卸载组件的
+      // 游离状态更新（React 18+ 静默无操作，但调度本身泄漏）
+      const raf = requestAnimationFrame(() => {
         setPercent(100);
       });
       const timer = setTimeout(remove, 500);
       return () => {
+        cancelAnimationFrame(raf);
         clearTimeout(timer);
         remove();
       };
