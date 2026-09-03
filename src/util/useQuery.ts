@@ -261,11 +261,24 @@ const boundCaches = new WeakMap<
   EntityCache<any, any[]>
 >();
 
-// 不变量：一个 service 函数只绑一个 cache（重复绑定后者覆盖）
+// 不变量：一个 service 函数只绑一个 cache。DEV 下换绑不同 cache 早抛
+// 而非静默覆盖（风格对齐 getCache 的早抛先例）：覆盖的症状隐蔽——先绑
+// 的场景 hook 运行时改读后绑的 cache，数据通道无声张冠李戴，dev 首跑
+// 即暴露；重绑同一 cache 实例是幂等操作，不视为违约。生产（非 DEV）
+// 维持后写覆盖：模板自身每个 fetch 只 bind 一次，违约只可能来自误写，
+// 生产路径不为它付检查成本。
 export function bindQueryFn<T, K extends unknown[]>(
   fetch: (...args: [...K, signal?: AbortSignal]) => Promise<T>,
   cache: EntityCache<T, K>
 ): QueryFn<T, K> {
+  if (import.meta.env.DEV) {
+    const existing = boundCaches.get(fetch);
+    if (existing && existing !== cache) {
+      throw new Error(
+        '[bindQueryFn] service 函数重复绑定不同 cache——一个 fetch 只允许配对一个 cache（重绑同一 cache 幂等无害），请检查 dataloaders 声明点'
+      );
+    }
+  }
   boundCaches.set(fetch, cache);
   return fetch as QueryFn<T, K>;
 }

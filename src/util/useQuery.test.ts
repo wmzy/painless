@@ -826,7 +826,7 @@ describe('createQueryHook（场景 hook）', () => {
 });
 
 describe('bindQueryFn / getCache（fetch × cache 配对）', () => {
-  it('getCache 取回绑定的同一 cache；函数身份不变；重复绑定后者覆盖', () => {
+  it('getCache 取回绑定的同一 cache；函数身份不变；DEV 下换绑不同 cache 早抛', () => {
     const fn = vi.fn(async () => ['v']);
     const first = createQueryCache<any, any>('bind-first');
     const second = createQueryCache<any, any>('bind-second');
@@ -836,8 +836,34 @@ describe('bindQueryFn / getCache（fetch × cache 配对）', () => {
     expect(queryFn).toBe(fn);
     expect(getCache(queryFn)).toBe(first);
 
-    bindQueryFn(fn, second);
-    expect(getCache(queryFn)).toBe(second);
+    // 原契约是「后者静默覆盖」，症状隐蔽（先绑的 hook 运行时改读后绑的
+    // cache）——改为 DEV 早抛（vitest 环境 import.meta.env.DEV 为 true），
+    // 风格对齐 getCache 对未绑定函数的早抛。抛错即拒：既有绑定不被
+    // 半途生效的违约改写
+    expect(() => bindQueryFn(fn, second)).toThrow(/bindQueryFn/);
+    expect(getCache(fn)).toBe(first);
+  });
+
+  it('重绑同一 cache 实例：幂等放行，不视为违约', () => {
+    const fn = vi.fn(async () => ['v']);
+    const cache = createQueryCache<any, any>('bind-same');
+    bindQueryFn(fn, cache);
+    expect(() => bindQueryFn(fn, cache)).not.toThrow();
+    expect(getCache(fn)).toBe(cache);
+  });
+
+  it('非 DEV 维持后者覆盖（生产语义不变）', () => {
+    vi.stubEnv('DEV', false);
+    try {
+      const fn = vi.fn(async () => ['v']);
+      const first = createQueryCache<any, any>('bind-prod-first');
+      const second = createQueryCache<any, any>('bind-prod-second');
+      bindQueryFn(fn, first);
+      expect(() => bindQueryFn(fn, second)).not.toThrow();
+      expect(getCache(fn)).toBe(second);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it('未绑定的函数抛错并指向 bindQueryFn（模拟品牌约束被 any 断链绕过）', () => {

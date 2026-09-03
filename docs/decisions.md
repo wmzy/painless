@@ -211,10 +211,13 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
     身份的 memo 桶不随渲染击穿），恒等投影下输出即输入。
   - **bindQueryFn 用 WeakMap 存配对 + phantom brand**：`WeakMap<fn,
     cache>` 模块级单表，函数本身零改动（不再挂属性，身份/fn.name/可枚
-    举属性都不变，也不会再被枚举出多余成员）；`QueryFn` 类型以模块私有
+   举属性都不变，也不会再被枚举出多余成员）；`QueryFn` 类型以模块私有
     unique symbol 打纯类型品牌（`declare const bound: unique symbol`，
     零运行时），普通 service 函数缺品牌、编译期就进不了
-    `createQueryHook`。品牌值收 `EntityCache<T, K>`（2026-08-31 从
+    `createQueryHook`。**换绑不同 cache 在 DEV 下早抛**（2026-09-03 修
+    订：原「重复绑定后者覆盖」的症状隐蔽——先绑的场景 hook 运行时改读
+    后绑的 cache，数据通道无声张冠李戴；重绑同一 cache 实例幂等放行，
+    生产维持覆盖不为误写付检查成本）。品牌值收 `EntityCache<T, K>`（2026-08-31 从
     `unknown` 收回）：旧版 CacheProvider 成员为属性签名、K 上严格逆变，
     具体 QueryFn 对 `QueryFn<any, any[]>`（`QueryHookConfig.queryFn`
     的字段类型）不可赋值，被迫收 unknown；react-toolroom 0.18.3 起全
@@ -387,7 +390,8 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
     保留的最后所见值。
   - `bindQueryFn(fetch, cache)` / `getCache(queryFn)`（`util/useQuery.ts`）：
     WeakMap 配对、函数身份零改动、phantom brand 编译期门槛、未绑定
-    早抛（第 9 条）。
+    早抛、换绑不同 cache DEV 早抛（重绑同实例幂等；生产维持覆盖，
+    第 9 条）。
   - `createQueryCache(name, cacheTime?, {persist?})` + `allCaches` 注册表
     + `clearAllCaches`（登出清场顺序：先清内存后擦盘）。
   - `attachPersistence`（内部）：载荷版本门禁 `{v, data}`、hydrate 保留
