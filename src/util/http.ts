@@ -1,5 +1,6 @@
 import * as ff from 'fetch-fun';
 
+import {parseApiError} from './apiError';
 import {pushRequestLog} from './requestLog';
 
 const BASE_URL: string =
@@ -9,20 +10,18 @@ const BASE_URL: string =
 // RealWorld 非 2xx 错误体是 {errors: {field: string[]}}（如 422
 // {"errors":{"email":["has already been taken"]}}}），也有 {message} 形状：
 // 优先取 message，否则把 errors 拼成可读文案。调用方依赖 e.message 呈现
-// 这份文案，mapError 处据此换写 HTTPError 的 message。
+// 这份文案，mapError 处据此换写 HTTPError 的 message。契约解析共用
+// ./apiError（与 validators.ts 的字段回填同一份，见其文件头），这里只做
+// 文案拼装。
 function errorText(data: unknown): string {
-  const body = data as {message?: unknown; errors?: unknown} | undefined;
-  if (typeof body?.message === 'string' && body.message) return body.message;
-  if (body?.errors && typeof body.errors === 'object') {
-    const parts: string[] = [];
-    for (const [field, messages] of Object.entries(body.errors)) {
-      for (const m of Array.isArray(messages) ? messages : [messages]) {
-        if (typeof m === 'string') parts.push(`${field} ${m}`);
-      }
-    }
-    if (parts.length) return parts.join('; ');
+  const {message, fieldErrors} = parseApiError(data);
+  if (message) return message;
+  if (!fieldErrors) return '';
+  const parts: string[] = [];
+  for (const [field, messages] of Object.entries(fieldErrors)) {
+    for (const m of messages) parts.push(`${field} ${m}`);
   }
-  return '';
+  return parts.join('; ');
 }
 
 // ---- 动态 token 注入 ------------------------------------------------------

@@ -11,6 +11,9 @@ import {setServerErrors} from 'react-f0rm';
 
 import {fetchProfile} from '@/services/auth';
 
+import {parseApiError} from './apiError';
+import type {ApiFieldErrors} from './apiError';
+
 // 与 Field 的 validate 回调同形：返回错误文案表示未通过，undefined 通过
 export type Validator = (v: string) => string | undefined;
 
@@ -103,20 +106,13 @@ type ApiErrorLike = {
   data?: {errors?: Record<string, unknown>};
 };
 
-// 归一错误体的字段级 errors：单条 string 包成数组，非字符串条目丢弃；
-// 形状不对（缺 data.errors / 非对象）返回 undefined。
-function fieldErrorsOf(e: unknown): Record<string, string[]> | undefined {
+// 归一错误体的字段级 errors：422 判别与 data 提取留在本地（鸭子形状只
+// 认错误对象本身），errors 形状的归一共用 ./apiError——与 http.ts 拼文案
+// 同一份契约解析；形状不对（缺 data.errors / 非对象）返回 undefined。
+function fieldErrorsOf(e: unknown): ApiFieldErrors | undefined {
   const api = e as ApiErrorLike | null;
   if (!api || typeof api !== 'object' || api.status !== 422) return undefined;
-  const raw = api.data?.errors;
-  if (!raw || typeof raw !== 'object') return undefined;
-  const result: Record<string, string[]> = {};
-  for (const [field, messages] of Object.entries(raw)) {
-    const list = Array.isArray(messages) ? messages : [messages];
-    const strings = list.filter((m): m is string => typeof m === 'string');
-    if (strings.length) result[field] = strings;
-  }
-  return result;
+  return parseApiError(api.data).fieldErrors;
 }
 
 export function applyApiFieldErrors(
