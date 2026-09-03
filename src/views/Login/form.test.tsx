@@ -33,7 +33,7 @@ import {navigate} from '@native-router/core';
 
 import * as auth from '@/services/auth';
 
-import Login from './index';
+import Login, {sanitizeRedirect} from './index';
 
 const loginMock = vi.mocked(auth.login);
 const navigateMock = vi.mocked(navigate);
@@ -257,6 +257,14 @@ describe('登录后回跳原目的页（redirect）', () => {
     await submitAndExpectNavigate('/');
   });
 
+  // 来源：生态评审修复批后置项——WHATWG 把特殊协议 URL 中的 '\' 归一为
+  // '/'：'/\evil.com' 经 history.push 被浏览器归一成 '//evil.com' 协议
+  // 相对跳转，绕过 '//' 白名单检查，构成 SPA open redirect
+  it('非法 redirect（/\evil.com 反斜杠归一绕过）：回首页', async () => {
+    state.search = {redirect: '/\\evil.com'};
+    await submitAndExpectNavigate('/');
+  });
+
   it('无 redirect（直接访问 /login）：回首页', async () => {
     await submitAndExpectNavigate('/');
   });
@@ -264,5 +272,38 @@ describe('登录后回跳原目的页（redirect）', () => {
   it('空串 redirect（schema 读侧丢弃）：回首页', async () => {
     state.search = {redirect: ''};
     await submitAndExpectNavigate('/');
+  });
+});
+
+// sanitizeRedirect 白名单判定表（来源：生态评审修复批后置项）：视图级
+// 链路（schema 读侧 coerce → navigate 目标）由上方 redirect 组覆盖，这里
+// 把白名单本身的边界形态直接钉在导出函数上——重点是反斜杠：WHATWG 规范
+// 把特殊协议 URL 中的 '\' 归一为 '/'，'/' 开头 + 含 '\' 的值经浏览器
+// 归一可变协议相对地址（'/\evil.com' → '//evil.com'），必须连同反斜杠
+// 整体拒绝。
+describe('sanitizeRedirect 白名单边界', () => {
+  it('合法站内绝对路径原样放行（含 search/hash 深链）', () => {
+    expect(sanitizeRedirect('/')).toBe('/');
+    expect(sanitizeRedirect('/editor/my-slug')).toBe('/editor/my-slug');
+    expect(sanitizeRedirect('/editor/my-slug?tab=2')).toBe('/editor/my-slug?tab=2');
+    expect(sanitizeRedirect('/settings#profile')).toBe('/settings#profile');
+  });
+
+  it('外站与反斜杠形态一律落首页', () => {
+    // 协议绝对 / 协议相对
+    expect(sanitizeRedirect('https://evil.com')).toBe('/');
+    expect(sanitizeRedirect('//evil.com')).toBe('/');
+    expect(sanitizeRedirect('http://evil.com/x')).toBe('/');
+    // 反斜杠：'\evil.com' 不以 '/' 开头本就拒；'/\evil.com' 与 '/\\evil.com'
+    // 过了前两条检查，靠 includes('\\') 拦下（归一后即协议相对跳转）；
+    // '/foo\bar' 归一后仍同源，白名单从严一并拒绝
+    expect(sanitizeRedirect('\\evil.com')).toBe('/');
+    expect(sanitizeRedirect('/\\evil.com')).toBe('/');
+    expect(sanitizeRedirect('/\\\\evil.com')).toBe('/');
+    expect(sanitizeRedirect('/foo\\bar')).toBe('/');
+    // 相对路径 / 缺失
+    expect(sanitizeRedirect('editor/slug')).toBe('/');
+    expect(sanitizeRedirect('')).toBe('/');
+    expect(sanitizeRedirect(undefined)).toBe('/');
   });
 });

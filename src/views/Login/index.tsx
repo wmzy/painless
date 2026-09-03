@@ -45,12 +45,17 @@ export const loginSearchSchema: StandardSchemaV1<unknown, LoginSearch> = {
 
 // redirect 白名单式校验（防 open redirect）：只接受站内绝对路径——非空、
 // 以 '/' 开头、不以 '//' 开头（协议相对 //evil.com）、不含 '://'（带协议
-// https://evil.com）。其余（含缺失）一律落首页。
-const sanitizeRedirect = (value: string | undefined): string =>
+// https://evil.com）、不含 '\'。反斜杠是前两条检查的绕过面：WHATWG URL
+// 规范把特殊协议（http/https 等）URL 中的 '\' 归一为 '/'，
+// history.push('/\evil.com') 经浏览器归一即 '//evil.com' 协议相对跳转，
+// 故含反斜杠的值整体拒绝（含 '/foo\bar' 这类归一后仍同源的无害形态，
+// 白名单从严不做例外）。其余（含缺失）一律落首页。
+export const sanitizeRedirect = (value: string | undefined): string =>
   value !== undefined &&
   value.startsWith('/') &&
   !value.startsWith('//') &&
-  !value.includes('://')
+  !value.includes('://') &&
+  !value.includes('\\')
     ? value
     : '/';
 
