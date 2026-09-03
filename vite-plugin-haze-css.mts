@@ -44,8 +44,9 @@
 // - 注释里的 import 语句会被剥离后忽略（// 行注释与 /* */ 块注释）；
 //   字符串字面量中的形似 import 文本仍可能被误识别——接受为已知边界
 //   （误报至多注入一个存在的 css，无构建破坏）。
-// - vitest（vitest.config.mts）不接本插件：测试不走 css 管道，haze-ui
-//   由 server.deps.inline 处理。
+// - vitest（vitest.config.mts）不接本插件：测试不走 css 管道；haze-ui
+//   dist ≥1.11.1 纯 ESM 零 css 说明符，Node 直连即可（历史 inline 记录
+//   见 vitest.config.mts 注释）。
 import fs from 'node:fs';
 import {createRequire} from 'node:module';
 import {dirname} from 'node:path';
