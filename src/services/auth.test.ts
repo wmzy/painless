@@ -157,6 +157,65 @@ describe('auth service', () => {
       expect(fresh.getCurrentUser()).toBeNull();
     });
 
+    // 来源：生态评审修复批后置项——readStoredUser 原只验 token 是
+    // string：username 缺失/非字符串的存储照样恢复成「已登录」，Layout
+    // 导航渲染 undefined 用户名、Avatar 拿非 string 当图片地址；image 是
+    // 可选字段（null 合法），存在时也必须是 string。
+    it('should treat stored user with missing username as logged out', async () => {
+      localStorage.setItem(
+        'painless.user',
+        JSON.stringify({email: 'test@test.com', token: 'tok'})
+      );
+      vi.resetModules();
+
+      const fresh = await import('@/services/auth');
+
+      expect(fresh.getCurrentUser()).toBeNull();
+    });
+
+    it('should treat stored user with non-string username as logged out', async () => {
+      localStorage.setItem(
+        'painless.user',
+        JSON.stringify({username: 42, email: 'test@test.com', token: 'tok'})
+      );
+      vi.resetModules();
+
+      const fresh = await import('@/services/auth');
+
+      expect(fresh.getCurrentUser()).toBeNull();
+    });
+
+    it('should treat stored user with non-string image as logged out', async () => {
+      localStorage.setItem(
+        'painless.user',
+        JSON.stringify({
+          username: 'test',
+          email: 'test@test.com',
+          token: 'tok',
+          image: 42
+        })
+      );
+      vi.resetModules();
+
+      const fresh = await import('@/services/auth');
+
+      expect(fresh.getCurrentUser()).toBeNull();
+    });
+
+    it('should restore stored user with null image', async () => {
+      // image 可选字段：null 合法（登录/注册响应里必带且可 null），缺失
+      // 亦可——上方 restore 用例的 fixture 即无 image 字段
+      localStorage.setItem(
+        'painless.user',
+        JSON.stringify({...user, bio: null, image: null})
+      );
+      vi.resetModules();
+
+      const fresh = await import('@/services/auth');
+
+      expect(fresh.getCurrentUser()).toEqual({...user, bio: null, image: null});
+    });
+
     it('should clear storage and current user on logout', async () => {
       vi.mocked(http.post).mockResolvedValue({user});
       await auth.login('test@test.com', 'password');

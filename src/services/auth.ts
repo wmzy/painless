@@ -19,7 +19,10 @@ export type User = {
 
 const STORAGE_KEY = 'painless.user';
 
-// localStorage 是外部输入，解析失败或形状不对时按未登录处理。
+// localStorage 是外部输入，解析失败或形状不对时按未登录处理。校验覆盖
+// 视图直接消费的字段：token（http 凭据）、username（Layout 导航/Avatar
+// 直接渲染，缺失时会渲染出 undefined 用户名、头像拿非 string 当图片地
+// 址）、image（可选，null 合法，存在时必须是 string 或 null）。
 function readStoredUser(): User | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -27,7 +30,11 @@ function readStoredUser(): User | null {
     if (
       user &&
       typeof user === 'object' &&
-      typeof (user as User).token === 'string'
+      typeof (user as User).token === 'string' &&
+      typeof (user as User).username === 'string' &&
+      ((user as User).image === undefined ||
+        (user as User).image === null ||
+        typeof (user as User).image === 'string')
     ) {
       return user as User;
     }
