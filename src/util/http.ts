@@ -112,10 +112,10 @@ const baseClient = import.meta.env.DEV
   : client;
 
 // init 的其余字段直接合入 Options，自定义 headers 逐个合并以覆盖默认头。
-// schema 是校验指令不是请求参数：在这里剥掉，由出口处的 withSchema 消费。
+// schema 是校验指令不是请求参数：解构剥离（不散进 Options，由出口处的
+// withSchema 消费）。
 function withInit(o: ff.Options, init?: RequestInitish) {
-  const {headers, ...rest} = init ?? {};
-  delete (rest as RequestInitish).schema;
+  const {headers, schema: _schema, ...rest} = init ?? {};
   let result = {...o, ...rest} as ff.Options;
   for (const [name, value] of Object.entries(headers ?? {})) {
     result = ff.header(result, name, value);
@@ -177,13 +177,16 @@ export function fetchJSON<T = unknown>(
 }
 
 // signal 为只读查询的取消通道：经 withInit 合入 Options 后直通 fetch；
-// 不传时行为与原先一致。
+// 不传时行为与原先一致。init 不收 method（Omit 收紧）：get 的方法语义
+// 由本出口固定——调用方误传 method 会静默换掉请求方法且与 schema label
+// （`GET <url>`）脱节；运行时同样以固定值后置合并兜底（JS 调用方 /
+// any 断链时仍是 get）。
 export function get<T = unknown>(
   url: string,
   params?: Record<string, string | number | undefined>,
-  init?: RequestInitish
+  init?: Omit<RequestInitish, 'method'>
 ) {
-  let o = ff.url(withInit(baseClient, {method: 'get', ...init}), url);
+  let o = ff.url(withInit(baseClient, {...init, method: 'get'}), url);
   if (params) {
     // 与 qss 语义一致：undefined 值跳过序列化
     const defined = Object.fromEntries(

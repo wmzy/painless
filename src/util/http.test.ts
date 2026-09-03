@@ -109,6 +109,17 @@ describe('http utilities', () => {
       );
     });
 
+    it('strips the schema directive out of the merged options (never reaches fetch)', async () => {
+      fetchMock.mockResolvedValue(mockResponse({data: 'ok'}));
+
+      // schema 是校验指令不是请求参数：withInit 解构剥离后不得散进
+      // Options（原生 fetch 不认识该字段；透传等于把指令当参数发出去）
+      await fetchJSON('test', {schema: {type: 'object'}});
+
+      const init = fetchMock.mock.calls[0]![1] as RequestInit;
+      expect('schema' in init).toBe(false);
+    });
+
     it('should forward signal to fetch', async () => {
       fetchMock.mockResolvedValue(mockResponse({data: 'test'}));
       const controller = new AbortController();
@@ -335,6 +346,22 @@ describe('http utilities', () => {
       expect(init.signal).toBeInstanceOf(AbortSignal);
       controller.abort();
       expect((init.signal!).aborted).toBe(true);
+    });
+
+    it('forces the GET method: init 不收 method，误传时运行时以 get 后置覆盖', async () => {
+      fetchMock.mockResolvedValue(mockResponse({data: 'test'}));
+
+      // get 的方法语义由出口固定：调用方换方法会与 schema label
+      // （`GET <url>`）脱节——init 类型 Omit<RequestInitish,'method'>
+      // 在编译期拒绝；这里断链传 method 验证运行时兜底（后置合并，
+      // 真实请求仍是 get，不是调用方误写的 POST）
+      // @ts-expect-error init 不收 method：Omit 收紧，误传应编译期报错
+      await get('articles', undefined, {method: 'POST'});
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        'https://api.realworld.io/api/articles',
+        expect.objectContaining({method: 'get'})
+      );
     });
   });
 
