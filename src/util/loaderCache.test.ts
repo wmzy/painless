@@ -44,8 +44,12 @@ const ctx = {params: {title: 'some-title'}, router: fakeRouter};
 const args = ['some-title'] as [string];
 
 // 与路由表同形的 loader 包装：keyOf 从 params 提取 [title]（路由 ctx
-// 异构，keyOf 参数收 any——同实现签名）
-const articleLoader = (fn: (ctx: any) => Promise<any>, opts?: {staleTime?: number}) =>
+// 异构，keyOf 参数收 any——同实现签名）；opts 透传 withCache 的
+// {staleTime?, maxAge?}
+const articleLoader = (
+  fn: (ctx: any) => Promise<any>,
+  opts?: {staleTime?: number; maxAge?: number}
+) =>
   withCache(entryCache, ({params}: any): [string] => [params.title!], fn, opts);
 
 beforeEach(() => {
@@ -212,6 +216,71 @@ describe('withCache', () => {
       {article: 'one'}
     ]);
     expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it('maxAge 硬过期：超龄条目按 miss 处理（重新发请求、不旧值先行）', async () => {
+    vi.useFakeTimers({toFake: ['Date']});
+    vi.setSystemTime(1000);
+    try {
+      const p1 = deferred<{article: string}>();
+      const p2 = deferred<{article: string}>();
+      const fn = vi
+        .fn()
+        .mockReturnValueOnce(p1.promise)
+        .mockReturnValueOnce(p2.promise);
+      const loader = articleLoader(fn, {staleTime: 10, maxAge: 3000});
+      entryCache.set(args, {article: 'old'}); // cachedAt = 1000
+
+      // 未超龄的 stale（age = 2000 > staleTime 且 < maxAge）：SWR 照旧
+      // ——旧值先行 + 后台重验证
+      vi.setSystemTime(3000);
+      await expect(loader(ctx)).resolves.toEqual({article: 'old'});
+      expect(fn).toHaveBeenCalledTimes(1);
+      p1.resolve({article: 'mid'}); // settle 落缓存，cachedAt = 3000
+      await new Promise((r) => setTimeout(r, 0));
+
+      // 超龄（age = 4000 > maxAge = 3000）：按 miss 同路——fn 重新发请求，
+      // loader 的 promise 挂起等新值（旧值不再先行，pendingComponent 接管）
+      vi.setSystemTime(7000);
+      const promise = loader(ctx);
+      expect(fn).toHaveBeenCalledTimes(2);
+      let settled = false;
+      void promise.then(
+        () => {
+          settled = true;
+        },
+        () => {
+          settled = true;
+        }
+      );
+      await Promise.resolve();
+      expect(settled).toBe(false);
+
+      p2.resolve({article: 'fresh'});
+      await expect(promise).resolves.toEqual({article: 'fresh'});
+      expect(entryCache.peek!(args)?.value).toEqual({article: 'fresh'});
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('未声明 maxAge（默认不启用）：同年龄条目仍是 SWR 旧值先行', async () => {
+    // 与上一用例同年龄对照：硬过期是 opt-in 行为，不声明 maxAge 的既有
+    // 声明点（dataloaders.ts 全部）语义零变化
+    vi.useFakeTimers({toFake: ['Date']});
+    vi.setSystemTime(1000);
+    try {
+      const pending = deferred<{article: string}>();
+      const fn = vi.fn().mockReturnValue(pending.promise);
+      const loader = articleLoader(fn, {staleTime: 10});
+      entryCache.set(args, {article: 'old'});
+
+      vi.setSystemTime(7000); // 与硬过期用例同年龄
+      await expect(loader(ctx)).resolves.toEqual({article: 'old'});
+      expect(fn).toHaveBeenCalledTimes(1); // 只发后台重验证
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('DEV：cache 被不同 router 覆盖使用时 console.warn 恰一次', async () => {

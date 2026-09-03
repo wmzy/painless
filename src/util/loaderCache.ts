@@ -172,6 +172,8 @@ type LoaderValue<F extends (ctx: never) => Promise<any>> = Awaited<ReturnType<F>
 //   同一 in-flight promise，factory 只执行一次；期间任何 set/delete 会
 //   bump 代次，晚到的响应不回写覆盖），settle 的 set 事件经 bindRefresh
 //   自动回写当前视图；失败/被取消则静默保旧；
+// - maxAge 硬过期（声明了 maxAge 且 now - cachedAt > maxAge）：按 miss
+//   同路——走 load / pendingComponent，不再旧值先行（见 opts.maxAge 注释）；
 // - miss：返回 load 的 promise，pendingComponent 骨架照旧，失败原样
 //   上抛给路由 errorComponent。
 // keyOf：从 loader ctx 提取该实体的 key 元组——key 的定义只此一处，
@@ -189,9 +191,15 @@ export function withCache<
   // 契约源，key 的运行时形状经 load 的 hash 归一，错形状不产生错误条目
   keyOf: (ctx: C) => unknown[],
   fn: F,
-  opts?: {staleTime?: number}
+  opts?: {staleTime?: number; maxAge?: number}
 ): F {
   const staleTime = opts?.staleTime ?? DEFAULT_STALE_TIME;
+  // maxAge 硬过期（默认不启用）：条目 cachedAt 距今超过 maxAge 时按
+  // miss 处理——走 load / pendingComponent，不再「旧值先行」。SWR 的
+  // 旧值先行以「后台重验证最终会成功」为前提：重验证持续失败（数据
+  // 形态已变、权限已收、端点已废）时旧值会被无限端出来且无感知；
+  // maxAge 给 loader 通道一个可声明的年龄上限，超龄宁可闪一次骨架
+  const maxAge = opts?.maxAge;
   // load/peek 在 CacheProvider 契约里是可选成员，但 createQueryCache 恒由
   // createMemoryCacheProvider 创建——bind 一次收窄为必有（this 绑定同源，
   // 不经解构丢宿主），缺失即早抛：错配的 provider 在挂载点就指向配置
@@ -212,8 +220,14 @@ export function withCache<
     const args = keyOf(ctx) as K;
     const entry = peek(args);
     if (entry) {
-      if (Date.now() - entry.cachedAt < staleTime) {
+      const age = Date.now() - entry.cachedAt;
+      if (age < staleTime) {
         return entry.value as LoaderValue<F>;
+      }
+      if (maxAge !== undefined && age > maxAge) {
+        // 硬过期按 miss 同路：load / pendingComponent 骨架，失败原样
+        // 上抛（旧值不再先行展示）
+        return load(args, () => fn(ctx)) as Promise<LoaderValue<F>>;
       }
       void load(args, () => fn(ctx)).catch(noop);
       return entry.value as LoaderValue<F>;

@@ -354,10 +354,13 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
     `QueryResult` 字段集冻结：`data / loading / fetching / error /
     failureCount / stale / refetch / dataUpdatedAt`，各字段语义见第 9 条
     （loading 仅初载、失败保留 dataUpdatedAt、select 恒等投影等）。
-  - `withCache(cache, keyOf, fn, {staleTime?})`（`util/loaderCache.ts`）：
+  - `withCache(cache, keyOf, fn, {staleTime?, maxAge?})`（`util/loaderCache.ts`）：
     新鲜命中直返零请求 / stale 旧值先行后台重验证 / miss 走 load 三分支
     语义；同参数并发共享 in-flight；key 的 hash 归一（剥 signal 与
-    undefined 键）是两通道同寻址的前提。**补记（2026-09-02，同上修订）**：
+    undefined 键）是两通道同寻址的前提。**maxAge 硬过期**（2026-09-03
+    新增，默认不启用）：条目 cachedAt 距今超过 maxAge 时按 miss 处理
+    （走 load / pendingComponent，不再旧值先行）——补 loader 通道
+    stale 命中后台重验证持续失败时旧值被无限端出且无感知的缺口。**补记（2026-09-02，同上修订）**：
     `keyOf` 的 ctx 同步泛型化（`C` 约束 `LoaderCtx`，与 `F` 的约束联动），
     `fn`/`keyOf` 的 any 注解消失；`cache.peek`/`cache.load` 的非空断言
     改 `bind(cache)` 一次收窄（缺失即挂载点早抛，取代首请求处的
