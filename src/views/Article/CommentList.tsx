@@ -1,5 +1,5 @@
 import {formatDistanceToNow} from 'date-fns';
-import {zhCN} from 'date-fns/locale';
+
 import {List, ListItem, Avatar, Text, Spinner, Alert, Button} from 'haze-ui';
 
 import {useCommentsQuery} from '@/services/dataloaders';
@@ -45,7 +45,7 @@ export default function CommentList({title}: Props) {
           重心仍在评论本身。 */}
       {dataUpdatedAt !== undefined && (
         <Text type='muted'>
-          更新于 {formatDistanceToNow(dataUpdatedAt, {addSuffix: true, locale: zhCN})}
+          Updated {formatDistanceToNow(dataUpdatedAt, {addSuffix: true})}
         </Text>
       )}
       <List>

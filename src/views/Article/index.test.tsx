@@ -435,10 +435,10 @@ describe('发评论后刷新评论列表', () => {
     expect(commentsCache.peek!(['another-article'])?.value).toEqual([commentA]);
   });
 
-  it('「更新于 x 前」：首载 settle 后出现，失效重拉后时间戳刷新', async () => {
+  it('「Updated x ago」：首载 settle 后出现，失效重拉后时间戳刷新', async () => {
     // Date.now 打桩成可控时钟：dataUpdatedAt 的打点与文案推导都以它为
     // 唯一时间源——两次 settle 的真实间隔是毫秒级，不打桩则「时间刷新」
-    // 在文案上不可分辨（恒为「不到 1 分钟前」），断言会假绿
+    // 在文案上不可分辨（恒为「less than a minute ago」），断言会假绿
     let now = Date.now();
     const clock = vi.spyOn(Date, 'now').mockImplementation(() => now);
     try {
@@ -449,12 +449,12 @@ describe('发评论后刷新评论列表', () => {
       renderView(<ArticleView />);
 
       // 初载 Spinner 窗口 dataUpdatedAt 为 undefined：克制小字不渲染
-      expect(screen.queryByText(/^更新于/)).toBeNull();
+      expect(screen.queryByText(/^Updated/)).toBeNull();
 
       expect(await screen.findByText('first comment')).toBeDefined();
-      expect(screen.getByText('更新于 不到 1 分钟前')).toBeDefined();
+      expect(screen.getByText('Updated less than a minute ago')).toBeDefined();
 
-      // 快进 2 分钟再发评论：stamp 若未随重拉刷新，文案会停在「2 分钟前」
+      // 快进 2 分钟再发评论：stamp 若未随重拉刷新，文案会停在「2 minutes ago」
       now += 2 * 60_000;
       fireEvent.change(screen.getByPlaceholderText('Write a comment...'), {
         target: {value: 'second comment'}
@@ -465,8 +465,8 @@ describe('发评论后刷新评论列表', () => {
         await screen.findByText('second comment', {selector: 'li span'})
       ).toBeDefined();
       // 重拉 settle 用新 now 打点：距离回到零区间，旧文案不再出现
-      expect(screen.getByText('更新于 不到 1 分钟前')).toBeDefined();
-      expect(screen.queryByText('更新于 2 分钟前')).toBeNull();
+      expect(screen.getByText('Updated less than a minute ago')).toBeDefined();
+      expect(screen.queryByText('Updated 2 minutes ago')).toBeNull();
     } finally {
       clock.mockRestore();
     }
