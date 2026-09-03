@@ -841,15 +841,15 @@ describe('bindQueryFn / getCache（fetch × cache 配对）', () => {
     // 风格对齐 getCache 对未绑定函数的早抛。抛错即拒：既有绑定不被
     // 半途生效的违约改写
     expect(() => bindQueryFn(fn, second)).toThrow(/bindQueryFn/);
-    expect(getCache(fn)).toBe(first);
+    expect(getCache(queryFn)).toBe(first);
   });
 
   it('重绑同一 cache 实例：幂等放行，不视为违约', () => {
     const fn = vi.fn(async () => ['v']);
     const cache = createQueryCache<any, any>('bind-same');
-    bindQueryFn(fn, cache);
+    const queryFn = bindQueryFn(fn, cache);
     expect(() => bindQueryFn(fn, cache)).not.toThrow();
-    expect(getCache(fn)).toBe(cache);
+    expect(getCache(queryFn)).toBe(cache);
   });
 
   it('非 DEV 维持后者覆盖（生产语义不变）', () => {
@@ -860,7 +860,7 @@ describe('bindQueryFn / getCache（fetch × cache 配对）', () => {
       const second = createQueryCache<any, any>('bind-prod-second');
       bindQueryFn(fn, first);
       expect(() => bindQueryFn(fn, second)).not.toThrow();
-      expect(getCache(fn)).toBe(second);
+      expect(getCache(bindQueryFn(fn, second))).toBe(second);
     } finally {
       vi.unstubAllEnvs();
     }
