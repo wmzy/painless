@@ -93,7 +93,7 @@ import {renderView} from '@/test-utils';
 import {getCurrentUser} from '@/services/auth';
 import * as articleService from '@/services/article';
 import {withCache} from '@/util/loaderCache';
-import {articleCache, clearAllCaches, commentsCache} from '@/util/useQuery';
+import {articleCache, commentsCache, resetAllCaches} from '@/util/useQuery';
 import {articleLoader} from '@/services/dataloaders';
 
 import ArticleView from './index';
@@ -141,9 +141,10 @@ beforeEach(() => {
     image: null
   });
   fetchCommentsMock.mockResolvedValue([]);
-  // 逐用例清全部实体缓存（旧单 cache 时代的一条 clear 等价物）：否则
-  // 前序用例写入的 commentsCache 条目被新鲜命中，Once 队列不被消费
-  clearAllCaches();
+  // 逐用例清全部实体缓存 + 注册表还原基线（旧单 cache 时代的一条 clear
+  // 等价物）：否则前序用例写入的 commentsCache 条目被新鲜命中，Once
+  // 队列不被消费
+  resetAllCaches();
   // 模拟生产链路的 loader 首跑：withCache 绑定「cache set → refresh」
   // 订阅并写入首份缓存（真实路由里视图数据必来自 loader 写入的缓存
   // 条目——乐观写穿因此恒为「已见 key 换值」，必触发 refresh 回写）。

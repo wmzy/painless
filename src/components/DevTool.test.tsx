@@ -10,10 +10,10 @@ import {stableHash} from 'react-toolroom/async';
 import {
   articleCache,
   bindQueryFn,
-  clearAllCaches,
   commentsCache,
   createQueryCache,
-  createQueryHook
+  createQueryHook,
+  resetAllCaches
 } from '@/util/useQuery';
 import {clearRequestLogs, pushRequestLog} from '@/util/requestLog';
 
@@ -102,8 +102,10 @@ describe('DevTool CacheView', () => {
     commentsCache.set([k], v as Comment[]);
 
   beforeEach(() => {
-    // 实体 cache 是模块级单例，逐用例清空隔离
-    clearAllCaches();
+    // 实体 cache 是模块级单例，逐用例清空隔离；注册表同步还原基线——
+    // 本文件多用例自建临时 cache（devtool-test-* 等），不还原会在
+    // CacheView/devtools 面板的遍历里累积死实体
+    resetAllCaches();
   });
 
   it('shows zero entries when all caches are empty', () => {

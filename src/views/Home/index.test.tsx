@@ -241,7 +241,7 @@ vi.mock('@/services/auth', () => ({getCurrentUser: vi.fn()}));
 import * as articleService from '@/services/article';
 import {getCurrentUser} from '@/services/auth';
 import {bindCacheRefresh} from '@/util/loaderCache';
-import {clearAllCaches, homeCache} from '@/util/useQuery';
+import {clearAllCaches, homeCache, resetAllCaches} from '@/util/useQuery';
 import {homeLoader} from '@/services/dataloaders';
 
 import Home from './index';
@@ -300,7 +300,9 @@ beforeEach(() => {
     bio: null,
     image: null
   });
-  clearAllCaches();
+  // 清场 + 注册表还原基线（homeCache 仍在册——下方 bindCacheRefresh 绑定
+  // 的就是它，favorite 写穿链路语义不变）
+  resetAllCaches();
   // 模拟生产链路的 loader 首跑副作用：绑定「cache set → refresh」订阅
   // （真实路由里 loader 先于组件运行；favorite 的乐观写穿经此通道自动
   // refresh 回写视图）。直接绑定而非跑真 loader——避免其异步 settle

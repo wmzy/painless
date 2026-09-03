@@ -239,6 +239,30 @@ export const clearAllCaches = () => {
   for (const wipe of persistWipes.values()) wipe();
 };
 
+// 模块加载期实体登记完成后的注册表快照：resetAllCaches 的还原基线。
+// 测试专用的临时 cache 会持续 push 进 allCaches/persistWipes（只增不
+// 减），跨用例累积后 DevTool 面板遍历与 clearAllCaches 的 O(n) 都背着
+// 死实体——重置让注册表回到「只有模块实体」的干净基线
+const BASELINE_CACHES = allCaches.slice();
+const BASELINE_WIPES = new Map(persistWipes);
+
+// 测试工具：clearAllCaches 全量清场（内存 + 擦盘，语义同登出）后把
+// allCaches/persistWipes 注册表还原到模块加载基线——测试文件 beforeEach
+// 用例间隔离时，临时 cache 不再在注册表里累积，模块实体（article/
+// home/comments/tags）仍登记在册：后续经应用代码触发的 clearAllCaches
+// （logout、DevTool Clear、mock refresh 闭包）行为不变。
+// 边界：cache 建在「测试文件模块级」时（import 期创建、用例间复用同一
+// 实例并依赖 beforeEach 清其内容）不适合换用本工具——首轮 reset 会把它
+// 出册，此后不再被任何 clear 覆盖，条目跨用例泄漏（dataLoader.test 的
+// triple cache 即此形态，该文件刻意保留 clearAllCaches）
+export const resetAllCaches = () => {
+  clearAllCaches();
+  allCaches.length = 0;
+  for (const entry of BASELINE_CACHES) allCaches.push(entry);
+  persistWipes.clear();
+  for (const [key, wipe] of BASELINE_WIPES) persistWipes.set(key, wipe);
+};
+
 export type MockConfig = {
   schema: unknown;
   key: string;

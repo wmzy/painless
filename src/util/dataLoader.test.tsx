@@ -101,6 +101,9 @@ const renderApp = (initial: string) =>
   );
 
 beforeEach(() => {
+  // 注意：此处刻意用 clearAllCaches 而非 resetAllCaches——本文件的
+  // triple cache 建在测试文件模块级（不在 useQuery 的还原基线内），
+  // reset 会在首轮把它们出册，此后再也不会被清，条目跨用例泄漏
   clearAllCaches();
   fetchPage.mockClear();
   fetchOther.mockClear();

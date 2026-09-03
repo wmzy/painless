@@ -11,15 +11,18 @@ import {renderHook, act, waitFor} from '@testing-library/react';
 // mock 钩子在 @/util/mock（无 haze-ui 依赖），本测试无需 mock haze-ui
 //（早期链路在 vitest ESM 下无法提供 UMD 命名导出，故曾整体 mock）。
 
+import type {Article} from '@/types';
 import {stableHash} from 'react-toolroom/async';
 
 import {getMockConfigs, setMockConfig} from './mock-config';
 import {
+  allCaches,
   bindQueryFn,
   clearAllCaches,
   createQueryCache,
   createQueryHook,
-  getCache
+  getCache,
+  resetAllCaches
 } from './useQuery';
 
 function deferred<T>() {
@@ -936,6 +939,41 @@ describe('createQueryHook（场景 hook）', () => {
       setMockConfig(MOCK_KEY, {when: 'disabled'});
       localStorage.removeItem(KEY);
     }
+  });
+});
+
+describe('resetAllCaches（测试工具：注册表还原基线）', () => {
+  it('清临时 cache 的注册与盘键，模块实体仍在册且 clearAllCaches 照常工作', () => {
+    const KEY = 'painless.test.reset-all';
+    localStorage.clear();
+    const temp = createQueryCache<string[], []>('reset-temp', 60_000, {
+      persist: KEY
+    });
+    temp.set([], ['x']);
+    expect(localStorage.getItem(KEY)).not.toBeNull();
+
+    resetAllCaches();
+
+    // 注册表回到模块加载基线：只有四个模块实体，临时 cache 出册
+    expect(allCaches.map(({name}) => name)).toEqual([
+      'article',
+      'home',
+      'comments',
+      'tags'
+    ]);
+
+    // 清场语义同登出：临时 cache 内存清空、盘键擦净
+    expect(temp.snapshot?.()).toEqual([]);
+    expect(localStorage.getItem(KEY)).toBeNull();
+
+    // 还原后的注册表功能完整：模块实体写入后 clearAllCaches 仍能清掉
+    // （logout / DevTool Clear / mock refresh 闭包的既有链路不受重置影响）。
+    // 实体经注册表寻址取得——同时验证还原的是原实例而非空表
+    const entry = allCaches.find(({name}) => name === 'article')!;
+    entry.cache.set(['reset-probe'] as [string], {} as Article);
+    expect(entry.cache.peek!(['reset-probe'] as [string])).toBeDefined();
+    clearAllCaches();
+    expect(entry.cache.snapshot?.()).toEqual([]);
   });
 });
 

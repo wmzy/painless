@@ -101,7 +101,7 @@ vi.mock('@native-router/core', () => ({navigate: vi.fn()}));
 import {navigate} from '@native-router/core';
 
 import * as http from '@/util/http';
-import {articleCache, clearAllCaches, homeCache} from '@/util/useQuery';
+import {articleCache, homeCache, resetAllCaches} from '@/util/useQuery';
 import {editorLoader} from '@/services/dataloaders';
 
 import Editor from './index';
@@ -157,8 +157,9 @@ beforeEach(() => {
   navigateMock.mockReset();
   state.article = undefined;
   state.blocker = undefined;
-  // 模块级共享缓存逐用例清空，防止 invalidates 断言被上一用例残留串场
-  clearAllCaches();
+  // 模块级共享缓存逐用例清空 + 注册表还原基线，防止 invalidates 断言
+  // 被上一用例残留串场
+  resetAllCaches();
 });
 
 describe('Editor', () => {

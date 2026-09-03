@@ -17,7 +17,7 @@ import {refresh} from '@native-router/core';
 import {getMockConfigs, mockViewData, setMockConfig} from './mock';
 import {withCache} from './loaderCache';
 
-import {clearAllCaches, createQueryCache, homeCache} from './useQuery';
+import {createQueryCache, homeCache, resetAllCaches} from './useQuery';
 
 const refreshMock = vi.mocked(refresh);
 
@@ -54,7 +54,9 @@ const articleLoader = (
 
 beforeEach(() => {
   vi.resetAllMocks();
-  clearAllCaches();
+  // 清场 + 注册表还原基线（homeCache 等模块实体仍在册——下方 mock 面板
+  // 组的 refresh 闭包清的是注册表，语义即生产链路）
+  resetAllCaches();
   // 本地机制 cache 每用例重建：清旧值之外更重置 bindRefresh 绑定与
   // seen（见上——seen 跨 clear 保留是修订后的正经语义，不是要修的 bug）
   entryCache = createQueryCache<{article: string}, [string]>('loader-test');
