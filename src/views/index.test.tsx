@@ -15,7 +15,7 @@ import {render, screen, waitFor} from '@testing-library/react';
 
 import {homeSearchSchema} from '@/types/search';
 
-import {StackWarmer, requireLogin, type RouterContext} from './index';
+import {StackWarmer, isGuardedPath, requireLogin, type RouterContext} from './index';
 import NotFound from './NotFound';
 
 // 页级 404 用例渲染真 NotFound 视图：haze-ui 整体替换为最小 stub
@@ -144,6 +144,25 @@ describe('未匹配路径 → notFound 视图（MemoryRouter 集成）', () => {
   });
 });
 
+describe('isGuardedPath（守卫前缀表推导）', () => {
+  // 推导源是 ./index 的真路由表：/editor 与 /editor/:slug 带 beforeLoad:
+  // requireLogin——断言直接钉在推导结果上，新增守卫路由自动入选，不再
+  // 有手写镜像可漏同步（原 GUARDED_PATH_PREFIX 的隐患）
+  it('守卫路由本尊与静态前缀覆盖的路径命中（/editor/:slug 截动态段）', () => {
+    expect(isGuardedPath('/editor')).toBe(true);
+    expect(isGuardedPath('/editor/')).toBe(true);
+    expect(isGuardedPath('/editor/my-slug')).toBe(true);
+    expect(isGuardedPath('/editor/my-slug/deeper')).toBe(true);
+  });
+
+  it('段边界外的相似前缀与普通路由不命中', () => {
+    expect(isGuardedPath('/editorfoo')).toBe(false);
+    expect(isGuardedPath('/editor-foo')).toBe(false);
+    expect(isGuardedPath('/about')).toBe(false);
+    expect(isGuardedPath('/')).toBe(false);
+  });
+});
+
 describe('StackWarmer（initHistoryStack 刷新预热）', () => {
   it('刷新后（history.state 窗口恢复 + 预热）窗内 back/forward 零重解析', async () => {
     // loader 计数即「是否重新解析」的可观测信号：冷启动 resolve、预热、
@@ -239,10 +258,14 @@ describe('StackWarmer（initHistoryStack 刷新预热）', () => {
   it('未登录且窗口含守卫路由：整窗跳过预热——POP 落重解析路径，守卫重新生效', async () => {
     const loadA = vi.fn(async () => 'a');
     const loadG = vi.fn(async () => 'editor');
+    // 守卫路由取动态段形态 '/editor/:slug'、窗口条目用实例
+    // '/editor/my-slug'：经 isGuardedPath 的表推导命中（'/editor/:slug'
+    // 截动态段得 '/editor'，段边界前缀盖住 '/editor/my-slug'）——推导
+    // 源是 ./index 真路由表，本表只提供窗口形状
     const routes = createRoutes([
       {path: '/a', data: loadA, component: () => Promise.resolve(() => <b>a</b>)},
       {
-        path: '/editor',
+        path: '/editor/:slug',
         beforeLoad: requireLogin,
         data: loadG,
         component: () => Promise.resolve(() => <b>editor</b>)
@@ -250,7 +273,7 @@ describe('StackWarmer（initHistoryStack 刷新预热）', () => {
       {path: '/login', component: () => Promise.resolve(() => <b>login</b>)}
     ]);
 
-    // 会话 1（已登录）：建立 ['/a','/editor'] 窗口——守卫在登录态放行
+    // 会话 1（已登录）：建立 ['/a','/editor/my-slug'] 窗口——守卫在登录态放行
     let router1!: ReturnType<typeof useRouter>;
     const Probe1 = () => {
       router1 = useRouter();
@@ -264,7 +287,7 @@ describe('StackWarmer（initHistoryStack 刷新预热）', () => {
     );
     expect(await screen.findByText('a')).toBeDefined();
     await act(async () => {
-      await navigate(router1, '/editor');
+      await navigate(router1, '/editor/my-slug');
     });
     expect(await screen.findByText('editor')).toBeDefined();
     expect(loadA).toHaveBeenCalledTimes(1);
@@ -272,9 +295,9 @@ describe('StackWarmer（initHistoryStack 刷新预热）', () => {
     const refreshState = router1.history.location.state;
     session1.unmount();
 
-    // 会话 2（= 刷新后，未登录）：落点 '/editor'。冷启动 resolve 照常跑守卫
-    // → 重定向 /login（URL 不落守卫路由）；StackWarmer 检出「未登录 +
-    // 守卫窗口」整窗跳过预热
+    // 会话 2（= 刷新后，未登录）：落点 '/editor/my-slug'。冷启动 resolve
+    // 照常跑守卫 → 重定向 /login（URL 不落守卫路由）；StackWarmer 检出
+    // 「未登录 + 守卫窗口」整窗跳过预热
     let router2!: ReturnType<typeof useRouter>;
     const Probe2 = () => {
       router2 = useRouter();
@@ -283,7 +306,7 @@ describe('StackWarmer（initHistoryStack 刷新预热）', () => {
     render(
       <MemoryRouter
         routes={routes}
-        initialEntries={[{pathname: '/a'}, {pathname: '/editor', state: refreshState}]}
+        initialEntries={[{pathname: '/a'}, {pathname: '/editor/my-slug', state: refreshState}]}
         initialIndex={1}
         context={{getUser: () => null}}
       >
@@ -315,10 +338,11 @@ describe('StackWarmer（initHistoryStack 刷新预热）', () => {
   it('已登录：窗口含守卫路由照常预热——POP 落快照零重解析', async () => {
     const loadA = vi.fn(async () => 'a');
     const loadG = vi.fn(async () => 'editor');
+    // 同上：动态段守卫路由 + 实例路径，经表推导命中
     const routes = createRoutes([
       {path: '/a', data: loadA, component: () => Promise.resolve(() => <b>a</b>)},
       {
-        path: '/editor',
+        path: '/editor/:slug',
         beforeLoad: requireLogin,
         data: loadG,
         component: () => Promise.resolve(() => <b>editor</b>)
@@ -338,15 +362,15 @@ describe('StackWarmer（initHistoryStack 刷新预热）', () => {
     );
     expect(await screen.findByText('a')).toBeDefined();
     await act(async () => {
-      await navigate(router1, '/editor');
+      await navigate(router1, '/editor/my-slug');
     });
     expect(await screen.findByText('editor')).toBeDefined();
     const refreshState = router1.history.location.state;
     session1.unmount();
 
-    // 会话 2（登录态未变）：落点 '/editor' 守卫放行；预热照常——守卫在登录
-    // 态本就放行，快照不构成绕过。计数口径同首例：落点被冷启动与预热
-    // 各 1 次（loadG 共 3），'/a' 被预热 1 次（共 2）
+    // 会话 2（登录态未变）：落点 '/editor/my-slug' 守卫放行；预热照常
+    // ——守卫在登录态本就放行，快照不构成绕过。计数口径同首例：落点被
+    // 冷启动与预热各 1 次（loadG 共 3），'/a' 被预热 1 次（共 2）
     let router2!: ReturnType<typeof useRouter>;
     const Probe2 = () => {
       router2 = useRouter();
@@ -355,7 +379,7 @@ describe('StackWarmer（initHistoryStack 刷新预热）', () => {
     render(
       <MemoryRouter
         routes={routes}
-        initialEntries={[{pathname: '/a'}, {pathname: '/editor', state: refreshState}]}
+        initialEntries={[{pathname: '/a'}, {pathname: '/editor/my-slug', state: refreshState}]}
         initialIndex={1}
         context={{getUser: () => user}}
       >

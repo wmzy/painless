@@ -155,15 +155,25 @@ const routes = createRoutes({
 // 路径拼写错误在编译期暴露（动态段路由同时要求 params 完整）
 export type AppPaths = RoutePaths<typeof routes>;
 
-// StackWarmer 守卫缓解的窗口判定前缀：路由表中 beforeLoad:
-// requireLogin 的 /editor 与 /editor/:slug 的共同前缀（新增守卫路由时
-// 同步此处）。刻意手写前缀而非复用路由匹配器——缓解是保守判定，宁可
-// 多跳过（预热只是优化），前缀误伤面足够小；'/editorfoo' 类前缀撞车
-// 由段边界匹配排除
-const GUARDED_PATH_PREFIX = '/editor';
-const isGuardedPath = (pathname: string) =>
-  pathname === GUARDED_PATH_PREFIX ||
-  pathname.startsWith(`${GUARDED_PATH_PREFIX}/`);
+// StackWarmer 守卫缓解的窗口判定：直接从上方路由表推导——layout 层
+// children 里带 beforeLoad 守卫的子路由 path（当前 /editor 与
+// /editor/:slug），新增守卫路由自动入选，没有手写镜像可漏同步。动态段
+// 截到首个参数段之前（/editor/:slug → /editor）：只守卫动态路由时其
+// 静态前缀也该覆盖；匹配按段边界前缀（pathname === p || 以 `p/` 开头
+// ），宁可多跳过（预热只是优化，跳过无正确性损失），'/editorfoo' 类
+// 前缀撞车由段边界排除。仍刻意不复用路由匹配器——缓解是保守判定，
+// 前缀误伤面足够小。导出供测试直接钉推导契约（同 requireLogin）
+const guardedPrefixes = (routes.children ?? [])
+  .filter((r) => 'beforeLoad' in r)
+  .map((r) => {
+    const p = r.path;
+    const dynamic = p.indexOf(':');
+    // '/:x' 类全动态模式截完只剩根：回落 '/'（段边界匹配下等价整窗
+    // 保守跳过，符合宁多跳过）
+    return dynamic > 0 ? p.slice(0, dynamic).replace(/\/$/, '') || '/' : p;
+  });
+export const isGuardedPath = (pathname: string) =>
+  guardedPrefixes.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 
 // 路由表自身的类型：TypedLink 表形态（TypedLink<AppRoutes>）的判别源
 // ——给组件整个表而非路径联合，to 按模式收窄的同时 search 也按各层
@@ -190,7 +200,7 @@ export type AppRoutes = typeof routes;
 // 已知边界与缓解：预热经 resolve 直接取快照、不经 beforeLoad 守卫
 //（库的既定语义，守卫重定向会破坏窗口形状）。缓解：未登录
 //（router.context 的 getUser() 为空，未注入按未登录 fail-safe）且历史
-// 窗口含守卫路由（/editor、/editor/:slug，见 GUARDED_PATH_PREFIX）时
+// 窗口含守卫路由（/editor、/editor/:slug，见 isGuardedPath 的表推导）时
 // 整窗跳过预热——POP 落回惰性重解析路径，守卫照常重跑；代价是这类
 // 窗口内的普通条目也退回重解析（预热只是优化，跳过无正确性损失）。
 // 会话内守卫语义由登出链路的 invalidate 清场承担（见 Layout）；残余
