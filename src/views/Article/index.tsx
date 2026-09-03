@@ -3,7 +3,7 @@ import {navigate} from '@native-router/core';
 import {useMatched} from '@native-router/react';
 import {Form, useForm, reset, useIsSubmitting} from 'react-f0rm';
 import {useMutation} from 'react-toolroom/async';
-import {Card, Title, Text, Avatar, Divider, TextareaCore, Alert, Button, Flex, FormItem} from 'haze-ui';
+import {Card, Title, Text, Divider, TextareaCore, Alert, Button, FormItem} from 'haze-ui';
 
 import * as articleService from '@/services/article';
 import {favoriteOnArticle, followOnArticle} from '@/services/mutations';
@@ -14,6 +14,7 @@ import {useTitle} from '@/util/useTitle';
 import {useToastError} from '@/util/toastError';
 import FavoriteButton from '@/components/FavoriteButton';
 import {loginRedirect, useFavorite} from '@/views/_shared/useFavorite';
+import {AuthorLine} from '@/views/_shared/AuthorLine';
 
 import CommentList from './CommentList';
 
@@ -102,9 +103,7 @@ export default function ArticleView() {
   return (
     <Card>
       <Title>{article.title}</Title>
-      <Flex align='center' gap='sm'>
-        <Avatar src={article.author.image ?? undefined} alt={article.author.username} />
-        <Text>{article.author.username}</Text>
+      <AuthorLine author={article.author}>
         <Button variant='outline' size='sm' onClick={toggleFollow}>
           {article.author.following ? 'Unfollow' : 'Follow'}{' '}
           {article.author.username}
@@ -114,7 +113,7 @@ export default function ArticleView() {
           favoritesCount={article.favoritesCount}
           onToggle={toggleFavorite}
         />
-      </Flex>
+      </AuthorLine>
       {error && <Alert variant='danger'>{error}</Alert>}
       <Divider />
       <div>

@@ -1,10 +1,11 @@
 import type {Article} from '@/types';
 
 import {memo} from 'react-toolroom';
-import {Card, Title, Text, Badge, Avatar, Flex} from 'haze-ui';
+import {Card, Title, Text} from 'haze-ui';
 
 import FavoriteButton from '@/components/FavoriteButton';
 import PreviewLink from '@/components/PreviewLink';
+import {AuthorLine, TagList} from '@/views/_shared/AuthorLine';
 
 type Props = {
   article: Article;
@@ -16,15 +17,13 @@ type Props = {
 function ArticlePreview({article, onFavorite}: Props) {
   return (
     <Card>
-      <Flex align='center' gap='sm'>
-        <Avatar src={article.author.image ?? undefined} alt={article.author.username} />
-        <Text>{article.author.username}</Text>
+      <AuthorLine author={article.author}>
         <FavoriteButton
           favorited={article.favorited}
           favoritesCount={article.favoritesCount}
           onToggle={() => onFavorite(article.slug, !article.favorited)}
         />
-      </Flex>
+      </AuthorLine>
       <Title level={2}>
         {/* 卡片滚入视口即预取 data+chunk，比 hover 更早，点击近乎零等待 */}
         <PreviewLink to={`/article/${article.slug}`} prefetch='viewport'>
@@ -32,11 +31,7 @@ function ArticlePreview({article, onFavorite}: Props) {
         </PreviewLink>
       </Title>
       <Text>{article.description}</Text>
-      <Flex gap='xs' wrap>
-        {article.tagList.map((tag) => (
-          <Badge key={tag}>{tag}</Badge>
-        ))}
-      </Flex>
+      <TagList tags={article.tagList} />
     </Card>
   );
 }

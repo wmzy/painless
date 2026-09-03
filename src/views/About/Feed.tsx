@@ -7,10 +7,11 @@ import type {AppPaths} from '@/views';
 import {css} from '@linaria/core';
 import {useEffect, useRef} from 'react';
 import {TypedLink} from '@native-router/react';
-import {Avatar, Badge, Button, Card, Flex, Text, Title} from 'haze-ui';
+import {Button, Card, Text, Title} from 'haze-ui';
 
 
 import {useFeed} from '@/services/feed';
+import {AuthorLine, TagList} from '@/views/_shared/AuthorLine';
 
 // 演示用内部滚动容器：固定高度 + overflow 剪裁。IntersectionObserver
 // 默认视口根会沿祖先链剪裁（overflow: auto 的容器同样把哨兵挡在「不可
@@ -108,21 +109,14 @@ export default function Feed() {
         >
           {articles.map((a) => (
             <Card key={a.slug}>
-              <Flex align='center' gap='sm'>
-                <Avatar src={a.author.image ?? undefined} alt={a.author.username} />
-                <Text>{a.author.username}</Text>
-              </Flex>
+              <AuthorLine author={a.author} />
               <Title level={3}>
                 <TypedLink<AppPaths> to='/article/:title' params={{title: a.slug}}>
                   {a.title}
                 </TypedLink>
               </Title>
               <Text>{a.description}</Text>
-              <Flex gap='xs' wrap>
-                {a.tagList.map((tag) => (
-                  <Badge key={tag}>{tag}</Badge>
-                ))}
-              </Flex>
+              <TagList tags={a.tagList} />
             </Card>
           ))}
 
