@@ -1,6 +1,6 @@
 import {formatDistanceToNow} from 'date-fns';
 
-import {List, ListItem, Avatar, Text, Spinner, Alert, Button} from 'haze-ui';
+import {List, ListItem, Avatar, Text, AsyncSection} from 'haze-ui';
 
 import {useCommentsQuery} from '@/services/dataloaders';
 
@@ -21,23 +21,18 @@ export default function CommentList({title}: Props) {
   const {data: comments, loading, error, dataUpdatedAt, refetch} =
     useCommentsQuery([title]);
 
-  if (loading) return <Spinner />;
-  if (error) {
-    // 错误态带 Retry（对齐 About/Feed 的错误模式）：refetch 删当前 args
-    // 的缓存条目后绕过缓存重拉——失败条目本就无 settled 值，重拉即从
-    // 头再来；期间 loading 复归（初载语义），Spinner 接管
-    return (
-      <>
-        <Alert variant='danger'>Failed to load comments</Alert>{' '}
-        <Button variant='outline' size='sm' onClick={() => void refetch()}>
-          Retry
-        </Button>
-      </>
-    );
-  }
-
+  // 三分支收敛给 haze-ui AsyncSection（1.21）：loading 占位 / error
+  // 错误框 + Retry / 正常态直渲染 children。Retry 调 refetch：删当前
+  // args 的缓存条目后绕过缓存重拉——失败条目本就无 settled 值，重拉
+  // 即从头再来；期间 loading 复归（初载语义），AsyncSection 的 loading
+  // 优先级让重拉窗口回到占位。
   return (
-    <>
+    <AsyncSection
+      loading={loading}
+      error={error}
+      onRetry={() => void refetch()}
+      errorText='Failed to load comments'
+    >
       {/* 数据新鲜度的可观测锚点：dataUpdatedAt 是本 args 最近一次成功
           settle 的时间戳（useArgsStatus 透出，见 useQuery.ts），发评论
           前缀失效重拉后自动刷新到新时刻。undefined（首载未成 / 另一组
@@ -56,6 +51,6 @@ export default function CommentList({title}: Props) {
           </ListItem>
         ))}
       </List>
-    </>
+    </AsyncSection>
   );
 }

@@ -1,6 +1,6 @@
 import {css} from '@linaria/core';
 import {useSearch, useSetSearch} from '@native-router/react';
-import {TagGroup, TagGroupItem, Spinner, Alert, Title, Button} from 'haze-ui';
+import {TagGroup, TagGroupItem, Title, AsyncSection} from 'haze-ui';
 
 import {useTagsQuery} from '@/services/dataloaders';
 import {homeSearchSchema, homeSearchWriteSchema} from '@/types/search';
@@ -32,43 +32,34 @@ export default function Tags() {
     void setSearch(activeTag === t ? {} : {tag: t});
   };
 
-  if (loading) {
-    return (
-      <aside>
-        <Spinner />
-      </aside>
-    );
-  }
-
-  if (error) {
-    return (
-      <aside>
-        {/* 错误态带 Retry（对齐 About/Feed 的错误模式）：refetch 删单例
-            条目后绕过缓存重拉，期间 loading 复归（初载语义） */}
-        <Alert variant='danger'>Failed to load tags</Alert>{' '}
-        <Button variant='outline' size='sm' onClick={() => void refetch()}>
-          Retry
-        </Button>
-      </aside>
-    );
-  }
-
+  // 三分支收敛给 haze-ui AsyncSection（1.21）：loading 占位 / error
+  // 错误框 + Retry / 正常态直渲染 children。Retry 调 refetch：删单例
+  // 条目后绕过缓存重拉，期间 loading 复归（初载语义），AsyncSection
+  // 的 loading 优先级让重拉窗口回到占位。stale 半透明挂在常驻的
+  // aside 上——loading/error 期 stale 恒 false，语义与分支版一致。
   return (
     <aside className={stale ? staleAside : undefined}>
-      <Title level={3}>Popular Tags</Title>
-      <TagGroup>
-        {tags.map((t, i) => (
-          <button
-            key={`${t}-${i}`}
-            type='button'
-            aria-pressed={activeTag === t}
-            className={tagButton}
-            onClick={() => toggleTag(t)}
-          >
-            <TagGroupItem>{t}</TagGroupItem>
-          </button>
-        ))}
-      </TagGroup>
+      <AsyncSection
+        loading={loading}
+        error={error}
+        onRetry={() => void refetch()}
+        errorText='Failed to load tags'
+      >
+        <Title level={3}>Popular Tags</Title>
+        <TagGroup>
+          {tags.map((t, i) => (
+            <button
+              key={`${t}-${i}`}
+              type='button'
+              aria-pressed={activeTag === t}
+              className={tagButton}
+              onClick={() => toggleTag(t)}
+            >
+              <TagGroupItem>{t}</TagGroupItem>
+            </button>
+          ))}
+        </TagGroup>
+      </AsyncSection>
     </aside>
   );
 }

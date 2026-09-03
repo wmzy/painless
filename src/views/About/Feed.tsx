@@ -7,7 +7,7 @@ import type {AppPaths} from '@/views';
 import {css} from '@linaria/core';
 import {useEffect, useRef} from 'react';
 import {TypedLink} from '@native-router/react';
-import {Button, Card, Text, Title} from 'haze-ui';
+import {Button, Card, Text, Title, AsyncSection} from 'haze-ui';
 
 
 import {useFeed} from '@/services/feed';
@@ -88,19 +88,18 @@ export default function Feed() {
         visible loading state and an end-of-feed marker.
       </Text>
 
-      {loadingFirstPage ? (
-        <Card>
-          <Text type='muted'>Loading feed…</Text>
-        </Card>
-      ) : error != null && articles.length === 0 ? (
-        // 首页失败：列表为空，聚合里没有可续的页——用 reload 从首页重来
-        <Card>
-          <Text type='secondary'>{error.message}</Text>{' '}
-          <Button variant='outline' size='sm' onClick={reload}>
-            Retry
-          </Button>
-        </Card>
-      ) : (
+      {/* 首页三分支收敛给 haze-ui AsyncSection（1.21）：loadingFirstPage
+          （!ready 且无错——同时覆盖「请求在飞且无结果」与 useRun 发起
+          请求前的一帧；空结果集以 ready=true 走正常终态，不卡永久占位）
+          → 占位；首页失败（列表为空，聚合里没有可续的页）→ 错误框 +
+          Retry（reload 重置聚合从首页重来）；其余渲染 feed 本体——翻页
+          失败的错误留在哨兵反馈区（见下），不升级为整段错误态 */}
+      <AsyncSection
+        loading={loadingFirstPage}
+        error={articles.length === 0 ? error : undefined}
+        onRetry={reload}
+        loadingText='Loading feed…'
+      >
         <div
           role='feed'
           aria-busy={isFetchingNextPage}
@@ -146,7 +145,7 @@ export default function Feed() {
             )}
           </div>
         </div>
-      )}
+      </AsyncSection>
     </section>
   );
 }
