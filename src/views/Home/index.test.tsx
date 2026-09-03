@@ -220,7 +220,10 @@ vi.mock('@native-router/react', async () => {
 // 纯函数，用真实现即保持「URL 抹缺省」行为与产线一致
 vi.mock('@native-router/core', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@native-router/core')>()),
-  navigate: vi.fn(),
+  // core 1.15：被取代的导航 reject NavigationCancelledError，产线 void
+  // navigate 调用点均挂 .catch(() => undefined)——mock 必须返回 Promise，
+  // 同步 vi.fn() 会让 .catch 在 undefined 上炸掉（未登录 favorite 跳转）
+  navigate: vi.fn(async () => undefined),
   refresh: vi.fn(async () => state.emit())
 }));
 vi.mock('@/components/PreviewLink', () => ({
