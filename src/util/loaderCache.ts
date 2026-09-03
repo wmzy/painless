@@ -56,7 +56,13 @@ export type LoaderCtx = {
 // 见 resetRefreshSeen 注释与 decisions.md 第 13 条补记。
 const bindings = new WeakMap<
   CacheProvider<unknown, unknown[]>,
-  {router: unknown; scheduled: boolean; seen: Map<string, unknown>}
+  {
+    router: unknown;
+    scheduled: boolean;
+    seen: Map<string, unknown>;
+    /** 多 router 覆盖的 DEV 告警只发一次（见 bindRefresh） */
+    warned?: boolean;
+  }
 >();
 
 function snapshotValues(cache: CacheProvider<unknown, unknown[]>) {
@@ -99,6 +105,20 @@ export function resetRefreshSeen<T, K extends unknown[]>(
 function bindRefresh(cache: CacheProvider<unknown, unknown[]>, router: unknown) {
   let binding = bindings.get(cache);
   if (binding) {
+    // DEV 覆盖告警（每 cache 一次）：绑定记录只存最后一个 router，后用
+    // 者覆盖前者——微前端 / 同页多 Router / 并发测试场景下 refresh 目标
+    // 会静默切换。单 router 应用的常态是同实例重复重绑（不告警），只
+    // 在换上不同实例时提示一次；非 DEV 不为它付检查成本
+    if (
+      import.meta.env.DEV &&
+      binding.router !== router &&
+      !binding.warned
+    ) {
+      binding.warned = true;
+      console.warn(
+        '[loaderCache] 同一 cache 被多个 router 使用：refresh 目标已切到最后使用它的 router（微前端/多 Router/并发测试场景）——若非有意共享，请检查 cache 与 router 的对应关系。本 cache 仅告警一次'
+      );
+    }
     binding.router = router;
     return;
   }

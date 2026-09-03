@@ -213,6 +213,38 @@ describe('withCache', () => {
     ]);
     expect(fn).toHaveBeenCalledTimes(1);
   });
+
+  it('DEV：cache 被不同 router 覆盖使用时 console.warn 恰一次', async () => {
+    // 绑定记录每 cache 只存最后一个 router，后用者覆盖前者（微前端/
+    // 多 Router/并发测试场景）——覆盖本无害，但 refresh 目标静默切换
+    // 值得被看见：换上不同实例时 DEV 告警一次；同实例重绑（单 router
+    // 应用的常态）与后续再覆盖都不再告警
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const fn = vi.fn(async () => ({article: 'v'}));
+      const loader = articleLoader(fn);
+      const routerA = {history: {}};
+      const routerB = {history: {}};
+      const routerC = {history: {}};
+
+      // 同 router 重复重绑：不告警
+      await loader({params: {title: 'warn-t'}, router: routerA});
+      await loader({params: {title: 'warn-t'}, router: routerA});
+      expect(warnSpy).not.toHaveBeenCalled();
+
+      // 换不同实例：告警一次，文案可定位
+      await loader({params: {title: 'warn-t'}, router: routerB});
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy.mock.calls[0]![0]).toMatch(/\[loaderCache\].*router/s);
+
+      // 再覆盖（C）、回到早先用过的 router（A）：仍只告警过一次
+      await loader({params: {title: 'warn-t'}, router: routerC});
+      await loader({params: {title: 'warn-t'}, router: routerA});
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
 });
 
 describe('mock 面板与 loader 缓存的交互（DevTool Refresh 语义）', () => {
