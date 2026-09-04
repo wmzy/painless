@@ -23,6 +23,7 @@ import {
   createQueryCache,
   createQueryHook,
   getCache,
+  persistEnabled,
   resetAllCaches
 } from './useQuery';
 
@@ -593,7 +594,7 @@ describe('createQueryHook（场景 hook）', () => {
     localStorage.clear();
 
     const writer = createQueryCache<string[], []>('roundtrip-writer', 60_000, {
-      persist: KEY
+      persist: {key: KEY}
     });
     writer.set([], ['tag-a', 'tag-b']);
     // set 事件同步驱动镜像落盘
@@ -614,7 +615,7 @@ describe('createQueryHook（场景 hook）', () => {
     // ——重启后条目年龄按真实年龄计，条目天然 stale，消费侧旧值先行 +
     // 后台重验证（SWR），陈旧数据不会冒充新鲜值
     const reader = createQueryCache<string[], []>('roundtrip-reader', 60_000, {
-      persist: KEY
+      persist: {key: KEY}
     });
     const entry = reader.peek!([]);
     expect(entry?.value).toEqual(['tag-a', 'tag-b']);
@@ -628,7 +629,7 @@ describe('createQueryHook（场景 hook）', () => {
     localStorage.clear();
 
     const cache = createQueryCache<string[], []>('logout-wipe', 60_000, {
-      persist: KEY
+      persist: {key: KEY}
     });
     cache.set([], ['tag']);
     expect(localStorage.getItem(KEY)).not.toBeNull();
@@ -644,7 +645,7 @@ describe('createQueryHook（场景 hook）', () => {
     const BAD1 = 'painless.test.bad-json';
     localStorage.setItem(BAD1, '{not json');
     const c1 = createQueryCache<string[], []>('bad-json', 60_000, {
-      persist: BAD1
+      persist: {key: BAD1}
     });
     expect(c1.snapshot?.()).toEqual([]);
 
@@ -652,7 +653,7 @@ describe('createQueryHook（场景 hook）', () => {
     const BAD2 = 'painless.test.bad-shape';
     localStorage.setItem(BAD2, JSON.stringify({k: ['v']}));
     const c2 = createQueryCache<string[], []>('bad-shape', 60_000, {
-      persist: BAD2
+      persist: {key: BAD2}
     });
     expect(c2.snapshot?.()).toEqual([]);
 
@@ -675,7 +676,7 @@ describe('createQueryHook（场景 hook）', () => {
     });
     localStorage.setItem(OLD, oldPayload);
     const cOld = createQueryCache<string[], []>('persist-old', 60_000, {
-      persist: OLD
+      persist: {key: OLD}
     });
     expect(cOld.peek!([])).toBeUndefined(); // 未 hydrate 进内存
 
@@ -689,7 +690,7 @@ describe('createQueryHook（场景 hook）', () => {
       JSON.stringify({v: 99, data: {[stableHash([])]: [['x'], Date.now()]}})
     );
     const cFuture = createQueryCache<string[], []>('persist-future', 60_000, {
-      persist: FUTURE
+      persist: {key: FUTURE}
     });
     expect(cFuture.peek!([])).toBeUndefined();
 
@@ -701,7 +702,7 @@ describe('createQueryHook（场景 hook）', () => {
       JSON.stringify({v: 1, data: {[stableHash([])]: [['tag'], cachedAt]}})
     );
     const cCur = createQueryCache<string[], []>('persist-v1', 60_000, {
-      persist: CUR
+      persist: {key: CUR}
     });
     expect(cCur.peek!([])?.value).toEqual(['tag']);
     expect(cCur.peek!([])?.cachedAt).toBe(cachedAt);
@@ -722,7 +723,7 @@ describe('createQueryHook（场景 hook）', () => {
     // cache 用 <any, any>（0 参 fn 的元组推导为 []，显式强类型 K 反而
     // 与 mock 的调用签名不兼容——同本文件既有约定）
     const cache = createQueryCache<any, any>('crosstab', 60_000, {
-      persist: KEY
+      persist: {key: KEY}
     });
     const useQ = createQueryHook({
       queryFn: bindQueryFn(fn, cache),
@@ -771,7 +772,7 @@ describe('createQueryHook（场景 hook）', () => {
     const KEY = 'painless.test.crosstab-null';
     localStorage.clear();
     const cache = createQueryCache<string[], []>('crosstab-null', 60_000, {
-      persist: KEY
+      persist: {key: KEY}
     });
     cache.set([], ['v1']);
     expect(cache.peek!([])?.value).toEqual(['v1']);
@@ -798,10 +799,10 @@ describe('createQueryHook（场景 hook）', () => {
     const KEY = 'painless.test.crosstab-pingpong';
     localStorage.clear();
     const tabA = createQueryCache<string[], []>('tab-a', 60_000, {
-      persist: KEY
+      persist: {key: KEY}
     });
     const tabB = createQueryCache<string[], []>('tab-b', 60_000, {
-      persist: KEY
+      persist: {key: KEY}
     });
 
     // tabA 拿到新数据落盘（真实浏览器此刻会向 tabB 广播）
@@ -909,7 +910,9 @@ describe('createQueryHook（场景 hook）', () => {
   // 通道的 useMock 垫在缓存内层，always 造的 faker 数据会 settle 进持久
   // 化 cache——不拦落盘的话，刷新后 mockConfig（内存态）重置 off，盘上
   // 假数据被 hydrate 回来（侧栏显示 faker 造的 tags，脱离面板管理）。
-  // setMockConfig 直接走状态模块（守卫读的就是它）。
+  // setMockConfig 直接走状态模块（enabled 守卫读的就是它）；enabled 用
+  // 模板导出的 persistEnabled——与 tagsCache 声明点同一回调（库 0.23
+  // opts.persist 透传，语义从模板原 subscribe 守卫原样平移）。
   it('mock always 激活期间挂起镜像写入；关闭后恢复写盘', () => {
     const KEY = 'painless.test.mock-always';
     const MOCK_KEY = 'mock-always-guard';
@@ -917,7 +920,7 @@ describe('createQueryHook（场景 hook）', () => {
     setMockConfig(MOCK_KEY, {when: 'always'});
     try {
       const cache = createQueryCache<string[], []>('mock-always', 60_000, {
-        persist: KEY
+        persist: {key: KEY, enabled: persistEnabled}
       });
       cache.set([], ['faker-tag']);
       // 只拦镜像落盘：内存缓存照常更新（DevTool 缓存视图与组件消费不受
@@ -948,7 +951,7 @@ describe('resetAllCaches（测试工具：注册表还原基线）', () => {
     const KEY = 'painless.test.reset-all';
     localStorage.clear();
     const temp = createQueryCache<string[], []>('reset-temp', 60_000, {
-      persist: KEY
+      persist: {key: KEY}
     });
     temp.set([], ['x']);
     expect(localStorage.getItem(KEY)).not.toBeNull();

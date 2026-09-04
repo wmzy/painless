@@ -1,8 +1,9 @@
 // 项目级数据获取层：机制（每实体缓存 createQueryCache + allCaches 注册表 +
-// 可选 localStorage 持久化）与场景组装（createQueryHook，选项在场景声明点
-// 闭合、运行时调用点零 option）。归宿已定（2026-09-01）：评估后不抽包、
-// 常驻模板，见 docs/decisions.md 第 2/13 条；loading / select / 结构共享的
-// 语义取舍与 bindQueryFn 绑定机制见第 9 条；持久化决策见第 4 条。
+// 可选 localStorage 持久化——react-toolroom ≥0.23 的 opts.persist 透传，
+// 语义官方化见 docs/decisions.md 第 4 条补记）与场景组装（createQueryHook，
+// 选项在场景声明点闭合、运行时调用点零 option）。归宿已定（2026-09-01）：
+// 评估后不抽包、常驻模板，见 docs/decisions.md 第 2/13 条；loading /
+// select / 结构共享的语义取舍与 bindQueryFn 绑定机制见第 9 条。
 import type {Article, ArticlePage, Comment} from '@/types';
 import type {HomeSearch} from '@/types/search';
 
@@ -21,7 +22,8 @@ import {
   useRun,
   type BoundMutation,
   type CacheProvider,
-  type MutationSpec
+  type MutationSpec,
+  type PersistOptions
 } from 'react-toolroom/async';
 
 import {useMock} from '@/util/mock';
@@ -93,111 +95,35 @@ export type CacheRegistryEntry = {
 // 就是该引用（测试等处后建的临时 cache 同样可见）。
 export const allCaches: CacheRegistryEntry[] = [];
 
-// 持久化 cache 的登出擦盘回调：clearAllCaches 清完内存后逐个执行。
-const persistWipes = new Map<string, () => void>();
-
-// 持久化载荷版本：{v: PERSIST_VERSION, data: <表>}。hydrate 按 v 门禁——
-// 版本不符（含 v 引入前的裸表旧格式）整体丢弃静默重来，刻意不做跨版本
-// 迁移：盘上是可重建的缓存镜像而非事实数据源，丢弃的代价只是一次冷启动
-// 重拉，低于长期维护迁移路径的成本。
-const PERSIST_VERSION = 1;
-
-// 载荷 data 表的形状粗验：不深检条目值（类型由写侧的 T 保证），拦的是手
-// 改/截断/旧 schema 的结构性坏数据，不合格整体丢弃而非逐条抢救。
-const isPersistTable = (v: unknown): v is Record<string, [unknown, number]> =>
-  v !== null &&
-  typeof v === 'object' &&
-  !Array.isArray(v) &&
-  Object.values(v).every(
-    (e) => Array.isArray(e) && e.length === 2 && typeof e[1] === 'number'
-  );
-
-// localStorage 单键镜像挂载（决策见 docs/decisions.md 第 4 条）。启动同步
-// hydrate，一切存储异常静默（模块加载路径上不允许存储层炸掉）；hydrate
-// 保留条目原 cachedAt——重启后按真实年龄越过 staleTime，旧值先行 + 后台
-// 重验证（SWR），不会把陈旧数据当新鲜用。
-const attachPersistence = (cache: EntityCache<any, any>, key: string) => {
-  const storage = (() => {
-    try {
-      // SSR 无 window、隐私模式 setItem 直接抛：探测失败退化为纯内存 cache
-      if (typeof window === 'undefined') return undefined;
-      window.localStorage.setItem(`${key}:probe`, '1');
-      window.localStorage.removeItem(`${key}:probe`);
-      return window.localStorage;
-    } catch {
-      return undefined;
-    }
-  })();
-  if (!storage) return;
-
-  try {
-    const raw = storage.getItem(key);
-    if (raw) {
-      const parsed: unknown = JSON.parse(raw);
-      if (
-        typeof parsed === 'object' &&
-        parsed !== null &&
-        'v' in parsed &&
-        parsed.v === PERSIST_VERSION &&
-        'data' in parsed &&
-        isPersistTable(parsed.data)
-      ) {
-        cache.hydrate?.(parsed.data);
-      }
-    }
-  } catch {
-    // 坏 JSON：宁可空开始也不抛
-  }
-
-  cache.subscribe?.(() => {
-    // mock always 激活期间挂起镜像写入：组件通道的 useMock 垫在缓存内层
-    //（Refresh/always/empty 生效的前提，见 QueryHookConfig.mock），faker
-    // 数据会 settle 进缓存并经本回调镜像落盘——刷新后 mockConfig（内存
-    // 态）重置 off，盘上假数据被 hydrate 回来即脱离面板管理。任一 key
-    // always 即全挂起而非按 key 精确拦（持久化实体只有 tagsCache，为它
-    // 建 key→cache 映射收益为零；宁可少写不写脏——挂起窗口漏写的镜像由
-    // 下次写盘补上，写脏则刷新后永久呈现）。只拦镜像落盘：内存缓存照常
-    // 更新，登出擦盘（persistWipes）不经本回调。决策见第 12 条。
-    if (Object.values(getMockConfigs()).some((c) => c.when === 'always')) {
-      return;
-    }
-    try {
-      // 写前 diff 盘上现值（实时 getItem，非缓存的上次写值）：收到其它 tab
-      // 的 storage 事件后 clear 的 delete 事件会把空表写回，若不 diff 直接
-      // setItem，其它 tab 又收到事件再 clear，形成乒乓——同值跳过让链路一
-      // 轮收敛（浏览器对「同值 setItem 不再广播」并无一致保证，以显式
-      // diff 收敛，不依赖该实现细节）。
-      const next = JSON.stringify({
-        v: PERSIST_VERSION,
-        data: cache.dehydrate?.() ?? {}
-      });
-      if (next !== storage.getItem(key)) storage.setItem(key, next);
-    } catch {
-      // 配额超限或非 JSON 安全值：静默降级，内存 cache 保持正确
-    }
-  });
-
-  // 跨 tab：storage 事件只在「其它文档」改动本键时派发到本 tab。newValue
-  // 有值（别 tab 的新镜像）与 null（removeItem，登出擦盘）的正确动作相同：
-  // 清本 tab 内存，消费者 miss/stale 重拉服务端真相（不 hydrate 别 tab 的
-  // 盘上字节）。监听与 cache 同生命周期，不随登出摘除（登出后公共实体照常
-  // 跨 tab 同步）。
-  const onStorage = (ev: StorageEvent) => {
-    if (ev.key === key) cache.clear();
-  };
-  window.addEventListener('storage', onStorage);
-
-  persistWipes.set(key, () => storage.removeItem(key));
-};
+// 持久化挂起门（决策见 docs/decisions.md 第 12 条，react-toolroom ≥0.23
+// opts.persist 的 enabled 回调）：mock always 激活期间挂起持久化读写——
+// 组件通道的 useMock 垫在缓存内层（Refresh/always/empty 生效的前提，见
+// QueryHookConfig.mock），faker 数据会 settle 进缓存，不拦的话会镜像落盘；
+// 刷新后 mockConfig（内存态）重置 off，盘上假数据被 hydrate 回来即脱离
+// 面板管理。任一 key always 即全挂起而非按 key 精确拦（持久化实体只有
+// tagsCache，为它建 key→cache 映射收益为零；宁可少写不写脏——挂起窗口
+// 漏写的镜像由下次写盘补上，写脏则刷新后永久呈现）。enabled=false 只拦
+// 磁盘读写：内存缓存照常更新，登出擦盘（clear 内建的 removeItem）与跨
+// tab 收敛不被它拦。导出供持久化实体声明点与持久化契约测试共用（同
+// resetAllCaches 的测试工具先例）。
+export const persistEnabled = () =>
+  !Object.values(getMockConfigs()).some((c) => c.when === 'always');
 
 export function createQueryCache<T, K extends unknown[]>(
   name: string,
   cacheTime = DEFAULT_CACHE_TIME,
-  opts: {persist?: string} = {}
+  opts: {persist?: PersistOptions} = {}
 ): EntityCache<T, K> {
+  // persist 透传库选项（react-toolroom ≥0.23 opts.persist，决策见
+  // docs/decisions.md 第 4 条补记）：创建期同步 hydrate（版本门禁 +
+  // 形状粗验 + 保留 cachedAt）、全事件镜像写盘写前 diff、跨 tab storage
+  // 收敛、clear 擦盘、存储异常全静默——模板侧原 attachPersistence 的
+  // 语义逐条上移，旧盘载荷 {v:1,...} 与库默认 version 1 兼容，无感迁移。
+  // enabled=false 只拦磁盘读写，不拦内存与擦盘。
   const provider = createMemoryCacheProvider<T, K>({
     cacheTime,
-    hash: hashArgs
+    hash: hashArgs,
+    persist: opts.persist
   });
   // clear 的代际包装：provider 的 clear 与单键 delete 发同形 delete 事件，
   // bindRefresh 的 seen 保留语义只挂单键 delete（refetch 链），整实体
@@ -213,7 +139,6 @@ export function createQueryCache<T, K extends unknown[]>(
   // memory provider 运行时恒携带 mutation/patchWhere，类型上经 as 收成必有
   const cache = provider as EntityCache<T, K>;
 
-  if (opts.persist) attachPersistence(cache, opts.persist);
   allCaches.push({name, cache});
   return cache;
 }
@@ -228,29 +153,27 @@ export const commentsCache = createQueryCache<Comment[], [string]>('comments');
 export const tagsCache = createQueryCache<string[], []>(
   'tags',
   60 * 60 * 1000,
-  {persist: 'painless.cache.tags'}
+  {persist: {key: 'painless.cache.tags', enabled: persistEnabled}}
 );
 
-// 顺序约束：先清内存后擦盘——cache.clear() 的 delete 事件先让镜像把空表
-// 写回，随后 removeItem 兜底删除（镜像写入被配额等异常吞掉也不残留）。
+// 持久化实体的擦盘内建在库版 clear（先写空表镜像再 removeItem 兜底，镜像
+// 写入被配额等异常吞掉也不残留），clearAllCaches 只清内存即完成登出清场。
 // 擦盘必须完整：下个账号冷启动不得 hydrate 回上个账号的数据。
 export const clearAllCaches = () => {
   for (const {cache} of allCaches) cache.clear();
-  for (const wipe of persistWipes.values()) wipe();
 };
 
 // 模块加载期实体登记完成后的注册表快照：resetAllCaches 的还原基线。
-// 测试专用的临时 cache 会持续 push 进 allCaches/persistWipes（只增不
-// 减），跨用例累积后 DevTool 面板遍历与 clearAllCaches 的 O(n) 都背着
-// 死实体——重置让注册表回到「只有模块实体」的干净基线
+// 测试专用的临时 cache 会持续 push 进 allCaches（只增不减），跨用例累积
+// 后 DevTool 面板遍历与 clearAllCaches 的 O(n) 都背着死实体——重置让
+// 注册表回到「只有模块实体」的干净基线
 const BASELINE_CACHES = allCaches.slice();
-const BASELINE_WIPES = new Map(persistWipes);
 
 // 测试工具：clearAllCaches 全量清场（内存 + 擦盘，语义同登出）后把
-// allCaches/persistWipes 注册表还原到模块加载基线——测试文件 beforeEach
-// 用例间隔离时，临时 cache 不再在注册表里累积，模块实体（article/
-// home/comments/tags）仍登记在册：后续经应用代码触发的 clearAllCaches
-// （logout、DevTool Clear、mock refresh 闭包）行为不变。
+// allCaches 注册表还原到模块加载基线——测试文件 beforeEach 用例间隔离
+// 时，临时 cache 不再在注册表里累积，模块实体（article/home/comments/
+// tags）仍登记在册：后续经应用代码触发的 clearAllCaches（logout、
+// DevTool Clear、mock refresh 闭包）行为不变。
 // 边界：cache 建在「测试文件模块级」时（import 期创建、用例间复用同一
 // 实例并依赖 beforeEach 清其内容）不适合换用本工具——首轮 reset 会把它
 // 出册，此后不再被任何 clear 覆盖，条目跨用例泄漏（dataLoader.test 的
@@ -259,8 +182,6 @@ export const resetAllCaches = () => {
   clearAllCaches();
   allCaches.length = 0;
   for (const entry of BASELINE_CACHES) allCaches.push(entry);
-  persistWipes.clear();
-  for (const [key, wipe] of BASELINE_WIPES) persistWipes.set(key, wipe);
 };
 
 export type MockConfig = {
@@ -347,7 +268,7 @@ export type QueryResult<T> = {
    * 时为数字，否则 undefined（含「另一组 args 的结果正在展示」的窗口）。
    * 失败不触碰——同 args 重拉失败保留上一次成功的时间戳，「数据截至 T」
    * 跨错误态保持真话。TanStack Query dataUpdatedAt 的对应物；CommentList
-   * 的「更新于 x 前」以它为数据源，发评论失效重拉后自动刷新。
+   * 的「Updated x ago」新鲜度小字以它为数据源，发评论失效重拉后自动刷新。
    */
   dataUpdatedAt: number | undefined;
   /** 删除当前 args 的缓存条目后重新请求（绕过缓存；引用稳定，失败 resolve undefined 不 reject） */

@@ -73,6 +73,15 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
   取决于持久化语义（序列化策略、配额、多标签页）是否已收敛。
 - **决定**：**稳定后再考虑**。模板侧实现先行验证语义，避免库侧过早固化
   错误抽象。
+- **补记（2026-09-04）：已果**。react-toolroom 0.23 的
+  `createMemoryCacheProvider` 新增 `opts.persist`（`{key, version? 默认 1,
+  enabled? 默认恒 true}`）——创建期同步 hydrate（版本门禁 + 形状粗验 +
+  保留 cachedAt）、全事件镜像写盘写前 diff、跨 tab storage 收敛（别 tab
+  写→清内存重拉，不回灌）、`clear` 先空表后 removeItem、存储异常全静默、
+  `enabled=false` 挂起只拦磁盘不拦内存与擦盘——第 13 条补记预言的
+  persist 原语落地，模板验证期收束的语义逐条被库吸收。模板侧
+  `attachPersistence` 已删，`createQueryCache` 的选项改为透传
+  `{key, enabled}`（详见第 13 条同日补记），本条「稳定后再考虑」状态终结。
 
 ## 5. haze-ui 通用/业务分域：暂不考虑
 
@@ -451,6 +460,29 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
     本仓库与本条清单中，届时成本不变。
   - 预演仓库 github.com/wmzy/react-scenario-query 保留作过程记录
     （未发版，可归档）。
+- **补记（2026-09-04）：两处冻结面随库官方化收缩**（react-toolroom
+  0.22/0.23，模板接入与本补记同批）：
+  - **`attachPersistence` → 库 `opts.persist`**（0.23，第 4 条补记）：
+    `createQueryCache` 第三参的 `{persist?: string}` 改为透传
+    `{persist?: PersistOptions}`（`{key, version?, enabled?}`），版本
+    门禁、形状粗验、cachedAt 保留、写前 diff、跨 tab 收敛、clear 擦盘
+    语义整体上移——冻结清单中 `attachPersistence` 条目与
+    `clearAllCaches` 的「先清内存后擦盘」顺序约束（擦盘已内建在库版
+    clear）随之失效，模板侧只剩 `persistEnabled` 回调承载第 12 条的
+    mock always 挂起（判据不变：`getMockConfigs()` 任一 `when ===
+    'always'` 即全挂起，粗粒度语义原样）。已知语义差异一处：库
+    `enabled=false` 时创建期 hydrate 也跳过（模板原实现只拦写盘）——
+    mockConfig 是内存态、刷新即重置，创建期 enabled 恒真，真实 mock
+    流程行为无差异。旧盘载荷 `{v:1,...}` 与库默认 `version 1` 兼容，
+    存量用户无感迁移。`persistWipes`/`BASELINE_WIPES` 等模板侧擦盘
+    记账随删。
+  - **模板本地 `stripVolatile` → 库导出**（0.22 起
+    `react-toolroom/async` 具名导出）：`hashArgs` 改
+    `stableHash(stripVolatile(args))` 组合库版。语义差异一处：库对
+    `Map`/`Set` 透传（模板旧实现无此分支，会把它们空对象化）——模板
+    参数域是 slug 元组与 HomeSearch 纯对象，无 Map/Set，行为等价；
+    循环引用两者均不设防（args 元组天然无环，同旧版）。既有 hashArgs
+    契约用例零改动全绿（钉的是行为不是实现）。
 
 ## 14. View Transition：库管时序、CSS 管范围（2026-08-31 VT 批）
 
