@@ -1,7 +1,9 @@
 // 来源：第 3 批评审任务——Home 视图「当前 tag」Chip 取消、上一页/下一页
 // 分页（含边界禁用）的行为验证。Home 目录此前无测试文件，故新建；路由与
-// UI 库均 mock，Tags 侧栏以 stub 隔离（真实 Tags 静态依赖 vite 插件的虚拟
-// 模块 '@/types/index.schema'，vitest 管线无法解析，其交互在浏览器中验证）。
+// UI 库均 mock。Tags 侧栏曾以 stub 隔离（理由「.schema 虚拟模块 vitest
+// 无法解析」已随 vitest.config.mts 注册 rollup-plugin-type-as-json-schema
+// 陈旧），现为真渲染：fetchTags mock 空数组，侧栏交互与三分支断言归
+// Tags.test.tsx 直测（生态评审后置项 #13），本文件只验证 Home 编排。
 // 双通道缓存落地批：卡片 favorite 走 cache.mutation 组合管道（乐观 +
 // 服务调用 + apply + 失败回滚），useData mock 直读 homeCache 的最新
 // settled 值、
@@ -48,7 +50,8 @@ const state = vi.hoisted(() => ({
   // useToast 替身的调用记录（favorite 失败提示断言用）
   toastMessages: [] as string[],
   // Card 替身的渲染计数探针（ArticlePreview memo 生效断言用）：本文件
-  // 的视图树里 Card 只出现在文章卡片内（Tags 已 stub、分页走 ButtonLink
+  // 的视图树里 Card 只出现在文章卡片内（Tags 侧栏走 stub 的
+  // TagGroup/TagGroupItem、分页走 ButtonLink
   // 替身），计数即卡片渲染次数
   cardRenders: 0,
   // go/toggleTag 的写入口（useSetSearch）：断言写入的 search 载荷
@@ -83,19 +86,31 @@ const state = vi.hoisted(() => ({
   matchedRoute: {route: {}} as {route: {data: unknown}},
 }));
 
-// haze-ui 依赖 UMD 版 babel-runtime-jsx-plus，在 vitest 的 ESM 环境下无法
-// 提供命名导出，整体替换为最小 stub（覆盖本视图用到的导出）
+// 整体替换为最小 stub（覆盖本视图用到的导出）——保留 stub 是视图隔离
+//（不测库的纯展示渲染）而非模块兼容（1.21 dist 纯 ESM 直连无碍）；
+// useTitle 走真实现，页标题契约由库本体承担；AsyncSection 同走真实现
+//（Tags 侧栏摘 stub 后进入本视图树，占位/错误分支由库本体渲染——本文件
+// 不断言其分支，那是 Tags.test.tsx 的职责，真实现只为避免第二套口径）
 vi.mock('haze-ui', async () => {
   const React = await import('react');
+  const {useTitle, AsyncSection} = await vi.importActual<
+    typeof import('haze-ui')
+  >('haze-ui');
   const box = (Tag: string) => {
     const C = ({children, ...rest}: {children?: ReactNode} & Record<string, unknown>) =>
       React.createElement(Tag, rest, children);
     return C;
   };
   return {
+    useTitle,
+    AsyncSection,
     Title: box('h1'),
     Text: box('span'),
     Badge: box('span'),
+    // Tags 侧栏的 tag 容器与条目：纯展示件，stub 即可（侧栏不渲染
+    // Card，cardRenders 探针不受影响）
+    TagGroup: box('div'),
+    TagGroupItem: box('div'),
     // 计数探针见 state.cardRenders 注释：渲染即自增，断言侧在关键节点
     // 快照读数（挂载期/翻转后），跨用例由 beforeEach 归零
     Card: (() => {
@@ -229,7 +244,6 @@ vi.mock('@native-router/core', async (importOriginal) => ({
 vi.mock('@/components/PreviewLink', () => ({
   default: ({children}: {children?: ReactNode}) => children ?? null
 }));
-vi.mock('./Tags', () => ({default: () => null}));
 // 第 4 批：卡片 favorite 走 service 层，mock 到 service
 vi.mock('@/services/article', () => ({
   favoriteArticle: vi.fn(),
@@ -256,6 +270,9 @@ state.matchedRoute.route.data = homeLoader;
 const navigateMock = vi.mocked(navigate);
 const refreshMock = vi.mocked(refresh);
 const favoriteMock = vi.mocked(articleService.favoriteArticle);
+// 真渲染的 Tags 侧栏经 useTagsQuery 消费 fetchTags：mock 空数组——侧栏
+// 保持零 tag 按钮的最小 DOM（侧栏行为断言在 Tags.test.tsx）
+const fetchTagsMock = vi.mocked(articleService.fetchTags);
 const getCurrentUserMock = vi.mocked(getCurrentUser);
 
 function deferred() {
@@ -294,6 +311,7 @@ beforeEach(() => {
   state.setSearch.mockReset();
   state.toastMessages = [];
   state.cardRenders = 0;
+  fetchTagsMock.mockResolvedValue([]);
   state.data = {articles: makeArticles(10), articlesCount: 25};
   state.search = '';
   getCurrentUserMock.mockReturnValue({
