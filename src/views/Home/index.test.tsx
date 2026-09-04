@@ -32,10 +32,10 @@ import {renderView} from '@/test-utils';
 // directive」；正向对照证明合法载荷（offset/limit 的 string/number 值
 // 均可，序列化时 String() 化）不被误伤。两段 JSX 只作类型检查消费，
 // 运行时仅 createElement（mock 的 TypedLink 不渲染），零副作用。
-void (
+(
   <TypedLink<AppRoutes> to='/' search={{tag: 'a', offset: '10', limit: 20}} />
 );
-void (
+(
   // @ts-expect-error search 字段拼错应在编译期报错
   <TypedLink<AppRoutes> to='/' search={{ofset: '10'}} />
 );

@@ -22,7 +22,7 @@ const PreviewLink = (await import('./PreviewLink')).default;
 // 运行时仅 createElement（mock 的 TypedLink 不渲染），零副作用。
 const slug = 'slug';
 const runtimePath = `/article/${slug}`;
-void (
+(
   // @ts-expect-error to 必须是 AppPaths 字面量，动态段走 params
   <PreviewLink to={runtimePath}>never</PreviewLink>
 );
