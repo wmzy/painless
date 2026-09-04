@@ -5,7 +5,9 @@ import * as article from '@/services/article';
 vi.mock('@/util/http', () => ({
   get: vi.fn(),
   post: vi.fn(),
-  del: vi.fn()
+  del: vi.fn(),
+  postRetryable: vi.fn(),
+  delRetryable: vi.fn()
 }));
 
 import * as http from '@/util/http';
@@ -129,54 +131,63 @@ describe('article service', () => {
     const mockArticle = {slug: 'a', favorited: false};
     const mockAuthor = {username: 'jake', following: false};
 
+    // favorite/follow 是效果幂等的 toggle 写：走 retryable 出口（重试
+    // 白名单含 POST 的兄弟 client），不经普通 post/del——断言出口本身
+    // 就是断言「这两个端点的写允许瞬时失败重试」。
     it('should POST favorite when favoriting', async () => {
-      vi.mocked(http.post).mockResolvedValue({article: mockArticle});
+      vi.mocked(http.postRetryable).mockResolvedValue({article: mockArticle});
 
       const result = await article.favoriteArticle('a', true);
 
-      expect(http.post).toHaveBeenCalledWith(
+      expect(http.postRetryable).toHaveBeenCalledWith(
         'articles/a/favorite',
         {},
         {signal: undefined, schema: expect.any(Object)}
       );
+      expect(http.post).not.toHaveBeenCalled();
       expect(result).toEqual(mockArticle);
     });
 
     it('should DELETE favorite when unfavoriting', async () => {
-      vi.mocked(http.del).mockResolvedValue({article: mockArticle});
+      vi.mocked(http.delRetryable).mockResolvedValue({article: mockArticle});
 
       const result = await article.favoriteArticle('a', false);
 
-      expect(http.del).toHaveBeenCalledWith('articles/a/favorite', {
+      expect(http.delRetryable).toHaveBeenCalledWith('articles/a/favorite', {
         signal: undefined, schema: expect.any(Object)
       });
+      expect(http.del).not.toHaveBeenCalled();
       expect(result).toEqual(mockArticle);
     });
 
     it('should POST follow when following', async () => {
-      vi.mocked(http.post).mockResolvedValue({profile: mockAuthor});
+      vi.mocked(http.postRetryable).mockResolvedValue({profile: mockAuthor});
 
       const result = await article.followAuthor('jake', true);
 
-      expect(http.post).toHaveBeenCalledWith(
+      expect(http.postRetryable).toHaveBeenCalledWith(
         'profiles/jake/follow',
         {},
         {signal: undefined, schema: expect.any(Object)}
       );
+      expect(http.post).not.toHaveBeenCalled();
       expect(result).toEqual(mockAuthor);
     });
 
     it('should DELETE follow when unfollowing', async () => {
-      vi.mocked(http.del).mockResolvedValue({profile: mockAuthor});
+      vi.mocked(http.delRetryable).mockResolvedValue({profile: mockAuthor});
 
       const result = await article.followAuthor('jake', false);
 
-      expect(http.del).toHaveBeenCalledWith('profiles/jake/follow', {
+      expect(http.delRetryable).toHaveBeenCalledWith('profiles/jake/follow', {
         signal: undefined, schema: expect.any(Object)
       });
+      expect(http.del).not.toHaveBeenCalled();
       expect(result).toEqual(mockAuthor);
     });
 
+    // 发评论是「每次调用新增实体」的写：必须留在永不重试的普通 post
+    // 出口（POST 在默认 retry 白名单外，重放即重复评论）。
     it('should POST comment with body', async () => {
       const mockComment = {id: '1', body: 'Nice'};
       vi.mocked(http.post).mockResolvedValue({comment: mockComment});
@@ -188,6 +199,7 @@ describe('article service', () => {
         {comment: {body: 'Nice'}},
         {signal: undefined, schema: expect.any(Object)}
       );
+      expect(http.postRetryable).not.toHaveBeenCalled();
       expect(result).toEqual(mockComment);
     });
 

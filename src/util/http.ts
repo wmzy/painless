@@ -71,44 +71,79 @@ export type RequestInitish = RequestInit & {
   schema?: unknown;
 };
 
-const client = ff
-  .create({baseUrl: BASE_URL})
-  .pipe(ff.header, 'content-type', 'application/json')
-  .pipe(ff.header, 'accept', 'application/json')
-  // SPA 三件套（README「The SPA default」）：每次「尝试」10s 超时预算
-  // ——withTimeout 自带 inner:'builtin:retry' 定位，重试的每一趟都拿到
-  // 全新预算；重试只放行幂等方法 + 瞬态状态码（408/425/429/500/502/
-  // 503/504、网络错误、超时），POST 与 4xx 永不重放，退避/Retry-After
-  // 均用库默认。totalTimeout 30s 是整请求总预算（含全部重试与退避等待）
-  // ：没有它，最坏情形 3 次尝试 × 10s + 指数退避（上限 10s）+ Retry-
-  // After（上限 30s）可把一个 GET 挂到分钟级；有它，超预算抛 TimeoutError
-  // 收口。
-  .pipe(ff.use, ff.withTimeout(10_000))
-  .pipe(ff.use, ff.withRetry(2))
-  .pipe(ff.totalTimeout, 30_000)
-  // RealWorld 规范用 `Token <token>` 前缀；供应商每次尝试重新求值（含
-  // 重试），凭据为空串/null/undefined/纯空白时自动跳过 Authorization
-  // 报头并删除继承值——未登录请求保持匿名，无需自研剥头中间件。
-  .pipe(ff.use, ff.withAuth(() => tokenGetter() ?? '', 'Token'))
-  // 官方 mapError 模式：withMessage 换写 message，保留 response/request/
-  // data/cause 与 HTTPError 身份——下游 `instanceof HTTPError`、`.status`、
-  // `.data`（字段级 errors）全部照常可用。错误体解析不出文案时（如 HTML
-  // 错误页）保留库默认的「GET <url> failed with status 401」句式兜底。
-  .pipe(ff.mapError, (e: unknown) => {
-    if (!(e instanceof ff.HTTPError)) return e;
-    if (e.status === 401 && tokenGetter()) fireUnauthorized();
-    return e.withMessage(errorText(e.data) || e.message);
-  });
+// ---- 管道工厂：主 client 与 toggle 兄弟 client 同源 -----------------------
+// 同一份中间件链（headers / 每次尝试超时 / 重试 / token 注入 / 错误映射）
+// ，唯一参数是 withRetry 的方法白名单——默认缺省走库默认幂等集，
+// toggleClient 传入 POST+DELETE（见其调用处）。派生而非二次 pipe 追加
+// ：fetch-fun 的 use 是追加语义，且 sortMiddlewares 对同名中间件（两个
+// builtin:retry）直接抛错——不存在「同组替换」，重试策略只能在链的
+// 声明处一次给定。
+function createApiClient(retryMethods?: readonly string[]) {
+  return (
+    ff
+      .create({baseUrl: BASE_URL})
+      .pipe(ff.header, 'content-type', 'application/json')
+      .pipe(ff.header, 'accept', 'application/json')
+      // SPA 三件套（README「The SPA default」）：每次「尝试」10s 超时预算
+      // ——withTimeout 自带 inner:'builtin:retry' 定位，重试的每一趟都拿到
+      // 全新预算；重试只放行白名单方法 + 瞬态状态码（408/425/429/500/
+      // 502/503/504、网络错误、超时），4xx 永不重放，退避/Retry-After
+      // 均用库默认。totalTimeout 30s 是整请求总预算（含全部重试与退避
+      // 等待）：没有它，最坏情形 3 次尝试 × 10s + 指数退避（上限 10s）+
+      // Retry-After（上限 30s）可把一个 GET 挂到分钟级；有它，超预算抛
+      // TimeoutError 收口。
+      .pipe(ff.use, ff.withTimeout(10_000))
+      // 方法白名单即「写操作重试边界」：默认集（GET/HEAD/OPTIONS/TRACE/
+      // PUT/DELETE）把 POST 挡在重试外——发评论/发文章这类「每次调用都
+      // 新增实体」的写重放会产生重复副作用；效果幂等的 toggle 端点由
+      // toggleClient 放宽，见下。
+      .pipe(
+        ff.use,
+        ff.withRetry(2, retryMethods ? {methods: retryMethods} : undefined)
+      )
+      .pipe(ff.totalTimeout, 30_000)
+      // RealWorld 规范用 `Token <token>` 前缀；供应商每次尝试重新求值
+      // （含重试），凭据为空串/null/undefined/纯空白时自动跳过
+      // Authorization 报头并删除继承值——未登录请求保持匿名，无需自研
+      // 剥头中间件。
+      .pipe(ff.use, ff.withAuth(() => tokenGetter() ?? '', 'Token'))
+      // 官方 mapError 模式：withMessage 换写 message，保留 response/
+      // request/data/cause 与 HTTPError 身份——下游 `instanceof
+      // HTTPError`、`.status`、`.data`（字段级 errors）全部照常可用。
+      // 错误体解析不出文案时（如 HTML 错误页）保留库默认的「GET <url>
+      // failed with status 401」句式兜底。
+      .pipe(ff.mapError, (e: unknown) => {
+        if (!(e instanceof ff.HTTPError)) return e;
+        if (e.status === 401 && tokenGetter()) fireUnauthorized();
+        return e.withMessage(errorText(e.data) || e.message);
+      })
+  );
+}
+
+const client = createApiClient();
+
+// toggle 专用兄弟 client：白名单只放 POST+DELETE——本 client 只服务
+// favorite/follow 一类效果幂等的 toggle 端点（同端点 POST 添加 /
+// DELETE 取消，重复施加收敛到同一终态），添加/取消两个方向都经它发出
+// ，这对端点的重试边界就声明在这一处。比「默认集 + POST」更窄：即便
+// 将来被误用，重试也只可能放大到这两个方法。
+const toggleClient = createApiClient(['POST', 'DELETE']);
 
 // dev-only 请求日志：Request/Response/Error 事件推入 requestLog 环形
 // 缓冲，DevTool 面板订阅展示。生产构建里 import.meta.env.DEV 折叠为
 // false，整个 pipe 分支被摇掉——logging 中间件与缓冲都不进生产包。
+// 两个 client 各套同一接收器：toggle 写与其余请求在 DevTool 请求日志
+// 里一视同仁。
+const requestLogging = () =>
+  ff.withLogging((msg: string, data: unknown) => pushRequestLog(msg, data));
+
 const baseClient = import.meta.env.DEV
-  ? client.pipe(
-      ff.use,
-      ff.withLogging((msg, data) => pushRequestLog(msg, data))
-    )
+  ? client.pipe(ff.use, requestLogging())
   : client;
+
+const toggleBase = import.meta.env.DEV
+  ? toggleClient.pipe(ff.use, requestLogging())
+  : toggleClient;
 
 // init 的其余字段直接合入 Options，自定义 headers 逐个合并以覆盖默认头。
 // schema 是校验指令不是请求参数：解构剥离（不散进 Options，由出口处的
@@ -196,14 +231,18 @@ export function get<T = unknown>(
   return ff.fetchJSON<T>(withSchema(o, init, `GET ${url}`)) as Promise<T>;
 }
 
-export function del<T = unknown>(url: string, init?: RequestInitish) {
+function delJSON<T>(o: ff.Options, url: string, init?: RequestInitish) {
   return ff.fetchJSON<T>(
     withSchema(
-      ff.url(ff.method(withInit(baseClient, init), 'delete'), url),
+      ff.url(ff.method(withInit(o, init), 'delete'), url),
       init,
       `DELETE ${url}`
     )
   ) as Promise<T>;
+}
+
+export function del<T = unknown>(url: string, init?: RequestInitish) {
+  return delJSON<T>(baseClient, url, init);
 }
 
 export function post<T = unknown>(
@@ -211,7 +250,7 @@ export function post<T = unknown>(
   data: unknown,
   init?: RequestInitish
 ) {
-  return sendJSON<T>('post', url, data, init);
+  return sendJSON<T>('post', url, data, init, baseClient);
 }
 
 export function put<T = unknown>(
@@ -219,19 +258,39 @@ export function put<T = unknown>(
   data: unknown,
   init?: RequestInitish
 ) {
-  return sendJSON<T>('put', url, data, init);
+  return sendJSON<T>('put', url, data, init, baseClient);
+}
+
+// ---- 效果幂等写出口（toggle 端点专用）------------------------------------
+// 与 post/del 同构，但走 toggleBase——retry 方法白名单放宽为 POST+DELETE
+// 的兄弟 client，其余中间件（headers/timeout/auth/mapError/dev 日志）与
+// 主 client 同源。契约：只用于「重复施加收敛到同一终态」的写端点（
+// 同端点 POST 添加 / DELETE 取消的 toggle，如 favorite/follow）；发评论
+// /发文章这类每次调用新增实体的写必须走 post/put——POST 在默认白名单
+// 外，永不重放。
+export function postRetryable<T = unknown>(
+  url: string,
+  data: unknown,
+  init?: RequestInitish
+) {
+  return sendJSON<T>('post', url, data, init, toggleBase);
+}
+
+export function delRetryable<T = unknown>(url: string, init?: RequestInitish) {
+  return delJSON<T>(toggleBase, url, init);
 }
 
 function sendJSON<T>(
   m: string,
   url: string,
   data: unknown,
-  init?: RequestInitish
+  init: RequestInitish | undefined,
+  client: ff.Options
 ): Promise<T> {
   return ff.fetchJSON<T>(
     withSchema(
       ff.body(
-        ff.method(ff.url(withInit(baseClient, init), url), m),
+        ff.method(ff.url(withInit(client, init), url), m),
         JSON.stringify(data)
       ),
       init,

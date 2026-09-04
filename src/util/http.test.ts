@@ -7,6 +7,8 @@ import {
   del,
   post,
   put,
+  postRetryable,
+  delRetryable,
   setTokenGetter,
   setUnauthorizedHandler
 } from '@/util/http';
@@ -15,10 +17,13 @@ import {
 // 读取 status/statusText/url，fetchData 检查 res.type，retry 会读
 // res.headers（Retry-After）—— mock 需补全形态。替身只实现被消费的
 // 成员，统一在工厂内收窄为 Response（挂到 vi.fn<typeof fetch> 上）。
+// headers 可选注入：重试用例经 Retry-After: 0 指定零等待重放，避免
+// 真实指数退避拖慢测试。
 function mockResponse(
   body: unknown,
   ok = true,
-  status = ok ? 200 : 422
+  status = ok ? 200 : 422,
+  headers?: Record<string, string>
 ): Response {
   return {
     ok,
@@ -26,7 +31,7 @@ function mockResponse(
     statusText: ok ? 'OK' : 'Unprocessable Entity',
     url: 'https://api.realworld.io/api/test',
     type: 'basic' as const,
-    headers: new Headers(),
+    headers: new Headers(headers),
     text: vi.fn().mockResolvedValue(JSON.stringify(body))
   } as unknown as Response;
 }
@@ -422,6 +427,66 @@ describe('http utilities', () => {
           body: JSON.stringify(data)
         })
       );
+    });
+  });
+
+  // 写操作重试边界：主 client 的 withRetry 只放行库默认幂等集（GET/
+  // HEAD/OPTIONS/TRACE/PUT/DELETE）——POST 永不重放，发评论/发文章这类
+  // 「每次调用新增实体」的写不被瞬时抖动放大成重复提交。favorite/
+  // follow 一类同端点 POST 添加 / DELETE 取消的 toggle 是效果幂等写
+  // （重复施加收敛同一终态），经 postRetryable/delRetryable 走 retry
+  // 白名单放宽为 POST+DELETE 的兄弟 client（其余中间件同源）。503 +
+  // Retry-After: 0 让重试零等待发生，用例不必等真实指数退避。
+  describe('write retry boundary', () => {
+    const transient = () =>
+      mockResponse({message: 'unavailable'}, false, 503, {
+        'retry-after': '0'
+      });
+
+    it('postRetryable replays an effect-idempotent POST on transient failure', async () => {
+      fetchMock
+        .mockResolvedValueOnce(transient())
+        .mockResolvedValueOnce(mockResponse({article: {slug: 'a'}}));
+
+      const result = await postRetryable('articles/a/favorite', {});
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock.mock.calls[1]![1]).toMatchObject({method: 'post'});
+      expect(result).toEqual({article: {slug: 'a'}});
+    });
+
+    it('delRetryable replays the DELETE direction of a toggle', async () => {
+      fetchMock
+        .mockResolvedValueOnce(transient())
+        .mockResolvedValueOnce(mockResponse({article: {slug: 'a'}}));
+
+      const result = await delRetryable('articles/a/favorite');
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock.mock.calls[1]![1]).toMatchObject({method: 'delete'});
+      expect(result).toEqual({article: {slug: 'a'}});
+    });
+
+    it('plain post stays single-shot: entity-creating writes never replay', async () => {
+      fetchMock.mockResolvedValue(transient());
+
+      const error = (await post('articles/a/comments', {
+        comment: {body: 'Nice'}
+      }).catch((e: unknown) => e)) as ff.HTTPError;
+
+      expect(error).toBeInstanceOf(ff.HTTPError);
+      expect(error.status).toBe(503);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('put replays on transient failure (idempotent update stays in the default whitelist)', async () => {
+      fetchMock
+        .mockResolvedValueOnce(transient())
+        .mockResolvedValueOnce(mockResponse({article: {slug: 'a'}}));
+
+      await put('articles/a', {article: {body: 'updated'}});
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
     });
   });
 
