@@ -1,6 +1,4 @@
-import {Card, Title, Text} from 'haze-ui';
-
-import {useTitle} from '@/util/useTitle';
+import {Card, Title, Text, useTitle} from 'haze-ui';
 
 export default function Help() {
   // 页标题（统一口径见 Home 的 useTitle 注释）

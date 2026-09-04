@@ -19,13 +19,20 @@ import {StackWarmer, isGuardedPath, requireLogin, type RouterContext} from './in
 import NotFound from './NotFound';
 
 // 页级 404 用例渲染真 NotFound 视图：haze-ui 整体替换为最小 stub
-//（同 Article/NotFound.test.tsx 的三件套），@native-router/react 走真
+//（同 Article/NotFound.test.tsx 的三件套），useTitle 走真实现（NotFound
+// 消费，页标题契约由库本体承担）；@native-router/react 走真
 // 模块——本文件其余用例不消费 haze-ui，mock 不影响它们
-vi.mock('haze-ui', () => ({
-  Card: ({children}: any) => <div>{children}</div>,
-  Title: ({children}: any) => <h1>{children}</h1>,
-  Text: ({children}: any) => <p>{children}</p>
-}));
+vi.mock('haze-ui', async () => {
+  const {useTitle} = await vi.importActual<typeof import('haze-ui')>(
+    'haze-ui'
+  );
+  return {
+    useTitle,
+    Card: ({children}: any) => <div>{children}</div>,
+    Title: ({children}: any) => <h1>{children}</h1>,
+    Text: ({children}: any) => <p>{children}</p>
+  };
+});
 
 const user: User = {username: 'ada', email: 'ada@x', token: 't', bio: null, image: null};
 

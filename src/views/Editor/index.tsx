@@ -7,7 +7,7 @@ import {useState, useEffect} from 'react';
 // 回落 initialValues，dirty 归零）——拦截判定与「确认放弃」都建立在
 // 这两个同步 API 上。
 import {Form, useForm, useIsSubmitting, isDirty, reset, setInitialValues} from 'react-f0rm';
-import {Card, Title, InputCore, TextareaCore, TagInputCore, Alert, ConfirmDialog, FormItem} from 'haze-ui';
+import {Card, Title, InputCore, TextareaCore, TagInputCore, Alert, ConfirmDialog, FormItem, useTitle} from 'haze-ui';
 import {useRouter, useBlocker} from '@native-router/react';
 import {navigate} from '@native-router/core';
 import {useMutation} from 'react-toolroom/async';
@@ -15,7 +15,6 @@ import {useMutation} from 'react-toolroom/async';
 import * as articleService from '@/services/article';
 import {useEditorData} from '@/services/dataloaders';
 import {articleCache, homeCache} from '@/util/useQuery';
-import {useTitle} from '@/util/useTitle';
 import {required, applyApiFieldErrors} from '@/util/validators';
 
 // 表单值形状：validate 回调与 handleSubmit 的 values 都由此约束

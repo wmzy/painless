@@ -141,7 +141,9 @@ const NO_CSS = new Set([
   'TOKEN_REGISTRY',
   'COMPONENT_TOKENS',
   'useControl',
-  'useFormControl'
+  'useFormControl',
+  // 纯逻辑 hook（1.21 上移入主桶，同 useControl 一类）：无样式产物
+  'useTitle'
 ]);
 
 // 具名导入语句：import {A, type B, C as D} from 'haze-ui'（含多行）。

@@ -76,12 +76,13 @@ vi.mock('@/services/article', () => ({
 
 vi.mock('haze-ui', async () => {
   const React = await import('react');
-  // Feed 采纳的 AsyncSection 走真实现（haze-ui 1.21 dist 纯 ESM，
-  // vitest 直连）：三分支/文案/aria 由库本体渲染，错误与重试断言落在
-  // 库的真实产物上；其余纯展示件仍以最小 stub 隔离
-  const {AsyncSection} = await vi.importActual<typeof import('haze-ui')>(
-    'haze-ui'
-  );
+  // Feed 采纳的 AsyncSection 与页标题 useTitle 走真实现（haze-ui 1.21
+  // dist 纯 ESM，vitest 直连）：三分支/文案/aria 与「进入设标题、卸载
+  // 恢复进入前值」契约由库本体渲染，断言落在库的真实产物上；其余纯
+  // 展示件仍以最小 stub 隔离
+  const {AsyncSection, useTitle} = await vi.importActual<
+    typeof import('haze-ui')
+  >('haze-ui');
   const box = (Tag: string) => {
     const C = ({
       children,
@@ -92,6 +93,7 @@ vi.mock('haze-ui', async () => {
   };
   return {
     AsyncSection,
+    useTitle,
     Title: ({level, children}: {level?: number; children?: ReactNode}) =>
       React.createElement(`h${level ?? 1}`, null, children),
     Text: box('span'),

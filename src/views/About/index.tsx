@@ -1,6 +1,4 @@
-import {Card, Title, Text} from 'haze-ui';
-
-import {useTitle} from '@/util/useTitle';
+import {Card, Title, Text, useTitle} from 'haze-ui';
 
 import Feed from './Feed';
 

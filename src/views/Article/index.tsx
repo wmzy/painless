@@ -1,13 +1,12 @@
 import {useState} from 'react';
 import {Form, useForm, reset, useIsSubmitting} from 'react-f0rm';
 import {useMutation} from 'react-toolroom/async';
-import {Card, Title, Text, Divider, TextareaCore, Alert, Button, FormItem} from 'haze-ui';
+import {Card, Title, Text, Divider, TextareaCore, Alert, Button, FormItem, useTitle} from 'haze-ui';
 
 import * as articleService from '@/services/article';
 import {favoriteOnArticle, followOnArticle} from '@/services/mutations';
 import {useArticleData} from '@/services/dataloaders';
 import {commentsCache} from '@/util/useQuery';
-import {useTitle} from '@/util/useTitle';
 import {useToastError} from '@/util/toastError';
 import FavoriteButton from '@/components/FavoriteButton';
 import {useFavorite, useRequireAuth} from '@/views/_shared/useFavorite';

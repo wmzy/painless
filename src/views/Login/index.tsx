@@ -2,7 +2,7 @@ import type {AppPaths} from '@/views';
 
 import {useState} from 'react';
 import {Form, useForm, useCanSubmit} from 'react-f0rm';
-import {Card, Title, InputCore, Text, Alert, FormItem} from 'haze-ui';
+import {Card, Title, InputCore, Text, Alert, FormItem, useTitle} from 'haze-ui';
 // FormItem（haze-ui 1.8 引入、1.11 起随 form 层并入主 barrel）：接管字段
 // id/错误 span/aria 链路——首条错误渲染为 <span role='alert'>（错误 span
 // 只在 invalid 时渲染，aria-describedby 相应省略，无悬空 id）。1.15 起
@@ -20,7 +20,6 @@ import {navigate} from '@native-router/core';
 
 
 import * as auth from '@/services/auth';
-import {useTitle} from '@/util/useTitle';
 import {required, email, compose, applyApiFieldErrors} from '@/util/validators';
 
 // /login 的 search 契约：?redirect=<encodeURIComponent(原目的页)>——由

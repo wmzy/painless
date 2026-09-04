@@ -2,7 +2,7 @@ import type {AppRoutes} from '@/views';
 
 import {css} from '@linaria/core';
 import {TypedLink, useSearch, useSetSearch} from '@native-router/react';
-import {Title, Text, Flex, Chip, ButtonLink} from 'haze-ui';
+import {Title, Text, Flex, Chip, ButtonLink, useTitle} from 'haze-ui';
 
 import {
   homeSearchSchema,
@@ -11,7 +11,6 @@ import {
 } from '@/types/search';
 import {favoriteOnHome} from '@/services/mutations';
 import {useHomeData} from '@/services/dataloaders';
-import {useTitle} from '@/util/useTitle';
 import {useFavorite} from '@/views/_shared/useFavorite';
 
 import ArticlePreview from './ArticlePreview';
@@ -20,7 +19,8 @@ import Tags from './Tags';
 
 export default function Home() {
   // 页标题统一口径「<页名> · Painless」，后缀对齐 index.html 的默认
-  // <title>；离开恢复默认（机制见 useTitle 文件头）
+  // <title>；离开恢复默认（机制：haze-ui 的 useTitle——写入/恢复双
+  // effect + 进入前快照，与原本地实现同构，上游测试已钉）
   useTitle('Home · Painless');
   // useHomeData（createDataLoader 第二元素）：类型与来源校验都在工厂内
   // 收拢——路由声明了 homeLoader，进组件前数据必已 resolve，不再写

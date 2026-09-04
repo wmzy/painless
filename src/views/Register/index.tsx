@@ -2,7 +2,7 @@ import type {AppPaths} from '@/views';
 
 import {useState} from 'react';
 import {Form, useForm, useCanSubmit} from 'react-f0rm';
-import {Card, Title, InputCore, Text, Alert, FormItem} from 'haze-ui';
+import {Card, Title, InputCore, Text, Alert, FormItem, useTitle} from 'haze-ui';
 // FormItem（haze-ui 1.8 引入、1.11 起随 form 层并入主 barrel）：接管字段
 // id/错误 span/aria 链路——首条错误渲染为 <span role='alert'>。1.15 起
 // input 声明式桥：传控件引用即自动接好 id/aria-invalid/aria-describedby/
@@ -23,7 +23,6 @@ import {
   usernameAvailable,
   applyApiFieldErrors
 } from '@/util/validators';
-import {useTitle} from '@/util/useTitle';
 
 // —— 用户名异步查重：react-f0rm 异步 validate 协议 ——
 // debounce 窗口（validateDebounce）由 FormItem 透传给 react-f0rm 的

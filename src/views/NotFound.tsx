@@ -1,9 +1,7 @@
 import type {AppPaths} from '@/views';
 
 import {TypedLink} from '@native-router/react';
-import {Card, Title, Text} from 'haze-ui';
-
-import {useTitle} from '@/util/useTitle';
+import {Card, Title, Text, useTitle} from 'haze-ui';
 
 
 // Router 的 notFound prop（@native-router/react ≥1.14）：解析以 core 的
