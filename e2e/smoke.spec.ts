@@ -566,9 +566,10 @@ test('401 on authenticated request auto-logs-out', async ({page}) => {
 // resolve entry——loader 不重跑、articleCache 亦不重查，单篇文章 GET
 // 全程共 1 次（预取/预览/正式导航三态共享同一请求）。
 //
-// 定位取舍：Preview 浮层带 aria-hidden='true'（不在无障碍树里），
-// getByRole('dialog') 匹配不到，改用 [role=dialog] 属性选择器；浮层
-// pointer-events:none，点击仍落在卡片标题本体（浮层只读不可交互）。
+// 定位取舍：Preview 浮层带 aria-hidden='true'（不在无障碍树里）且无
+// 弹层语义（5febc94 裸 div 迁移后不再借用旧本地 Popover 的
+// role=dialog 假语义），e2e 钉 data-testid='preview-overlay' 定位；
+// 浮层 pointer-events:none，点击仍落在卡片标题本体（浮层只读不可交互）。
 // 点击时同名的预览标题（h1）已在 DOM，需 .first() 锁定卡片 h2。
 test('PreviewLink previews on hover and reuses prefetch on click', async ({
   page
@@ -591,7 +592,7 @@ test('PreviewLink previews on hover and reuses prefetch on click', async ({
   // hover 卡片标题 → onMouseEnter 开预览浮层：呈现预解析的 Article
   // 视图（正文可辨而非 loading 占位），且零新增请求
   await page.getByRole('heading', {name: article1.title}).hover();
-  const overlay = page.locator('[role="dialog"]');
+  const overlay = page.locator('[data-testid="preview-overlay"]');
   await expect(
     overlay.getByText('Paragraphs of the first fixture article.')
   ).toBeVisible();
@@ -723,7 +724,7 @@ test('viewStack back: Home 后退零请求恢复', async ({page}) => {
   await page.getByRole('heading', {name: article1.title}).hover();
   await expect(
     page
-      .locator('[role="dialog"]')
+      .locator('[data-testid="preview-overlay"]')
       .getByText('Fixture comment for the article page.')
   ).toBeVisible();
   await page.getByRole('heading', {name: article1.title}).first().click();
@@ -839,7 +840,7 @@ test('favorite 500: 乐观翻转回滚 + danger toast', async ({page}) => {
   await page.getByRole('heading', {name: article1.title}).hover();
   await expect(
     page
-      .locator('[role="dialog"]')
+      .locator('[data-testid="preview-overlay"]')
       .getByText('Fixture comment for the article page.')
   ).toBeVisible();
   await page.getByRole('heading', {name: article1.title}).first().click();
@@ -903,9 +904,9 @@ test('PreviewLink race: fast click after hover keeps comments healthy', async ({
   // hover 开浮层后只等浮层本体出现（不等评论文本——那意味着 settle），
   // 立刻点击
   await page.getByRole('heading', {name: article1.title}).hover();
-  // first()：页面除预览浮层外还有一个常驻 [role=dialog]（ToastContainer
-  // 的宿主），strict mode 下裸 locator 解析到 2 个元素直接违例
-  await expect(page.locator('[role="dialog"]').first()).toBeVisible();
+  // 浮层本体出现即点击（testid 定位唯一，无 strict-mode 歧义——
+  // 旧 [role=dialog] 时代与 ToastContainer 宿主撞选择器才需 first()）
+  await expect(page.locator('[data-testid="preview-overlay"]')).toBeVisible();
   await page.getByRole('heading', {name: article1.title}).first().click();
   await expect(page).toHaveURL(new RegExp(`/article/${article1.slug}$`));
 
@@ -1024,19 +1025,19 @@ test('a11y: PreviewLink 预览浮层打开态通过 WCAG A/AA 扫描', async ({
   ).toBeVisible();
 
   // hover 打开预览浮层（定位同上方 PreviewLink 行为用例：浮层
-  // aria-hidden，getByRole 匹配不到，用 [role=dialog] 属性选择器）
+  // aria-hidden 不在无障碍树里，钉 data-testid 定位）
   await page.getByRole('heading', {name: article1.title}).hover();
   await expect(
     page
-      .locator('[role="dialog"]')
+      .locator('[data-testid="preview-overlay"]')
       .getByText('Paragraphs of the first fixture article.')
   ).toBeVisible();
   // 浮层必须 inert：把整棵预览树移出 Tab 序（见用例头注释的缺陷说明）
-  await expect(page.locator('[role="dialog"][inert]')).toBeAttached();
+  await expect(page.locator('[data-testid="preview-overlay"][inert]')).toBeAttached();
   // 键盘链路实证：inert 子树不可聚焦（focus() 落空、activeElement 不变）
   // ——修复前浮层内链接可被焦点穿透（Tab 落进对 AT 不可见的 0.2 倍视图）
   const focusEnteredOverlay = await page.evaluate(() => {
-    const link = document.querySelector('[role="dialog"][inert] a[href]');
+    const link = document.querySelector('[data-testid="preview-overlay"][inert] a[href]');
     if (!link) return true;
     (link as HTMLElement).focus();
     return document.activeElement === link;

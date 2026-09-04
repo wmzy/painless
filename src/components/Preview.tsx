@@ -34,7 +34,10 @@ const style = css`
 // FloatingPanel/useFloating 又未从包导出——故此处保留最小 portal 实现
 //（createPortal 直挂 document.body，无宿主 div 生命周期、无 role 假
 // 语义；原共享 Popover.tsx 已删）。若 haze 未来导出裸浮层原语，此处
-// 是唯一待换点。
+// 是唯一待换点。data-testid='preview-overlay' 是唯一测试钩子：e2e 定
+// 位浮层用它——迁移批（5febc94）前浮层借旧本地 Popover 的 role=dialog
+// 被定位，裸 div 不再借用弹层假语义，测试改钉 testid（对 AT 零影响：
+// aria-hidden 在场，角色属性本就不进无障碍树）。
 export default function Preview({visible}: Props) {
   const {view, loading, error} = usePrefetch();
   if (!visible) return null;
@@ -47,7 +50,7 @@ export default function Preview({visible}: Props) {
   const body = loading ? 'loading' : error ? 'error' : view;
   if (!body) return null;
   return createPortal(
-    <div aria-hidden='true' inert className={style}>
+    <div aria-hidden='true' inert data-testid='preview-overlay' className={style}>
       {body}
     </div>,
     document.body
