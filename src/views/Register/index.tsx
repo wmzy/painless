@@ -105,7 +105,9 @@ export default function Register() {
       // RealWorld 契约只有 username/email/password：确认字段不进提交体
       const {username, email, password} = values;
       await auth.register(username, email, password);
-      void navigate(router, '/');
+      // 被取代/取消的导航 reject NCE（core 1.15）：吞掉即「停在旧视图」
+      // 语义，与旧版 void（永不 settle）等价
+      void navigate(router, '/').catch(() => undefined);
     } catch (e: unknown) {
       // 422 字段错误经 applyApiFieldErrors（validators.ts 单通道）回填到
       // 对应字段下方，内部走 react-f0rm 0.5.0 的 setServerErrors

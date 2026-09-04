@@ -68,9 +68,14 @@ export function mockViewData<F extends (ctx: any) => Promise<any>>(
       schema,
       // 面板 Refresh 语义：清共享缓存再重解析当前路由——绕过 withCache
       // 的新鲜命中，mock 分支（含 'always' 重新生成）才会真正执行
+      // refresh 同为可取消链：被取代 reject NCE（core 1.15），吞掉与旧版
+      // void（永不 settle）等价。Promise.resolve 包裹兼容返回 void 的测试
+      // 替身（loaderCache.ts 的 bindRefresh 同款先例）
       refresh: () => {
         clearAllCaches();
-        void refresh(router as Parameters<typeof refresh>[0]);
+        void Promise.resolve(
+          refresh(router as Parameters<typeof refresh>[0])
+        ).catch(() => undefined);
       }
     };
 

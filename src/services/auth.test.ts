@@ -12,10 +12,12 @@ vi.mock('@/util/http', () => ({
 }));
 
 // 401 处置链（bindUnauthorizedRedirect）依赖 core 的 navigate/invalidate
-// （router 实例形态由调用方注入）：mock 成 vi.fn 断言调用契约。refresh
-// 是传递依赖（useQuery → mock）的具名导入，一并提供避免 undefined 绑定
+// （router 实例形态由调用方注入）：mock 成 vi.fn 断言调用契约。navigate
+// 返回 Promise——产线对被取代/取消的导航 reject NCE 挂了 .catch（core
+// 1.15 语义，见下方探针用例），undefined 会让 handler 同步抛 TypeError。
+// refresh 是传递依赖（useQuery → mock）的具名导入，一并提供避免 undefined 绑定
 vi.mock('@native-router/core', () => ({
-  navigate: vi.fn(),
+  navigate: vi.fn(async () => undefined),
   invalidate: vi.fn(),
   refresh: vi.fn()
 }));
@@ -327,6 +329,41 @@ describe('auth service', () => {
       expect(auth.getCurrentUser()).toBeNull();
       expect(navigate).not.toHaveBeenCalled();
       expect(invalidate).not.toHaveBeenCalled();
+    });
+
+    // core 1.15 语义变更：被取代/取消的 navigate() 不再永不 settle，而是
+    // reject NavigationCancelledError——fire-and-forget 调用点若仍裸 void
+    // 会把 rejection 漏进 unhandled rejection 通道。注：vi.fn 的返回值
+    // 会被 spy 机制内部挂上处理器，process.on('unhandledRejection') 探针
+    // 在 mock 路径下永远观测不到泄漏（实测），故用记录式 thenable 直测
+    // 契约本身：产线给 navigate 的返回值挂了恰好一个 rejection 处理器，
+    // 且该处理器吞掉真实 NCE 不重抛——真实链路下这两点即「rejection 被
+    // 吞、零 unhandled」的充分条件。
+    it('被取代的导航 reject NCE：产线 .catch 吞掉 rejection（不漏 unhandled 通道）', async () => {
+      const {handler} = await setup('/editor');
+      const {navigate} = await import('@native-router/core');
+      const {NavigationCancelledError} = await vi.importActual<
+        typeof import('@native-router/core')
+      >('@native-router/core');
+
+      // 记录式 thenable：模拟被取代的 navigate 返回值，.catch 挂钩可观测
+      const catches: ((reason: unknown) => unknown)[] = [];
+      vi.mocked(navigate).mockImplementationOnce(
+        () =>
+          ({
+            catch(cb: (reason: unknown) => unknown) {
+              catches.push(cb);
+              return Promise.resolve();
+            }
+          }) as unknown as Promise<void>
+      );
+
+      handler();
+
+      // fire-and-forget 必须给返回值挂 rejection 处理器（裸 void 则为零）
+      expect(catches.length).toBe(1);
+      // 且该处理器吞掉真实 NCE——不重抛，rejection 就此终结
+      expect(() => catches[0]!(new NavigationCancelledError('/login'))).not.toThrow();
     });
   });
 });

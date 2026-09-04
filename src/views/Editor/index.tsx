@@ -125,7 +125,9 @@ export default function Editor() {
       // 表单拉回干净——否则随后的 navigate('/') 会被未离开保存拦截
       // 否决（live values 仍与旧 initialValues 不同，isDirty 仍真）
       setInitialValues(form, values);
-      void navigate(router, '/');
+      // 被取代/取消的导航 reject NCE（core 1.15）：吞掉即「停在旧视图」
+      // 语义，与旧版 void（永不 settle）等价
+      void navigate(router, '/').catch(() => undefined);
     } catch (e: unknown) {
       // 422 字段错误回填到对应字段下方，顶部 Alert 只兜非字段错误
       setError(applyApiFieldErrors(form, e, ['title', 'description', 'body', 'tagList']));

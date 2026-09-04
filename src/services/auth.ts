@@ -108,10 +108,12 @@ export function bindUnauthorizedRedirect(router: unknown) {
     // 方注入的就是真 router 实例（views/index.tsx 的 useRouter() 产物）
     const r = router as Parameters<typeof navigate>[0];
     invalidate(r);
+    // 被取代/取消的导航 reject NCE（core 1.15）：吞掉即「停在旧视图」
+    // 语义，与旧版 void（永不 settle）等价
     void navigate(
       r,
       `/login?redirect=${encodeURIComponent(`${pathname}${search}`)}`
-    );
+    ).catch(() => undefined);
   });
 }
 

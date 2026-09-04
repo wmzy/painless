@@ -33,7 +33,9 @@ export function useRequireAuth(): () => boolean {
   const {router, location} = useMatched();
   return () => {
     if (getCurrentUser()) return true;
-    void navigate(router, loginRedirect(location));
+    // 被取代/取消的导航 reject NCE（core 1.15）：吞掉即「停在旧视图」
+    // 语义，与旧版 void（永不 settle）等价
+    void navigate(router, loginRedirect(location)).catch(() => undefined);
     return false;
   };
 }

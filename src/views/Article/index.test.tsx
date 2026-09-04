@@ -73,7 +73,9 @@ vi.mock('@native-router/react', async () => {
   };
 });
 vi.mock('@native-router/core', () => ({
-  navigate: vi.fn(),
+  // navigate 返回 Promise：产线 useRequireAuth 对被取代/取消的导航
+  // reject NCE 挂了 .catch（core 1.15 语义），undefined 会让回调抛 TypeError
+  navigate: vi.fn(async () => undefined),
   refresh: vi.fn(async () => state.emit())
 }));
 vi.mock('@/services/article', () => ({
@@ -124,9 +126,10 @@ function asButton(el: HTMLElement): HTMLButtonElement {
 
 beforeEach(() => {
   vi.resetAllMocks();
-  // resetAllMocks 会清掉 vi.fn 的实现：refresh 的「重渲染广播」语义逐
-  // 用例重建（navigate 无实现需求，仅断言调用）
+  // resetAllMocks 会清掉 vi.fn 的实现：refresh 的「重渲染广播」与
+  // navigate 的 Promise 返回（产线 .catch 挂钩，mock 工厂注释）逐用例重建
   refreshMock.mockImplementation(async () => state.emit());
+  navigateMock.mockImplementation(async () => undefined);
   state.article = {
     ...state.article,
     favorited: false,

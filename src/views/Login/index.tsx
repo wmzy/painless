@@ -81,8 +81,10 @@ export default function Login() {
   const handleSubmit = async (values: {email: string; password: string}) => {
     try {
       await auth.login(values.email, values.password);
-      // 回跳原目的页；非法/缺失（直接访问 /login）落首页
-      void navigate(router, sanitizeRedirect(redirect));
+      // 回跳原目的页；非法/缺失（直接访问 /login）落首页。被取代/取消的
+      // 导航 reject NCE（core 1.15）：吞掉即「停在旧视图」语义，与旧版
+      // void（永不 settle）等价
+      void navigate(router, sanitizeRedirect(redirect)).catch(() => undefined);
     } catch (e: unknown) {
       // 422 字段错误经 applyApiFieldErrors（validators.ts 单通道）回填到
       // 对应字段下方，内部走 react-f0rm 0.5.0 的 setServerErrors

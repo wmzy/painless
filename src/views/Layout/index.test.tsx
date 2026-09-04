@@ -122,10 +122,12 @@ vi.mock('@native-router/react', async () => {
   };
 });
 
+// navigate/refresh 返回 Promise：产线对被取代/取消的导航链 reject NCE
+// 挂了 .catch（core 1.15 语义），undefined 会让回调同步抛 TypeError
 vi.mock('@native-router/core', () => ({
-  navigate: vi.fn(),
+  navigate: vi.fn(async () => undefined),
   invalidate: vi.fn(),
-  refresh: vi.fn()
+  refresh: vi.fn(async () => undefined)
 }));
 
 vi.mock('@/services/auth', () => ({
@@ -148,6 +150,10 @@ const logoutMock = vi.mocked(logout);
 
 beforeEach(() => {
   vi.resetAllMocks();
+  // resetAllMocks 会清掉 vi.fn 的实现：navigate/refresh 的 Promise 返回
+  //（产线 .catch 挂钩，mock 工厂注释）逐用例重建
+  navigateMock.mockImplementation(async () => undefined);
+  refreshMock.mockImplementation(async () => undefined);
   state.user = {username: 'me', email: 'me@example.com', token: 'jwt'};
   state.router.history.location.pathname = '/';
 });

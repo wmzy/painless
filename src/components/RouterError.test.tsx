@@ -4,7 +4,9 @@ import {render, screen} from '@testing-library/react';
 import RouterError from './RouterError';
 
 vi.mock('@native-router/core', () => ({
-  refresh: vi.fn()
+  // 返回 Promise：产线对被取代/取消的 refresh reject NCE 挂了 .catch
+  //（core 1.15 语义），undefined 会让按钮回调同步抛 TypeError
+  refresh: vi.fn(async () => undefined)
 }));
 
 vi.mock('@native-router/react', () => ({

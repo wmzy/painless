@@ -28,7 +28,9 @@ export default function Layout() {
   // 不闪、不回骨架）。
   useEffect(() => {
     const onPageshow = (e: PageTransitionEvent) => {
-      if (e.persisted) void refresh(router);
+      // refresh 同为可取消链：被取代 reject NCE（core 1.15），吞掉即保持
+      // 旧快照续用，与旧版 void（永不 settle）等价
+      if (e.persisted) void refresh(router).catch(() => undefined);
     };
     window.addEventListener('pageshow', onPageshow);
     return () => window.removeEventListener('pageshow', onPageshow);
@@ -80,7 +82,9 @@ export default function Layout() {
                 // 影响，由随后的 navigate 接管。
                 logout();
                 invalidate(router);
-                void navigate(router, '/');
+                // 被取代/取消的导航 reject NCE（core 1.15）：吞掉即「停在
+                // 旧视图」语义，与旧版 void（永不 settle）等价
+                void navigate(router, '/').catch(() => undefined);
               }}
             >
               Logout

@@ -19,7 +19,11 @@ export default function RouterError({error}: Props) {
           生产整块摇出——同 DevTool/http 的既有先例）：生产错误页只留
           message 与操作项，不向用户泄露文件路径/源码片段等内部信息 */}
       {import.meta.env.DEV ? <pre>{error.stack}</pre> : null}
-      <Button onClick={() => void refresh(router)}>Refresh</Button>
+      {/* refresh 同为可取消链：被取代 reject NCE（core 1.15），吞掉与旧版
+          void（永不 settle）等价 */}
+      <Button onClick={() => void refresh(router).catch(() => undefined)}>
+        Refresh
+      </Button>
       <TypedLink<AppPaths> to='/'>Home</TypedLink>
     </Card>
   );

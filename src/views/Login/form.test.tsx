@@ -27,7 +27,11 @@ vi.mock('@native-router/react', () => ({
     <a href={to}>{children}</a>
   )
 }));
-vi.mock('@native-router/core', () => ({navigate: vi.fn()}));
+// navigate 返回 Promise：产线对被取代/取消的导航 reject NCE 挂了
+// .catch（core 1.15 语义），undefined 会让提交回调同步抛 TypeError
+vi.mock('@native-router/core', () => ({
+  navigate: vi.fn(async () => undefined)
+}));
 
 import {navigate} from '@native-router/core';
 
