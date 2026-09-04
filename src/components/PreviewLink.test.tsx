@@ -57,6 +57,18 @@ describe('PreviewLink', () => {
     expect(link?.getAttribute('prefetch')).toBeNull();
   });
 
+  it('keeps the preview layer decorative: aria-hidden + inert', () => {
+    // 迁移 haze-ui Popover 批保留的 a11y 契约：预览渲染完整目标视图
+    //（链接/按钮天然 tabbable），必须整体对 AT 隐身（aria-hidden）并
+    // 移出 Tab 序（inert，React 19 落为 DOM 属性）——两层缺一，键盘/
+    // 读屏用户都会落进「看不见也听不见」的可聚焦内容
+    render(<PreviewLink to="/test">Hover me</PreviewLink>);
+    fireEvent.mouseEnter(screen.getByText('Hover me'));
+    const layer = screen.getByText('loading').closest('div')!;
+    expect(layer.getAttribute('aria-hidden')).toBe('true');
+    expect(layer.hasAttribute('inert')).toBe(true);
+  });
+
   it('honors a controlled visible prop via control object', () => {
     // 触屏场景：宿主用自己的交互（此处以按钮代长按）驱动预览显隐，
     // 不依赖 hover/focus。visible 传 control 即受控，宿主 setVisible

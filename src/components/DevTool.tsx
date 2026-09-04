@@ -1,6 +1,6 @@
 import {css} from '@linaria/core';
 import {useCallback, ReactNode, useEffect, useRef, useState} from 'react';
-import {Badge, Button, Card} from 'haze-ui';
+import {Badge, Button, Popover} from 'haze-ui';
 import {InjectDevTools, type ObservableCache} from 'react-toolroom/devtools';
 import {useControl, type Control} from 'react-use-control';
 
@@ -17,8 +17,6 @@ import {
   type HttpRequestLog
 } from '@/util/requestLog';
 import {allCaches, clearAllCaches} from '@/util/useQuery';
-
-import Popover from './Popover';
 
 // InjectDevTools 不传 injectables：改为观察具名注册表（react-toolroom
 // ≥0.16 的发现通道）——createQueryHook 内部的 useInjectable(queryFn,
@@ -81,8 +79,60 @@ function InjectPanel() {
   return <InjectDevTools caches={caches} title='Cache & Calls' />;
 }
 
+// DEV 角标与面板的浮层基座换 haze-ui Popover（锚定式触发器 + 浮动面板，
+// open 走 control 受控）：触发器即面板锚点，落在 fixed 左上角容器里，
+// 面板随之锚在角标下方展开（原生 popover API 浏览器进顶层，无 anchor
+// 支持的退回 position:fixed + JS 定位）——原实现是两分支各挂一个裸
+// createPortal 层，这里收敛为库组件。角标视觉：haze Popover 的触发器
+// span（haze-Popover__container，稳定类名）无外观 API，经外围选择器描
+// 成 30×30 的 solid 按钮观感（对齐原 <Button>DEV</Button> 与
+// haze-styles__base 的 focus ring）；span 自带 role=button/tabIndex/
+// aria-haspopup/aria-expanded，键盘 Enter/Space 开合由库内建。
+const corner = css`
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 1000;
+  & > :global(.haze-Popover__container) {
+    width: 30px;
+    height: 30px;
+    justify-content: center;
+    align-items: center;
+    border-radius: var(--haze-radius-md);
+    font-family: var(--haze-font-sans);
+    font-size: var(--haze-text-xs);
+    font-weight: var(--haze-weight-medium);
+    line-height: var(--haze-leading-tight);
+    cursor: pointer;
+    user-select: none;
+    background: var(--haze-color-primary);
+    color: var(--haze-color-text-inverse);
+    transition:
+      background 0.15s,
+      box-shadow 0.15s;
+    &:hover {
+      background: var(--haze-color-primary-hover);
+    }
+    &:focus-visible {
+      box-shadow: 0 0 0 3px var(--haze-color-focus-ring);
+      outline: none;
+    }
+  }
+`;
+
+// 面板本体 300×300 可滚动；外观 chrome（边框/内衬/阴影）由 Popover 的
+// haze-Popover__panelVisuals 提供，取代原 <Card>。z-index 仅对无原生
+// popover 的退回路径有意义（顶层路径不参与 z 轴竞争），对齐旧层的
+// z-index:1000。
+const panelStyle = css`
+  width: 300px;
+  height: 300px;
+  overflow: auto;
+  z-index: 1000;
+`;
+
 function DevToolInner({open: openControl}: {open?: Control<boolean> | boolean}) {
-  const [open, setOpen] = useControl(openControl as Control<boolean>, false);
+  const [open, setOpen, openCtrl] = useControl(openControl as Control<boolean>, false);
   const [config, setConfig] = useState(getMockConfigs);
 
   useEffect(
@@ -93,60 +143,55 @@ function DevToolInner({open: openControl}: {open?: Control<boolean> | boolean}) 
     []
   );
 
-  if (open) {
-    return (
-      <Popover
-        x-class={css`
-          width: 300px;
-          height: 300px;
-          top: 0;
-          overflow: auto;
-        `}
-      >
-        <Card>
-          <Button onClick={() => setOpen(false)}>Close</Button>
-          {Object.entries(config).map(([key, val]) => (
-            <MockView
-              key={key}
-              name={key}
-              value={val}
-              onChange={(when) => {
-                setMockConfig(key, {...val, when});
-                // 用户切换 mock 模式即清全部实体缓存：避免上一模式的缓存
-                // 值（如 'always' 经 useMock 链写进缓存的假数据）新鲜
-                // 命中，挡住新模式生效
-                clearAllCaches();
-              }}
-            />
-          ))}
-          <hr />
-          <CacheView />
-          <hr />
-          {/* react-toolroom/devtools 面板：cache 快照表复用 allCaches
-              注册表逐实体渲染 Key/Age/Value 表；调用追踪经具名注册表观察
-              场景 query hook 发起的真实调用（见文件头注释）。自研 CacheView
-              （聚合 + 事件流 + Clear）保留：面板看逐实体明细与调用追踪，
-              CacheView 看注册表全貌与事件流。RequestLogView 仍保留——
-              它是 http 层视角（URL/状态码），覆盖路由 loader 通道与一切
-              未走场景 query hook 的请求，与 inject 追踪（场景 hook 内视角）
-              互补。 */}
-          <InjectPanel />
-          <hr />
-          <RequestLogView />
-        </Card>
-      </Popover>
-    );
-  }
+  // content 随开合挂载/卸载而非常驻：haze Popover 关闭只把面板藏起来
+  //（非原生路径 display:none、原生路径 hidePopover），面板内的订阅
+  //（CacheView/RequestLogView/InjectPanel 各自的 cache 监听）若常驻，
+  // 「面板关闭即全部退订」的原语义就丢了。
+  const content = open ? (
+    <>
+      <Button onClick={() => setOpen(false)}>Close</Button>
+      {Object.entries(config).map(([key, val]) => (
+        <MockView
+          key={key}
+          name={key}
+          value={val}
+          onChange={(when) => {
+            setMockConfig(key, {...val, when});
+            // 用户切换 mock 模式即清全部实体缓存：避免上一模式的缓存
+            // 值（如 'always' 经 useMock 链写进缓存的假数据）新鲜
+            // 命中，挡住新模式生效
+            clearAllCaches();
+          }}
+        />
+      ))}
+      <hr />
+      <CacheView />
+      <hr />
+      {/* react-toolroom/devtools 面板：cache 快照表复用 allCaches
+          注册表逐实体渲染 Key/Age/Value 表；调用追踪经具名注册表观察
+          场景 query hook 发起的真实调用（见文件头注释）。自研 CacheView
+          （聚合 + 事件流 + Clear）保留：面板看逐实体明细与调用追踪，
+          CacheView 看注册表全貌与事件流。RequestLogView 仍保留——
+          它是 http 层视角（URL/状态码），覆盖路由 loader 通道与一切
+          未走场景 query hook 的请求，与 inject 追踪（场景 hook 内视角）
+          互补。 */}
+      <InjectPanel />
+      <hr />
+      <RequestLogView />
+    </>
+  ) : null;
+
   return (
-    <Popover
-      x-class={css`
-        width: 30px;
-        height: 30px;
-        top: 0;
-      `}
-    >
-      <Button onClick={() => setOpen(true)}>DEV</Button>
-    </Popover>
+    <div className={corner}>
+      {/* open 传 openCtrl（useControl 三元组第三元）：宿主给了 control
+          则它是同一状态的代理（Close/角标/light-dismiss 三处写回收敛
+          到同一份状态），宿主给 boolean/不传则是本组件自持状态的
+          control。角标在面板打开时保持可见（原实现收起角标换面板），
+          点击/Escape/点外关面板均由库内建。 */}
+      <Popover open={openCtrl} content={content} className={panelStyle}>
+        DEV
+      </Popover>
+    </div>
   );
 }
 

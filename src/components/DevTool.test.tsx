@@ -21,14 +21,21 @@ import DevTool, {truncateKey, ageSeconds} from './DevTool';
 
 // 沿用 RouterError.test.tsx 的 haze-ui mock 约定（UMD 产物在 vitest ESM
 // 下无法提供命名导出）。useControl 已改为直接依赖 react-use-control
-//（纯 ESM），走真模块，不再需要 useState 替身。
-vi.mock('haze-ui', () => ({
-  Button: ({children, onClick}: any) => (
-    <button onClick={onClick}>{children}</button>
-  ),
-  Card: ({children}: any) => <div>{children}</div>,
-  Badge: ({children}: any) => <span>{children}</span>
-}));
+//（纯 ESM），走真模块，不再需要 useState 替身。Popover 走 importActual
+// 真模块（同 useTitle 先例）：DevTool 的开合已收敛进 haze Popover 的
+// 触发器/面板机制，stub 无法复现其 control 语义；jsdom 无原生 popover
+// API，库自动落入 display:none 退回路径，content 由 DevTool 随 open
+// 挂载/卸载，断言不受隐藏面板的空壳影响。
+vi.mock('haze-ui', async () => {
+  const {Popover} = await vi.importActual<typeof import('haze-ui')>('haze-ui');
+  return {
+    Button: ({children, onClick}: any) => (
+      <button onClick={onClick}>{children}</button>
+    ),
+    Badge: ({children}: any) => <span>{children}</span>,
+    Popover
+  };
+});
 
 function openPanel() {
   render(
@@ -38,6 +45,32 @@ function openPanel() {
   );
   fireEvent.click(screen.getByText('DEV'));
 }
+
+describe('DevTool 角标/面板（haze Popover 集成）', () => {
+  it('DEV 角标即 Popover 触发器：aria-haspopup 常在，aria-expanded 随开合', () => {
+    // 迁移 haze Popover 后角标自带弹层触发语义（此前是裸 Button 无
+    // haspopup/expanded）；content 随开合挂载/卸载（关闭即退订，见
+    // CacheView 组），Close 文案仅在开面板时在场
+    render(
+      <DevTool>
+        <div>content</div>
+      </DevTool>
+    );
+    const trigger = screen.getByText('DEV').closest('[role="button"]')!;
+    expect(trigger.getAttribute('aria-haspopup')).toBe('true');
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByText('Close')).toBeNull();
+
+    fireEvent.click(screen.getByText('DEV'));
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByText('Close')).toBeDefined();
+
+    // 再点角标合上：面板内容随 open 卸载
+    fireEvent.click(screen.getByText('DEV'));
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByText('Close')).toBeNull();
+  });
+});
 
 describe('DevTool truncateKey', () => {
   it('keeps short hash keys as-is', () => {
