@@ -28,9 +28,14 @@
 //   原生 <option> 子件）；
 // - 其余组件按 kebab-case 对应 dist/css/<组件>.css（OTPInput→
 //   otp-input.css，连续大写按「词首」断词）。
-// 每个注入目标在 transform 内经 require.resolve 落到 painless 实际
-// 安装的 haze-ui 包内校验，缺文件时抛指名道姓错误（哪个导出、期望哪个
-// css 文件、提示补 FAMILY/NO_CSS），杜绝注入不存在文件。
+// 映射源分两档（见下方 manifest()/cssFileOf）：haze-ui ≥1.22 随包发布
+// dist/css-manifest.json（契约 {"families": {导出名: css 文件名}, "noCss":
+// [导出名]}）——文件在场即为唯一映射源，模板内 FAMILY/NO_CSS 表退役为
+// 无该文件时（如当前安装的 1.21）的 fallback；无论走哪档，解析出的
+// css 文件都在 transform 内经 require.resolve 落到 painless 实际安装的
+// haze-ui 包内做 fs 存在性校验，缺文件即 fail-fast，报错四要素齐：
+// 触发注入的源文件、具名导入名、期望 css 路径、修复提示（升级 haze-ui
+// 或修正映射），杜绝注入不存在文件。
 // tokens.css 恒定先行——主题变量/spacing/排版基线都在其中，经去重后
 // 落在模块图最前端（入口 index.tsx 亦导入 haze-ui）。haze-ui 无全局
 // reset（无 body/html/* 规则），不存在漏引基础样式的风险。
@@ -49,7 +54,7 @@
 //   见 vitest.config.mts 注释）。
 import fs from 'node:fs';
 import {createRequire} from 'node:module';
-import {dirname} from 'node:path';
+import {dirname, join} from 'node:path';
 import type {Plugin} from 'vite';
 
 const require = createRequire(import.meta.url);
@@ -59,6 +64,8 @@ const require = createRequire(import.meta.url);
 const TOKENS = 'haze-ui/css/tokens.css';
 
 // 子组件 → 家族 css 文件名（不含 .css）。未命中的组件名走 kebab-case。
+// 【fallback】本表与下方 NO_CSS 仅在 haze-ui 未随包发布
+// dist/css-manifest.json 时生效（manifest 在场则它是唯一映射源）。
 const FAMILY: Record<string, string> = {
   // 同名文件家族
   ListItem: 'list',
@@ -127,7 +134,21 @@ const kebab = (name: string) =>
     .replace(/([A-Z])([A-Z][a-z])/g, '$1-$2')
     .toLowerCase();
 
-const cssSpec = (name: string) => `haze-ui/css/${FAMILY[name] ?? kebab(name)}.css`;
+const cssFileOf = (name: string): {file: string | null; covered: boolean} => {
+  const state = manifest();
+  if (state.kind === 'present') {
+    const family = state.manifest.families[name];
+    if (typeof family === 'string') {
+      // families 值为 css 文件名，容忍带 .css 后缀的写法
+      return {file: family.replace(/\.css$/, ''), covered: true};
+    }
+    if (state.manifest.noCss.includes(name)) return {file: null, covered: true};
+    // manifest 覆盖缺口：file 仅用于报错里指认「会猜到哪个文件」
+    return {file: kebab(name), covered: false};
+  }
+  if (NO_CSS.has(name)) return {file: null, covered: true};
+  return {file: FAMILY[name] ?? kebab(name), covered: true};
+};
 
 // JS-only 导出（主题/设计 token 对象、无样式的纯逻辑 hook）：无对应
 // css 文件，不得 kebab 化注入（useControl→use-control.css 不存在）。
@@ -177,6 +198,45 @@ function resolveCss(spec: string): string {
 // dist/css 目录（缺文件错误的指认信息）：haze-ui 的 exports 未暴露
 // package.json，只能从某个已解析 css 的路径取目录。
 const cssDir = () => dirname(resolved.get(TOKENS) ?? resolveCss(TOKENS));
+
+// haze-ui ≥1.22 随包发布的映射清单（dist/css-manifest.json，契约见文件
+// 头注释）。三态：absent（未随包发布，走 FAMILY/NO_CSS fallback——当前
+// 安装的 1.21 即此态）/ present（唯一映射源）/ broken（文件在场但 JSON
+// 坏或形状不对——报错而非静默降级：发布侧 bug 伪装成「无 manifest」
+// 会倒退回模板猜测映射，正是该文件要消灭的漂移面）。进程内读一次。
+type CssManifest = {families: Record<string, string>; noCss: string[]};
+type ManifestState =
+  | {kind: 'absent'}
+  | {kind: 'present'; manifest: CssManifest}
+  | {kind: 'broken'; problem: string};
+
+let manifestState: ManifestState | undefined;
+function manifest(): ManifestState {
+  if (manifestState === undefined) {
+    const path = join(cssDir(), '..', 'css-manifest.json');
+    if (!fs.existsSync(path)) {
+      manifestState = {kind: 'absent'};
+    } else {
+      try {
+        const parsed: unknown = JSON.parse(fs.readFileSync(path, 'utf8'));
+        const {families, noCss} = (parsed ?? {}) as Partial<CssManifest>;
+        if (typeof families !== 'object' || families === null || !Array.isArray(noCss)) {
+          throw new Error('形状不符，期望 {families: {…}, noCss: […]}');
+        }
+        manifestState = {kind: 'present', manifest: {families, noCss}};
+      } catch (e) {
+        manifestState = {
+          kind: 'broken',
+          problem:
+            `haze-ui 的 css-manifest.json（${path}）存在但不可用：` +
+            `${e instanceof Error ? e.message : String(e)}。请升级/重装 haze-ui。`
+        };
+      }
+    }
+  }
+  return manifestState;
+}
+
 export default function hazeCss(): Plugin {
   return {
     name: 'painless-haze-css',
@@ -209,24 +269,35 @@ export default function hazeCss(): Plugin {
       }
       if (names.size === 0) return null;
 
+      // fail-fast 报错四要素：触发注入的源文件、具名导入名、期望 css
+      // 路径、修复提示。gap = manifest 在场但该导出未被其覆盖。
+      const missingCss = (name: string, spec: string, gap: boolean) =>
+        `[painless-haze-css] 源文件 ${file} 的 \`import {${name}} from 'haze-ui'\` ` +
+        `无法注入样式：期望的 ${spec} 在已安装的 haze-ui 内不存在` +
+        `（css 目录：${cssDir()}）。` +
+        (gap ? `该导出在 haze-ui 的 css-manifest.json（families/noCss）中未列出。` : '') +
+        '修复：升级 haze-ui（新版本可能已含该 css 或已在 manifest 登记），' +
+        '或修正 vite-plugin-haze-css.mts 的映射（manifest 缺席时的 FAMILY/NO_CSS 表）。';
+
+      const state = manifest();
+      if (state.kind === 'broken') this.error(`[painless-haze-css] ${state.problem}`);
+
       const specs = [
         TOKENS,
         ...[...names]
-          .filter((n) => !NO_CSS.has(n))
           .map((n) => {
-            const spec = cssSpec(n);
+            const {file: base, covered} = cssFileOf(n);
+            if (base === null) return null;
+            const spec = `haze-ui/css/${base}.css`;
+            if (!covered) this.error(missingCss(n, spec, true));
             try {
               resolveCss(spec);
             } catch {
-              this.error(
-                `[painless-haze-css] haze-ui 导出 "${n}" 的 css 注入目标 "${spec}" ` +
-                  `在已安装的 haze-ui 包内不存在（css 目录：${cssDir()}）。` +
-                  '请在 vite-plugin-haze-css.mts 的 FAMILY（子组件家族归并）' +
-                  '或 NO_CSS（JS-only 导出）中登记该导出。'
-              );
+              this.error(missingCss(n, spec, false));
             }
             return spec;
           })
+          .filter((spec): spec is string => spec !== null)
           // 家族映射令多个组件同落一个 css（Title/Text→typography），按
           // 文件去重——dev 下重复 import 会让浏览器重复加载同一文件
           .filter((f, i, arr) => arr.indexOf(f) === i)
