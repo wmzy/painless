@@ -869,3 +869,69 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
   实测）。
 - **验证**：typecheck + 275 单测（24 文件，净增 10 条）+ build + size +
   29 e2e（新增 404 → NotFound 一条）全绿。
+
+## 22. 评审后置项实施批：七库修复 + 模板加固 + 三能力上移（2026-09-04）
+
+- **背景**：第 21 条生态评审修复批同日的二次评审（模板 + 七库对照
+  TanStack 系）产出 18 项改进清单；本批按「库侧推送 → CI semantic-
+  release 发版 → 模板 npm 显式版本集成（不 link）」流水线全量落地，
+  多 agent 并行分仓实施。
+- **库侧（各仓 origin/main，CI 已发版）**：haze-ui 1.20.0/1.21.0
+  （Dialog 背景点击 onClose 双触发收敛到原生 close 单出口；新组件
+  AsyncSection——loading/error/正常三分支；useTitle 上移主桶；dist
+  ESM 发布契约守卫测试）、react-toolroom 0.22.0/0.23.0（stableHash
+  symbol 按 description/注册键折叠 + undefined 值键折叠、useInfinite
+  fetchNext/Prev 在飞 no-op、stripVolatile 导出 + stableHash 丢
+  undefined 键——多通道 key 归一契约官方化；createMemoryCacheProvider
+  opts.persist——本模板 attachPersistence 的官方化，见第 4 条补记）、
+  @native-router/core 1.15.1（取消/被取代的导航链由「永不 settle」改
+  reject NavigationCancelledError——veto=用户拒绝属正常完成 resolve、
+  cancel/supersede=链失败 reject 的语义二分；模板 6 处 void navigate +
+  3 处 void refresh 统一挂 .catch(()=>undefined) 吞除，auth 401 契约
+  用例钉住）、native-router/react（from-tanstack-router.md 的「声明
+  序先中即赢」陈旧匹配描述改为特异性打分制实况，README 双语同步；
+  docs/test commit 不触发发版）、react-f0rm 1.1.1（pathCache FIFO
+  上界 1e4，动态拼 key 场景内存兜底）。
+- **模板侧 bug 修复**：sanitizeRedirect 补反斜杠拒绝（/\evil.com 经
+  WHATWG 归一成协议相对跳转的 SPA open redirect）；Loading portal
+  pending 期卸载残留（cleanup 补 remove，rAF 持 id 取消）；readStor-
+  edUser 补 username/image 形状校验（半坏登录态不再恢复成已登录）。
+- **模板侧加固**：Router 采纳 notFound prop（未匹配路径专用 404 视图
+  取代 errorHandler→裸 stack），RouterError 的 stack 仅 DEV 渲染（生产
+  信息泄露收口）；StackWarmer 守卫前缀从手写常量改为路由表推导（新
+  增守卫路由自动入选，删手工同步注释）；RealWorld 错误契约双份解析
+  下沉 src/util/apiError.ts（http 文案与表单回填共用 parseApiError）；
+  CommentList 时间戳 locale 英文化对齐全站文案。
+- **能力上移的模板收敛**：useTitle 删本地实现改 haze-ui 导出（9 调用
+  点；vite-plugin-haze-css NO_CSS 增补防 css 直拼）；Tags/CommentList/
+  Feed 三处三分支换 AsyncSection；attachPersistence 整段删除换
+  opts.persist（persistEnabled 回调保留 mock always 挂起语义；旧盘载荷
+  {v:1} 与库默认 version 1 兼容无感迁移；库 enabled=false 连创建期
+  hydrate 也跳过与模板原「只拦写盘」的差异经 mock 配置内存态论证为
+  不可达）；stripVolatile 本地实现删除换库导出（第 13 条冻结面两处
+  收缩随 commit 补记）。
+- **测试基建**：Tags 直测建立（aria-pressed/三分支/Retry 行为断言）并
+  摘 Home 侧栏 stub（「.schema 无法解析」的 stub 理由已陈旧——vitest
+  管线早已注册同款插件）；mutations 直测建立（favorite 双层独立回滚、
+  follow peek-merge，真实 createQueryCache 驱动）；vitest 移除
+  server.deps.inline ['haze-ui']（1.11.1 起 dist 纯 ESM 零 css 说明符，
+  净室探针已证）；AuthorLine/TagList/useRequireAuth 收敛三处作者行、
+  两处 tag 列表与两处未登录写闸门。
+- **CLAUDE.md 漂移修复**：Async data 段按 createQueryCache/bindQueryFn/
+  createQueryHook/createDataLoader 现行 API 重写（旧文仍描述已删除的
+  useQuery(fn,args,opts) 形态）；Loader↔query 段的 keyOf 位置改
+  dataloaders.ts 并补 maxAge/persist；Key Libraries 表版本与能力全线
+  同步（fetch-fun ^0.12.1/f0rm 1.1/haze 1.21/core 1.15.1/toolroom
+  0.23）；DevTool 段既有重复残句顺手修复；Testing/Forms/Layout 段按
+  本批实况更新。
+- **已知遗留**（下批候选）：native-router TypedLink 仍不透传 prefetch
+  （PreviewLink 停留无类型 PrefetchLink）；params 守卫侧类型自动推导
+  （对齐 search 的 SearchRoutesOf）；devtools（路由树/匹配观察面）；
+  ToolroomPersist agent 报告 react-toolroom main 上 5 条存量 lint 红
+  （no-use-before-define 等，先于本批存在）与 haze-ui CI lint 存量红
+  ——库仓需单独小修；GUARDED 前缀推导的动态段截断策略对「只挂动态
+  路由的守卫」取静态前缀，目录嵌套守卫场景需回访。
+- **验证**：typecheck + lint:ci（0 error，1 条既有 `_schema` 警告与
+  上批同源）+ 298 单测（26 文件，净增 23 条）全绿；build + size
+  120.47 KB（实测 123361 B / 32 文件，较上批 -1.07 KB——本地实现上移
+  的净收缩，预算 126 KB 内、棘轮基线不动）+ e2e 29 条全绿。

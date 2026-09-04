@@ -5,7 +5,6 @@
 // 后：config 在用例内创建 hook 时全量闭合，renderHook 调用点只给 args——
 // 与生产调用点（Tags/CommentList）同款零 option 形态。select/retry 已按
 // YAGNI 裁剪未实现，对应旧用例随之移除。
-import type {Article} from '@/types';
 
 import {describe, it, expect, vi} from 'vitest';
 import {renderHook, act, waitFor} from '@testing-library/react';

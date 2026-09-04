@@ -264,7 +264,7 @@ describe('登录后回跳原目的页（redirect）', () => {
   // 来源：生态评审修复批后置项——WHATWG 把特殊协议 URL 中的 '\' 归一为
   // '/'：'/\evil.com' 经 history.push 被浏览器归一成 '//evil.com' 协议
   // 相对跳转，绕过 '//' 白名单检查，构成 SPA open redirect
-  it('非法 redirect（/\evil.com 反斜杠归一绕过）：回首页', async () => {
+  it('非法 redirect（/\\evil.com 反斜杠归一绕过）：回首页', async () => {
     state.search = {redirect: '/\\evil.com'};
     await submitAndExpectNavigate('/');
   });

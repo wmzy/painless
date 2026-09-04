@@ -7,8 +7,10 @@
 import type {ReactNode} from 'react';
 
 import type {Author} from '@/types';
-import {Avatar, Badge, Flex, Text} from 'haze-ui';
+
 import type {AvatarProps} from 'haze-ui';
+
+import {Avatar, Badge, Flex, Text} from 'haze-ui';
 
 type AuthorLineProps = {
   author: Author;

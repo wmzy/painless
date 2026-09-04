@@ -1,11 +1,10 @@
 #!/usr/bin/env node
 // 口径名：dist JS+CSS gzip 总和（zlib level 9，含懒加载 chunk）。
-// 基线：124454 B = 121.54 KB（34 个文件，2026-09-04，Node 24 内置 zlib；
-// 本轮增量 +2.39 KB：生态评审修复批（decisions.md 第 21 条）——react-f0rm
-// 1.1.0（字段级 validateDeps / 初值 render 期 seed）与 react-toolroom
-// 0.21.0（per-key stale / retry abort 纪律）的运行时新增为主，haze-ui
-// 1.19.0 新能力（Toast 暂停 / tier-2 翻转等）按需 CSS + tree-shake 下
-// 贡献极小——数字与 decisions.md 第 21 条同批实测，阈值与
+// 基线：123361 B = 120.47 KB（32 个文件，2026-09-04，Node 24 内置 zlib；
+// 本轮增量 -1.07 KB：评审后置项实施批（decisions.md 第 22 条）——本地
+// useTitle/stripVolatile/attachPersistence 上移库实现 + AsyncSection 收
+// 敛三处视图三分支的净收缩，抵过 notFound 视图与 navigate catch 的新
+// 增；数字与 decisions.md 第 22 条同批实测，阈值与
 // BASELINE_BYTES 代码不动，仅头注释随批同步）。
 // 阈值：126 KB = 129024 B（基线 +10% 余量，取整到 KB）。
 //

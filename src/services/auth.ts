@@ -26,17 +26,21 @@ const STORAGE_KEY = 'painless.user';
 function readStoredUser(): User | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    const user = raw ? (JSON.parse(raw) as unknown) : null;
+    // 校验按 unknown 形状做（而非 as User 直取——那会让 typeof 校验在
+    // 类型层恒真，ESLint no-unnecessary-condition 拦截）：token/username
+    // 必为 string，image 可选且 null 合法、存在时必须是 string
+    const user = raw
+      ? (JSON.parse(raw) as Record<string, unknown> | null)
+      : null;
     if (
       user &&
-      typeof user === 'object' &&
-      typeof (user as User).token === 'string' &&
-      typeof (user as User).username === 'string' &&
-      ((user as User).image === undefined ||
-        (user as User).image === null ||
-        typeof (user as User).image === 'string')
+      typeof user.token === 'string' &&
+      typeof user.username === 'string' &&
+      (user.image === undefined ||
+        user.image === null ||
+        typeof user.image === 'string')
     ) {
-      return user as User;
+      return user as unknown as User;
     }
     return null;
   } catch {

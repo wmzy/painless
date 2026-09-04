@@ -7,12 +7,13 @@
 // 的依赖图（http/useQuery）不回指本文件，无环。
 import type {FormInstance} from 'react-f0rm';
 
+import type {ApiFieldErrors} from './apiError';
+
 import {setServerErrors} from 'react-f0rm';
 
 import {fetchProfile} from '@/services/auth';
 
 import {parseApiError} from './apiError';
-import type {ApiFieldErrors} from './apiError';
 
 // 与 Field 的 validate 回调同形：返回错误文案表示未通过，undefined 通过
 export type Validator = (v: string) => string | undefined;

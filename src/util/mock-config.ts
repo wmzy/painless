@@ -1,8 +1,9 @@
 // mock 配置状态（自 mock.ts 抽出）：独立的纯状态模块——useQuery.ts 的
-// attachPersistence 也要读它（always 激活期间挂起持久化镜像写入，见
-// docs/decisions.md 第 12 条），若从 mock.ts import 会与其
-// clearAllCaches 依赖构成 useQuery↔mock 循环。mock.ts 仍 re-export 全套，
-// DevTool 等既有消费方的 import 路径不破。
+// persistEnabled 也要读它（always 激活期间经 opts.persist 的 enabled 挂起
+// 镜像写入，语义源自模板旧 attachPersistence，见 docs/decisions.md 第 12
+// 条与第 4 条补记），若从 mock.ts import 会与其 clearAllCaches 依赖构成
+// useQuery↔mock 循环。mock.ts 仍 re-export 全套，DevTool 等既有消费方的
+// import 路径不破。
 import * as ee from '@for-fun/event-emitter';
 
 const emitter = ee.create();
