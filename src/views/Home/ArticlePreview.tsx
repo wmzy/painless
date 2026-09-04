@@ -25,8 +25,10 @@ function ArticlePreview({article, onFavorite}: Props) {
         />
       </AuthorLine>
       <Title level={2}>
-        {/* 卡片滚入视口即预取 data+chunk，比 hover 更早，点击近乎零等待 */}
-        <PreviewLink to={`/article/${article.slug}`} prefetch='viewport'>
+        {/* 卡片滚入视口即预取 data+chunk，比 hover 更早，点击近乎零等待
+            （prefetch='viewport' 已是 PreviewLink 缺省，to/params 对
+            AppPaths 编译期判别——运行时字符串拼接不复存在） */}
+        <PreviewLink to='/article/:title' params={{title: article.slug}}>
           {article.title}
         </PreviewLink>
       </Title>

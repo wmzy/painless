@@ -1,6 +1,6 @@
 import type {Article, Comment} from '@/types';
 
-import {describe, it, expect, vi, beforeEach} from 'vitest';
+import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import {render, screen, fireEvent, act, waitFor} from '@testing-library/react';
 import {useControl} from 'react-use-control';
 
@@ -16,6 +16,11 @@ import {
   resetAllCaches
 } from '@/util/useQuery';
 import {clearRequestLogs, pushRequestLog} from '@/util/requestLog';
+import {
+  getPublishedRouter,
+  publishRouter,
+  unpublishRouter
+} from '@/util/routerHost';
 
 import DevTool, {truncateKey, ageSeconds} from './DevTool';
 
@@ -353,8 +358,8 @@ describe('DevTool CacheView', () => {
     // react-toolroom ≥0.16 的发现通道：createQueryHook 内部 useInjectable(
     // queryFn, {name}) 把实例发布进具名注册表，<InjectDevTools /> 不传
     // injectables 时自动观察全部具名实例——面板应看到场景 hook 发起的
-    // 真实调用（Function 列 = queryFn.name，Args → Result 列 = 参数与结
-    // 果）。DevTool open 初值直接给 true：注册表订阅（子组件
+    // 真实调用（Function 列 = queryFn.name，Args → Result 列 = 参数与
+    // 结果）。DevTool open 初值直接给 true：注册表订阅（子组件
     // useInsertionEffect）先于 Harness（父）里 useRun 发起调用，初始请求
     // 被完整记录。
     const probeCache = createQueryCache<any, any>('devtool-inject-probe');
@@ -379,5 +384,90 @@ describe('DevTool CacheView', () => {
     await waitFor(() => expect(screen.getByText('fetchProbe')).toBeDefined());
     expect(screen.getByText('ok')).toBeDefined();
     expect(screen.getByText('["probe-ok"]')).toBeDefined();
+  });
+});
+
+describe('DevTool RouteView', () => {
+  // 面板在 Router 树外经 routerHost 拿实例（见 util/routerHost.ts），
+  // 测试直接登记可控假 router：onDebug 收集监听者（测试侧任意发事件），
+  // getDebugInfo 返回固定快照。真实路由链（start→commit 配对、replay
+  // 由 POP 快照触发）归库仓测试，此处钉面板的呈现契约。
+  type FakeListener = (e: any) => void;
+  let listeners: Set<FakeListener>;
+  let snapshot: Record<string, unknown>;
+
+  function publishFake() {
+    listeners = new Set();
+    publishRouter({
+      onDebug: (l: FakeListener) => {
+        listeners.add(l);
+        return () => listeners.delete(l);
+      },
+      getDebugInfo: () => snapshot
+    } as never);
+  }
+
+  const fire = (e: unknown) => {
+    act(() => {
+      for (const l of listeners) l(e);
+    });
+  };
+
+  beforeEach(() => {
+    snapshot = {
+      to: '/article/probe?tag=x',
+      index: 3,
+      stackDepth: 4,
+      baseIndex: 1,
+      snapshots: 2,
+      resolving: null
+    };
+    publishFake();
+  });
+
+  afterEach(() => {
+    // 登记是模块级单例：撤掉本组假 router，不渗进同文件其它用例
+    unpublishRouter(getPublishedRouter() as never);
+  });
+
+  it('renders the router snapshot fields from getDebugInfo', () => {
+    snapshot = {...snapshot, resolving: {action: 'push', to: '/editor', startedAt: 1}};
+    openPanel();
+
+    // to 截断展示、完整值在 title；窗口四元组与在飞链一行可读
+    expect(screen.getByTitle('/article/probe?tag=x').textContent).toBe(
+      'to /article/probe?tag=x'
+    );
+    expect(
+      screen.getByText('index 3 · depth 4 · base 1 · snapshots 2')
+    ).toBeDefined();
+    expect(screen.getByText('⏳ resolving /editor')).toBeDefined();
+  });
+
+  it('shows the idle badge when no navigation chain is in flight', () => {
+    openPanel();
+    expect(screen.getByText('idle')).toBeDefined();
+  });
+
+  it('appends nav events with duration and the replay flag', () => {
+    openPanel();
+    fire({type: 'nav-start', action: 'push', to: '/editor', at: 1});
+    fire({type: 'nav-commit', action: 'push', to: '/editor', at: 2, duration: 37, replay: false});
+    fire({type: 'nav-commit', action: 'pop', to: '/', at: 3, duration: 0, replay: true});
+
+    // 事件插入顶部（最新在上）：replay 回放（零请求 POP）带标志后缀
+    expect(screen.getByText('start push /editor')).toBeDefined();
+    expect(screen.getByText('commit push /editor 37ms')).toBeDefined();
+    expect(screen.getByText('commit pop / 0ms ·replay')).toBeDefined();
+  });
+
+  it('unsubscribes the onDebug listener when the panel closes', () => {
+    openPanel();
+    expect(listeners.size).toBe(1);
+
+    // 合上面板：content 卸载，订阅随之退订（同 CacheView/RequestLogView
+    // 的「关闭即退订」语义）
+    fireEvent.click(screen.getByText('DEV'));
+    expect(listeners.size).toBe(0);
   });
 });

@@ -15,6 +15,7 @@ import {bindUnauthorizedRedirect, getCurrentUser, type User} from '@/services/au
 import {articleLoader, editorLoader, homeLoader} from '@/services/dataloaders';
 import {homeSearchSchema} from '@/types/search';
 import {editorParamsSchema} from '@/types/params';
+import {publishRouter, unpublishRouter} from '@/util/routerHost';
 
 import ArticleNotFound from './Article/NotFound';
 import HomeSkeleton from './Home/Skeleton';
@@ -249,6 +250,20 @@ export function UnauthorizedRedirect() {
   return null;
 }
 
+// DevTool 路由面板的实例通道（util/routerHost.ts）：角标/面板由根级
+// DevTool 渲染，在 Router 树之外，useRouter() 的 context 到不了那里；
+// core ≥1.16 的 onDebug/getDebugInfo 只要实例——本 null 探针挂载时把
+// 树内实例登记出去，卸载即撤。DEV 门控：生产构建整枝折叠（routerHost
+// 模块随之被摇掉），与根级 DevTool 的懒加载门控同一手法。
+export function RouterHost() {
+  const router = useRouter();
+  useEffect(() => {
+    publishRouter(router);
+    return () => unpublishRouter(router);
+  }, [router]);
+  return null;
+}
+
 export default function App() {
   return (
     <Router
@@ -275,6 +290,7 @@ export default function App() {
           401 处置注册同款挂法（见 UnauthorizedRedirect 注释） */}
       <StackWarmer />
       <UnauthorizedRedirect />
+      {import.meta.env.DEV && <RouterHost />}
     </Router>
   );
 }

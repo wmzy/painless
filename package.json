@@ -79,14 +79,14 @@
   "dependencies": {
     "@for-fun/event-emitter": "^1.1.0",
     "@linaria/core": "^8.2.0",
-    "@native-router/core": "^1.15.1",
-    "@native-router/react": "^1.14.0",
+    "@native-router/core": "^1.16.0",
+    "@native-router/react": "^1.15.0",
     "fetch-fun": "^0.12.1",
-    "haze-ui": "^1.21.0",
+    "haze-ui": "^1.22.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-f0rm": "^1.1.1",
-    "react-toolroom": "^0.23.0",
-    "react-use-control": "^1.5.1"
+    "react-toolroom": "^0.24.0",
+    "react-use-control": "^1.6.0"
   }
 }

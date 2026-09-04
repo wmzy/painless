@@ -9,8 +9,7 @@ import type {HomeSearch} from '@/types/search';
 
 import {
   createMemoryCacheProvider,
-  stableHash,
-  stripVolatile,
+  hashArgs,
   useArgsStatus,
   useCache,
   useFocusRevalidate,
@@ -45,11 +44,10 @@ const identity = <T,>(r: T) => r;
 // AbortSignal（useRun({signal: true}) 每次 run 附加，顶层参数位与对象
 // 参数内嵌一样递归剥）+ 递归剥对象里值为 undefined 的键——loader 侧拿
 // schema 输出（缺省字段无键），视图侧拿组件状态（缺省字段是 undefined
-// 属性），归一后两侧永远同 key。react-toolroom ≥0.22 起官方导出
-// stripVolatile（语义与模板原手写版逐条对齐；差异仅 Map/Set 透传——
-// 模板参数域是 slug 元组与 HomeSearch 纯对象，无 Map/Set，行为等价，
-// 见 docs/decisions.md 第 13 条补记）。
-const hashArgs = (args: unknown[]) => stableHash(stripVolatile(args));
+// 属性），归一后两侧永远同 key。react-toolroom ≥0.24 起官方导出
+// hashArgs（= stableHash(stripVolatile(args))，模板原组合定义上移；
+// stripVolatile 的语义对齐论证见 docs/decisions.md 第 13 条补记，上移
+// 记录见第 23 条）。
 
 // mutation 从可选收成必有：createQueryCache 恒由 createMemoryCacheProvider
 // 创建（运行时必然携带），调用方零断言。值类型与 key 元组类型都在 cache 上

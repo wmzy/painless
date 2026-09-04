@@ -1,5 +1,11 @@
 import {css} from '@linaria/core';
 import {useCallback, ReactNode, useEffect, useRef, useState} from 'react';
+import {
+  getDebugInfo,
+  onDebug,
+  type DebugEvent,
+  type DebugInfo
+} from '@native-router/core';
 import {Badge, Button, Popover} from 'haze-ui';
 import {InjectDevTools, type ObservableCache} from 'react-toolroom/devtools';
 import {useControl, type Control} from 'react-use-control';
@@ -16,6 +22,7 @@ import {
   onRequestLogsChange,
   type HttpRequestLog
 } from '@/util/requestLog';
+import {getPublishedRouter} from '@/util/routerHost';
 import {allCaches, clearAllCaches} from '@/util/useQuery';
 
 // InjectDevTools 不传 injectables：改为观察具名注册表（react-toolroom
@@ -178,6 +185,10 @@ function DevToolInner({open: openControl}: {open?: Control<boolean> | boolean}) 
       <InjectPanel />
       <hr />
       <RequestLogView />
+      <hr />
+      {/* 路由观察面板（core ≥1.16 onDebug/getDebugInfo）：viewStack 快照
+          概况 + 导航事件时间线，见 RouteView 注释 */}
+      <RouteView />
     </>
   ) : null;
 
@@ -377,6 +388,124 @@ function RequestLogView() {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+// 导航事件 → 时间线条目文案。含 duration 的四类事件直接带上毫秒数，
+// nav-commit 的 replay 标志（POP 命中 viewStack 快照的零请求回放）后缀
+// 标出——它是「back 为何零请求」的直接证据；nav-start 无 duration
+//（链刚开始），带 action（push/pop/replace）与请求目标 to。
+function formatNavEvent(e: DebugEvent): string {
+  const to = truncateKey(e.to, 24);
+  switch (e.type) {
+    case 'nav-start':
+      return `start ${e.action} ${to}`;
+    case 'nav-commit':
+      return `commit ${e.action} ${to} ${e.duration}ms${
+        e.replay ? ' ·replay' : ''
+      }`;
+    case 'nav-supersede':
+      return `supersede ${to} by ${truncateKey(e.by, 24)} ${e.duration}ms`;
+    case 'nav-cancel':
+      return `cancel ${to} ${e.duration}ms`;
+    case 'nav-error':
+      return `error ${to} ${e.duration}ms`;
+  }
+}
+
+// 导航事件行着色：commit 绿、error 红、cancel/supersede 黄（链没有落
+// 地的两种方式）、start 中性——与 RequestLog 的状态着色同一套语义。
+function navVariant(e: DebugEvent): 'default' | 'success' | 'warning' | 'danger' {
+  switch (e.type) {
+    case 'nav-commit':
+      return 'success';
+    case 'nav-error':
+      return 'danger';
+    case 'nav-cancel':
+    case 'nav-supersede':
+      return 'warning';
+    default:
+      return 'default';
+  }
+}
+
+// 路由观察视图（core ≥1.16 可观察性面）：上半是 getDebugInfo 快照——
+// 当前 location（to）、会话窗深度/基点（stackDepth/baseIndex，绝对
+// history index）、viewStack 快照数（snapshots，back/forward 零请求
+// 回放的弹药）与在飞链（resolving，null 为 idle）；下半是 onDebug 导航
+// 事件时间线（最近 MAX_EVENTS 条）。快照随事件重取（导航落点/深度只
+// 在事件间变化）。实例经 routerHost 登记（面板在 Router 树外，
+// useRouteDebug 的 context 到不了这里——它就是 onDebug+getDebugInfo
+// 的 useSyncExternalStore 封装，此处按同一语义直接接线）；订阅优先走
+// 实例方法（create() 恒挂载），独立函数 onDebug(router, l) 兜任意
+// router 对象。面板关闭即卸载退订（同 CacheView/RequestLogView）。
+function RouteView() {
+  const [router] = useState(getPublishedRouter);
+  const [info, setInfo] = useState<DebugInfo | null>(null);
+  const [events, setEvents] = useState<{id: number; label: string; event: DebugEvent}[]>([]);
+  // 事件 id 单调递增：新事件插在列表顶部，index key 会整体错位（同 CacheView）
+  const nextEventId = useRef(0);
+
+  useEffect(() => {
+    if (!router) return;
+    const snapshot = () =>
+      setInfo(router.getDebugInfo?.() ?? getDebugInfo(router));
+    snapshot();
+    const listener = (event: DebugEvent) => {
+      snapshot();
+      setEvents((list) =>
+        [
+          {id: nextEventId.current++, label: formatNavEvent(event), event},
+          ...list
+        ].slice(0, MAX_EVENTS)
+      );
+    };
+    const unsubscribe = router.onDebug?.(listener) ?? onDebug(router, listener);
+    return unsubscribe;
+  }, [router]);
+
+  if (!router) {
+    // 面板先于应用挂载打开才会走到这里（实践不可达，DEV 兜底文案）
+    return <div>Router not mounted yet.</div>;
+  }
+
+  return (
+    <div>
+      <div
+        x-class={css`
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        `}
+      >
+        <b>Routes</b>
+        <Button onClick={() => setEvents([])}>Clear Events</Button>
+      </div>
+      {info && (
+        <>
+          <div title={info.to}>to {truncateKey(info.to, 28)}</div>
+          <div>
+            {`index ${info.index} · depth ${info.stackDepth} · base ${info.baseIndex} · snapshots ${info.snapshots}`}
+          </div>
+          {info.resolving ? (
+            <Badge size='sm' variant='warning'>
+              ⏳ resolving {truncateKey(info.resolving.to, 20)}
+            </Badge>
+          ) : (
+            <Badge size='sm'>idle</Badge>
+          )}
+        </>
+      )}
+      <hr />
+      <b>Nav events</b>
+      {events.map(({id, label, event}) => (
+        <div key={id} title={event.to}>
+          <Badge size='sm' variant={navVariant(event)}>
+            {label}
+          </Badge>
+        </div>
+      ))}
     </div>
   );
 }
