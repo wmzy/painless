@@ -935,3 +935,102 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
   上批同源）+ 298 单测（26 文件，净增 23 条）全绿；build + size
   120.47 KB（实测 123361 B / 32 文件，较上批 -1.07 KB——本地实现上移
   的净收缩，预算 126 KB 内、棘轮基线不动）+ e2e 29 条全绿。
+
+## 23. 生态优化批：五包升级 + 四能力采纳集成（2026-09-05）
+
+- **背景**：第 21/22 条两轮评审的收尾批——库侧按「能力补齐 → CI
+  semantic-release 发版 → 模板 npm 显式版本集成（不 link）」流水线
+  产出五个新版本，模板侧同批落地写操作重试边界、haze-css manifest
+  机制化、Popover 收敛三笔（21e0672/7e8a8c5/5febc94，先行推送）与
+  本批的四项能力采纳；文档站（painless-docs 本地仓，无 remote）
+  同步 9 页 + platform 立场页（660df7f）。
+- **版本**（npm 显式安装 + pnpm dedupe 单实例，peers check 退出 0，
+  #18 豁免面未新增；gitHead 双核均验）：@native-router/core ^1.16.0
+  （e445e8e：导航可观察性——`router.onDebug(l)→unsubscribe`（幂等）
+  /`router.getDebugInfo()`，独立函数导出同构；DebugEvent 联合
+  nav-start/commit/supersede/cancel/error，nav-start.to=请求目标、
+  nav-commit.to=守卫重定向后落点，POP 命中 viewStack 快照的回放单发
+  nav-commit（replay:true、无 nav-start）；blocker veto 不发事件、
+  监听者异常被吞——纯观察零干预）、@native-router/react ^1.15.0
+  （08b5ccb，peer 收紧 core ^1.16.0：TypedLink/TypedNavLink/
+  TypedPrefetchLink 新增可选 `prefetch`，声明时内部按 PrefetchLink
+  渲染、未声明走原路径逐字节不变；`useRouteDebug()` =
+  useSyncExternalStore 版 onDebug+getDebugInfo，每个导航事件后重渲染）、
+  react-toolroom ^0.24.0（0c62458：双入口导出 `hashArgs` =
+  stableHash(stripVolatile(args))——本模板组合定义的上移，附
+  no-structural-sharing recipe）、react-use-control ^1.6.0（bf1f84e：
+  纯 DEV 报错增强（组件栈），产物字节等价，零行为面）、haze-ui
+  ^1.22.0（a173e92：exports 子路径 `haze-ui/css-manifest.json`——
+  {families: 157 导出→css 文件, noCss: 4} 全覆盖）。
+- **TypedLink prefetch 采纳（消掉第 22 条已知遗留第一项）**：
+  PreviewLink 从无类型 PrefetchLink 换 `TypedLink<AppPaths>`
+  （props = `TypedLinkProps<AppPaths> & visible control`），Home 卡片
+  调用点从运行时字符串拼接 `` `/article/${slug}` `` 改字面量
+  `to='/article/:title' params={{title: slug}}`（路径联合 + 动态段
+  params 编译期判别，运行时拼接从此进不了类型检查）；prefetch 缺省
+  'viewport' 收进组件声明（本组件唯一调用语义，卡片滚入视口即预取），
+  调用点可显式覆盖；hover/focus 预览（span + Preview/visible control）
+  逻辑零变化，e2e 既有 PreviewLink 行为用例（hover 预览/viewport 预取
+  /竞态点击）零改动全绿。测试补编译期反向用例（@ts-expect-error 钉
+  运行时字符串必须编译期报错）。
+- **路由可观察性面板（DevTool 第三面板）**：cache/request 之后的
+  Routes/viewStack 视图——上半 getDebugInfo 快照（to/index/
+  stackDepth/baseIndex/snapshots/resolving，在飞链或 idle），下半
+  onDebug 导航事件时间线（最近 8 条，nav-start/commit（含 replay 标
+  志——「back 为何零请求」的直接证据）/supersede/cancel/error 带
+  duration，状态着色同 RequestLog）。实例通道：面板在 Router 树外
+  （角标由根级 DevTool 渲染，useRouter() 无 context），树内 DEV 门控
+  null 探针 `RouterHost`（views/index.tsx，StackWarmer 同款挂法）把
+  实例登记进 `util/routerHost.ts`（无副作用模块，生产随 DEV 常量
+  折叠被整体摇掉——dist 零命中已验）；订阅优先实例方法、独立函数
+  onDebug(router,l) 兜任意 router 对象，面板关即退订（同既有两视图）。
+  useRouteDebug() 本体依赖 Router context，树外面板按其实现同构接线
+  （onDebug 通知 + getDebugInfo 快照），语义一致。DevTool.test 补 4
+  条：快照字段渲染/事件追加（duration+replay）/关面板退订/idle 态。
+- **hashArgs 上移采纳**：useQuery.ts 删本地组合定义
+  （`stableHash(stripVolatile(args))`），改 `import {hashArgs} from
+  'react-toolroom/async'`——签名相同，调用点零改动；既有 hash 归一
+  契约用例（键序无关/嵌套 signal 剥离/undefined 键折叠/persist 载荷
+  key 形态）零改动全绿即证等价。
+- **haze-css manifest 路径激活复验**（机制 7e8a8a5 已先行，本批随
+  1.22 安装自动切换映射源）：BUILD_DEMO=false 构建绿；tokens 家族
+  （lightTheme/darkTheme/spacing/typography 四导出同归 tokens.css）
+  幂等——全 dist 恰一份 tokens 内容、无重复注入无报错；InputCore→
+  input/TextareaCore→textarea/TagInputCore→tag-input 等映射经 manifest
+  正确落点（产物 css 内类名核对）——1.21 兜底时代未进 FAMILY 表的
+  *Core 导出理论上会走 kebab 猜测注入不存在的 css，manifest 全覆盖
+  后该缺陷面消除（fail-fast 四要素报错保留）。
+- **CLAUDE.md 同步**：Routing 段 PreviewLink 描述（1.7.x→1.15.x 顺带
+  修正）与 Home 卡片预取句；HTTP 段补 toggle 重试例外一句
+  （createApiClient/toggleClient/postRetryable/delRetryable，主 client
+  POST 永不重放仍成立）；Async data 段 hashArgs 出处（≥0.24 上移）；
+  Key Libraries 表三行（native-router prefetch 透传 + onDebug/
+  getDebugInfo、toolroom hashArgs、haze 1.22 manifest 唯一映射源）；
+  DevTool 段补路由面板。README：Coming from TanStack 表 queryKey 行
+  （hashArgs）与 Query Dev Tools 行（三面板）、PreviewLink 示例代码
+  同步为 TypedLink 形态。
+- **Preview 浮层定位修复（5febc94 的 e2e 欠账）**：Popover 收敛批把
+  Preview 的 portal div 换裸实现时丢了旧本地 Popover 的 role=dialog
+  属性，而该批未重跑 e2e——5 条用例（hover 预览/viewStack back/
+  favorite 500/竞态点击/a11y 扫描）在 origin/main 上即红（本批全量
+  e2e 首跑暴露，非 TypedLink 迁移引入——链接 href 与预取行为均正常，
+  仅浮层定位选择器失靶）。修法：浮层加 data-testid=
+  'preview-overlay' 测试钩子（裸 div 的诚实定位面——role=dialog 本
+  是借来的弹层假语义，aria-hidden 在场时角色属性不进无障碍树，语义
+  零变化），e2e 六处选择器与注释随之更新（testid 唯一，消掉与
+  ToastContainer 宿主撞 [role=dialog] 才需要的 .first()）。
+- **体积**：121.27 KB（实测 124176 B / 32 文件），较上批 123361 B
+  （120.47 KB）+0.80 KB——增量几乎全部来自库运行时（core 1.16 导航
+  链事件簿记 + react 1.15 TypedLink prefetch 分支），另含浮层
+  data-testid 测试钩子 25 B；DevTool 路由面板与 RouterHost 探针经
+  import.meta.env.DEV 折叠零生产字节（dist 逐文件 grep 无
+  RouteView/getPublishedRouter 命中已验）；预算 126 KB 内（3.8%
+  余量），棘轮不动，脚本头注释随批同步实测。
+- **已知遗留更新**：第 22 条遗留清单——TypedLink prefetch 透传已消
+  （本批）；toolroom 存量 lint 红已被 0.24 批顺手修复（a427196）；
+  其余三项（params 守卫侧类型自动推导、GUARDED 动态段截断策略、
+  haze-ui CI lint 存量红）仍开放。
+- **验证**：typecheck + lint:ci（0 error，1 条既有 `_schema` 警告与
+  上批同源）+ 308 单测（26 文件，净增 4 条）+ BUILD_DEMO=false build
+  + size 121.27 KB + e2e 29 条全绿（首跑 5 红——5febc94 的浮层定位
+  欠账，见上；修复后全量复跑通过）。

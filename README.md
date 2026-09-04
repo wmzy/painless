@@ -75,7 +75,7 @@ If you know TanStack Query/Router/Form, the problems they solve are solved here 
 | TanStack | Here | Note |
 | --- | --- | --- |
 | `QueryClient` + `QueryClientProvider` | per-entity `createQueryCache(name, cacheTime?, {persist?})` + the `allCaches` registry | No provider, no context — caches are plain module-level objects; the registry drives logout clears and the DevTool cache view. `cacheTime` defaults to 5 min (TanStack's `gcTime` default); `tagsCache` is the one persisted entity. |
-| `queryKey` array + hashing | the args tuple, hashed by `stableHash` (signals stripped, `undefined` keys dropped recursively) | The key's *shape* is pinned on the cache type (`EntityCache<T, K>`), so a wrong-shaped key is a compile error, not a silent cache miss. |
+| `queryKey` array + hashing | the args tuple, hashed by `hashArgs` (`react-toolroom` ≥0.24 — signals stripped, `undefined` keys dropped recursively) | The key's *shape* is pinned on the cache type (`EntityCache<T, K>`), so a wrong-shaped key is a compile error, not a silent cache miss. |
 | `useQuery(options)` | `createQueryHook(config)` → a scenario hook (`useTagsQuery`, `useCommentsQuery`, …) | All options (`staleTime`, `initData`, `mock`) close once at the scenario declaration point; the call site takes only `args`. `fetch` × cache are paired exactly once by `bindQueryFn(fetch, cache)` — loader, hook and mutation channels resolve the same binding. |
 | `onMutate`/`onError` optimistic ritual | `cache.mutation((…) => ({mutate, key, update, apply}))` | `update` is the optimistic step, `apply` a field-selecting merge, rollback automatic and identity-guarded (a concurrent writer's newer value survives); layers compose — favoriting writes the article entity *and* every home page containing it in one call. |
 | `invalidateQueries` prefix match | `useMutation(fn, {invalidates: [[commentsCache, slug]]})` (exact key) or `{invalidates: [homeCache, articleCache]}` (whole entity); imperative `invalidate(router)` for view-stack snapshots | Granularity follows "does the write map 1:1 to the key?" — a comment maps to `[slug]`, an edit can't enumerate home's search-combination keys; failures never invalidate. |
@@ -87,7 +87,7 @@ If you know TanStack Query/Router/Form, the problems they solve are solved here 
 | Search-param validation | route `search:` takes any Standard Schema (zod / valibot / hand-written) | `useSearch(schema)` on the read side; `TypedLink<AppRoutes>`'s `search` prop is checked against the schema's Input side, so a typo'd field is a compile error. Writes go through `useSetSearch(writeSchema(readSchema, defaults))` (`@native-router/core` ≥1.13): the write side is derived from the one read contract, validates through it and strips keys equal to their defaults, so URLs stay clean and read back identically (`src/types/search.ts`). |
 | `useBlocker` | same name, `@native-router/react` | Sync predicate (`() => !isDirty(form)`) with `{state, proceed, reset}` to drive a confirm dialog; a vetoed POP is automatically pushed back. |
 | `useForm` / `<Form>` | react-f0rm `useForm` / `<Form>` + haze-ui `FormItem` | Controlled fields via the `control` token, per-field subscriptions (`useIsSubmitting`, `useHasErrors`); this template composes small field-level `validate` callbacks, and `react-f0rm/resolvers/standard-schema` exists for zod/valibot/arktype; cross-field rules (Register's password-confirm) declare `validateDeps` on `useForm` (react-f0rm ≥0.10, TanStack's `onChangeListenTo` counterpart) so editing either field re-runs the form-level validate; server 422s land in the same error channel via `setServerErrors`. |
-| Query DevTools | the DevTool panel (dev-only) | Cache view (per-entry age, in-flight badges, event stream) plus a request log — dev-only modules that fold out of production builds. |
+| Query Dev Tools | the DevTool panel (dev-only) | Cache view (per-entry age, in-flight badges, event stream), a request log, and a routes/viewStack panel (navigation event timeline + router snapshot, on `onDebug`/`getDebugInfo` — core ≥1.16) — dev-only modules that fold out of production builds. |
 
 ### Bundle Size, Same Yardstick
 
@@ -211,21 +211,25 @@ Prefetching runs the same guard — hovering a `PrefetchLink` to a guarded route
 
 ### Hover Prefetching with `PrefetchLink`
 
-`PrefetchLink` prefetches the target route's data **and** view chunk on hover (or focus). The template's `PreviewLink` wraps it and additionally renders a scaled-down live preview of the prefetched view:
+`PrefetchLink` prefetches the target route's data **and** view chunk on hover (or focus). The template's `PreviewLink` wraps the typed `TypedLink` (its `prefetch` prop passes through since `@native-router/react` 1.15 — declared, the link renders via `PrefetchLink` internally) and additionally renders a scaled-down live preview of the prefetched view:
 
 ```tsx
 // src/components/PreviewLink.tsx
-import {PrefetchLink} from '@native-router/react';
+import {TypedLink, type TypedLinkProps} from '@native-router/react';
 import {useControl, type Control} from 'react-use-control';
+import type {AppPaths} from '@/views';
 
-type Props = ComponentProps<typeof PrefetchLink> & {
+type Props = TypedLinkProps<AppPaths> & {
   visible?: Control<boolean> | boolean;
 };
 
-export default function PreviewLink({children, visible: visibleControl, ...props}: Props) {
+export default function PreviewLink({children, visible: visibleControl, prefetch, ...props}: Props) {
   const [visible, setVisible] = useControl(visibleControl as Control<boolean>, false);
   return (
-    <PrefetchLink {...props}>
+    // prefetch defaults to 'viewport' — data + chunk prefetch when the card
+    // scrolls into view; the call site passes a literal pattern + params
+    // (compile-time checked against the route table), not a runtime string
+    <TypedLink<AppPaths> {...props} prefetch={prefetch ?? 'viewport'}>
       <span
         onMouseEnter={() => setVisible(true)}
         onMouseLeave={() => setVisible(false)}
@@ -236,7 +240,7 @@ export default function PreviewLink({children, visible: visibleControl, ...props
         {children}
       </span>
       <Preview visible={visible} />
-    </PrefetchLink>
+    </TypedLink>
   );
 }
 ```

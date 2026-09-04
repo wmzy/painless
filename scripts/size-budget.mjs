@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 // 口径名：dist JS+CSS gzip 总和（zlib level 9，含懒加载 chunk）。
 // 基线：123361 B = 120.47 KB（32 个文件，2026-09-04，Node 24 内置 zlib；
-// 本轮增量 -1.07 KB：评审后置项实施批（decisions.md 第 22 条）——本地
-// useTitle/stripVolatile/attachPersistence 上移库实现 + AsyncSection 收
-// 敛三处视图三分支的净收缩，抵过 notFound 视图与 navigate catch 的新
-// 增；数字与 decisions.md 第 22 条同批实测，阈值与
-// BASELINE_BYTES 代码不动，仅头注释随批同步）。
+// 上限阈值锚定的批次基线）。最近实测：124176 B = 121.27 KB（32 个文件，
+// 2026-09-05，生态优化批（decisions.md 第 23 条）——五库升级（core 1.16
+// 导航可观察性、react 1.15 TypedLink prefetch 透传）运行时新增 +0.80 KB
+// （含 Preview 浮层 data-testid 测试钩子 25 B），DevTool 路由面板经
+// import.meta.env.DEV 折叠零生产字节；数字与
+// decisions.md 第 23 条同批实测，阈值与 BASELINE_BYTES 代码不动，仅头
+// 注释随批同步）。
 // 阈值：126 KB = 129024 B（基线 +10% 余量，取整到 KB）。
 //
 // 口径必须可复现（项目教训：bundle 增量报告曾出现无任何口径能复现的数字）：
