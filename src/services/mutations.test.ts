@@ -40,6 +40,7 @@ vi.mock('@/services/article', () => ({
 
 import {articleCache, homeCache} from '@/util/useQuery';
 import {favoriteArticle, followAuthor} from '@/services/article';
+
 import {favoriteOnArticle, favoriteOnHome, followOnArticle} from './mutations';
 
 const favoriteMock = vi.mocked(favoriteArticle);
@@ -145,7 +146,8 @@ describe('favorite 双层组合（article 实体层 × home 投影层）', () =>
       favorited: true,
       favoritesCount: 6
     });
-    expect(homeCache.peek?.(pageKey())?.value?.articles[0]).toMatchObject({
+    const optimistic = homeCache.peek?.(pageKey())?.value;
+    expect(optimistic?.articles[0]).toMatchObject({
       favorited: true,
       favoritesCount: 6
     });
@@ -177,7 +179,8 @@ describe('follow 的 peek-merge（apply 以 settle 时当前值为基）', () =>
     const followResult = followOnArticle('slug-x', 'alice', true);
 
     // 乐观步只动 author.following，favorite 域原样
-    expect(articleCache.peek?.(['slug-x'])?.value?.author).toMatchObject({
+    const optimistic = articleCache.peek?.(['slug-x'])?.value;
+    expect(optimistic?.author).toMatchObject({
       following: true
     });
     expect(articleCache.peek?.(['slug-x'])?.value).toMatchObject({
