@@ -11,5 +11,5 @@
       "@/*": ["./src/*"]
     }
   },
-  "exclude": ["eslint.config.mjs", "babel.config.js", "vitest.config.mts"]
+  "exclude": ["eslint.config.mjs", "vitest.config.mts"]
 }

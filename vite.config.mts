@@ -36,8 +36,5 @@ export default defineConfig({
       sourceMap: true,
       exclude: ['node_modules/**']
     })
-  ],
-  optimizeDeps: {
-    include: ['babel-runtime-jsx-plus']
-  }
+  ]
 });

@@ -76,14 +76,6 @@ CI (`.github/workflows/ci.yml`) runs `lint:ci` → `test:run` → `build` on pus
 
 **Testing:** Vitest + Testing Library. Component tests (`Home` incl. direct `Tags` tests, `Editor`, `Article`, `Layout`, `PreviewLink`, `Loading`, `RouterError`, `NotFound`, `DevTool`) mock the *service layer*, not the network, so real view logic is exercised; unit tests cover `useQuery`, `loaderCache`, `http`, `faker`, `auth`, `article`, and `mutations` (favorite two-layer rollback + follow peek-merge, driven against real per-entity caches); form tests (`Login/form.test.tsx`, `Register/form.test.tsx`) cover validator wiring and server-error field backfill. Home/Article tests model the write-through chain by mocking `refresh` as a re-render broadcast and reading `useData` straight from the per-entity caches. The vitest pipeline registers the same `rollup-plugin-type-as-json-schema` as the app build, so `@/types/*.schema` virtual modules resolve in tests; since haze-ui ≥1.11.1 the dist is pure ESM with zero CSS specifiers, so vitest consumes it directly (no `server.deps.inline`) — per-test `vi.mock('haze-ui')` stubs remain deliberate view isolation, not a compatibility workaround.
 
-## JSX Extensions
-
-Babel plugins `transform-jsx-condition` and `transform-jsx-class` enable extended JSX syntax:
-- `x-if`, `x-elseif`, `x-else` — conditional rendering as JSX attributes
-- `x-class` — conditional className merging
-
-These are allowed by ESLint (no `react/no-unknown-property` rule).
-
 ## Path Aliases
 
 `@/` maps to `src/` (configured in both `vite.config.mts` and `tsconfig.json`).

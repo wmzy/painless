@@ -16,7 +16,6 @@ export default [
       'node_modules',
       'coverage',
       '*.min.js',
-      'babel.config.js',
       'eslint.config.js',
       'vitest.config.mts',
       'vite.config.mts',

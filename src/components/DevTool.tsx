@@ -302,13 +302,7 @@ function CacheView() {
 
   return (
     <div>
-      <div
-        x-class={css`
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-        `}
-      >
+      <div>
         <b>Cache: {entries.length}</b>
         <Button
           onClick={() => {
@@ -362,13 +356,7 @@ function RequestLogView() {
 
   return (
     <div>
-      <div
-        x-class={css`
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-        `}
-      >
+      <div>
         <b>Requests: {logs.length}</b>
         <Button onClick={clearRequestLogs}>Clear Logs</Button>
       </div>
@@ -472,13 +460,7 @@ function RouteView() {
 
   return (
     <div>
-      <div
-        x-class={css`
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-        `}
-      >
+      <div>
         <b>Routes</b>
         <Button onClick={() => setEvents([])}>Clear Events</Button>
       </div>
@@ -540,10 +522,6 @@ function MockView({
       <Button onClick={() => setShow(!show)}>
         {show ? 'Hide' : 'Show'} Schema
       </Button>
-      {/* 原写法是 x-if={show}（babel-plugin-transform-jsx-condition 语法）
-          ——但 vite 管道不消费 babel.config.js，转换从未生效：show=false
-          时 <pre> 照常渲染（x-if 被当未知 DOM 属性，React 报 non-boolean
-          警告）。改显式条件。 */}
       {show && <pre>{JSON.stringify(value, null, 2)}</pre>}
     </div>
   );
