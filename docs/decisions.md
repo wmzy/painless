@@ -1180,3 +1180,72 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
   默认 5min（breaking from never-expire，模板 wrapper 显式传值不受
   影响）。README 不动：TanStack 对照表「cacheTime defaults to 5
   min」描述的是模板 wrapper 语义，升级前后均准确。
+
+## 26. 部署断裂修复批：Pages 绝对 base + 404 回退 + favicon + 账本同步（2026-09-05）
+
+- **背景**：第四轮评审（对照 TanStack，六库能力面侦查）实证发现线上
+  demo 完全不可用：`https://wmzy.github.io/painless/` 返回 200 但 SPA
+  渲染自身 404 视图（H1 "Page not found"），深链 `/painless/article/x`、
+  `/painless/help` 直接 HTTP 404。三层根因：①`src/views/index.tsx` 的
+  router `baseUrl` 被注释（core 的 match 按 baseUrl 长度剥 pathname
+  前缀，空串时 `/painless/` 对不上 `/` → NotFoundError → notFound 视图）；
+  ②GitHub Pages 不读 `public/_redirects`/`_headers`（Netlify/Cloudflare
+  语法），而 CI（pages.yml）实际部署目标就是 Pages——SPA 回退与安全头
+  均未生效；③favicon 引用 `/src/favicon.svg` 而该文件在仓库中不存在
+  （dev 下同样 404）。e2e 全跑 dev server 根路径（playwright.config.ts
+  baseURL localhost:4273），此断裂无法被既有门禁捕获。同轮另发现两处
+  账本漂移（P2）：size-budget 头注释「最近实测 124176 B」对 #25 终态
+  125439 B 过时；README 体积表六库列仍标 0.18.x/1.10.x 时代的旧数字。
+- **决定**：
+  - **vite base 环境驱动**（`vite.config.mts`）：`base = process.env
+    .VITE_BASE ?? './'`。默认相对 base 保持可移植静态部署形态；Pages
+    构建传 `VITE_BASE=/painless/`。相对 base 下深链回退页的 `./assets`
+    会相对深路径解析（`/painless/article/assets/...`），404.html 回退
+    必须配绝对 base——两者是同一决策的两半。
+  - **router baseUrl 同源推导**（`src/views/index.tsx`）：`import.meta
+    .env.BASE_URL` 绝对（`/painless/`）→ 剥尾斜杠作前缀（core 的 match
+    剥前缀、toLocation 补前缀双向对称）；相对（dev 与可移植部署的
+    `'/'` 或 `'./'`）→ 空串。生产构建 BASE_URL 被 vite 内联为字面量。
+  - **404.html 回退进构建链**（`scripts/make-404.mjs`，`package.json`
+    build 链尾）：`dist/index.html` 复制为 `dist/404.html`。GitHub
+    Pages 对未命中路径以 404 状态回退 404.html，SPA boot 后由
+    HistoryRouter 按 location.pathname 落目标路由；真 404 由应用内
+    notFound 视图呈现。对 Netlify/Cloudflare（_redirects 先行拦截）与
+    其它「未命中回退 404.html」的静态托管（S3 error document）均无害。
+  - **pages.yml 接线**：Build 步骤传 `env: VITE_BASE: /painless/`；
+    deploy 后追加 smoke 步骤——首页 200（`--retry-all-errors` 等部署
+    传播）+ favicon 200 + 深链正文含 `id="root"` 与 `<script>`（HTTP
+    404 但必是 SPA HTML——Pages 回退语义）。此断言是线上形态的唯一
+    守门（dev-server e2e 拦不住 baseUrl/回退断裂）。
+  - **favicon**：新建 `public/favicon.svg`（几何 P 标），index.html
+    引用改 `/favicon.svg`（vite 按 base 重写公共资源引用；子路径托管
+    下不再裸绝对路径 404）。
+  - **deploy 脚本去死变量**：`BUILD_DEMO=true` 全仓零消费者（grep
+    实证），删除；deploy 改 `cross-env VITE_BASE=/painless/ pnpm
+    build`（经 build 链自动带出 404.html）。
+  - **README 体积表重测**（esbuild 口径原样：`--bundle --minify`，
+    peer external / regular 含入，gzip level 9；used = 当前 src
+    import 图实际拉取的生产符号集，full = 整入口）：toolroom
+    6.0→**7.0**（full 8.1）、f0rm 6.3→**7.6**（full 9.7）、fetch-fun
+    5.5→**4.5**（full 6.1）、router 11.0→**18.0**（core 5.6 + react
+    12.4）。对照列不重测：npm latest 四包与原表测量版本逐一相同
+    （query 5.102.8 / form 1.33.5 / router 1.170.32 / ky 2.1.0）。
+    fetch-fun 下降源于 0.10→0.12 的摇树面变化；router 增长即 #21–#25
+    各批记录的运行时新增（导航簿记、TypedLink prefetch 等）——
+    18.0 vs 34.8 仍是 48% 差距。
+  - **文档同步**：README Platform-Agnostic Deployment 段补深链回退
+    说明；AGENTS.md 的 deploy 命令行与 Routing 段 baseUrl 句同步。
+- **验证**：本地 Pages 仿真（临时脚本，未入库）——node 静态服务器
+  复刻 Pages 语义（`/painless/` 前缀内文件 200、未命中回退 404.html
+  且状态 404）+ Playwright 驱动：①首页 H1 "Welcome to Painless."
+  （修复前为 "Page not found"）②深链 HTTP 404 回退页 boot 后渲染目标
+  文章标题 ③favicon 200。typecheck + 308 单测全绿；`VITE_BASE=
+  /painless/ pnpm build` 产物资源全带 `/painless/` 前缀、404.html 与
+  index.html 逐字节同、含 root 挂载点。线上站点待 push 后由 pages.yml
+  的 smoke 步骤终验（本仓无法直接部署）。
+- **已知边界**：①仿真服务器只复刻 Pages 的前缀/回退语义，Pages 的
+  CDN 缓存传播（部署后旧 404 短暂残留）由 smoke 的 retry 缓冲；
+  ②`pnpm deploy`（gh-pages 分支部署）与 pages.yml（artifact 部署）
+  两条 Pages 通道并存，本批两者都接了 VITE_BASE 与 404.html，未做
+  通道统一（超范围）；③usb/`file://` 形态深链天然无回退，README
+  平台段已按「根路径 + 相对 base」口径描述。

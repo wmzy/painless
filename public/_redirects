@@ -1,2 +1,4 @@
-# SPA routing - redirect all to index.html
+# SPA 回退（Netlify / Cloudflare Pages 语法；GitHub Pages 不读本文件——
+# Pages 部署的深链回退由构建产物 dist/404.html 承担，见 scripts/make-404.mjs，
+# 且该构建以绝对 base VITE_BASE=/painless/ 进行）。
 /*    /index.html   200

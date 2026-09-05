@@ -264,12 +264,23 @@ export function RouterHost() {
   return null;
 }
 
+// 路由 baseUrl 与 vite base 同一事实源：绝对 base（Pages 部署的
+// /painless/）→ 剥尾斜杠作前缀（core 的 match 按 baseUrl 长度剥
+// pathname 前缀，toLocation 反向补前缀）；相对 base（'./'，dev 与可
+// 移植静态部署——BASE_URL 为 '/' 或 './'）→ 空串，pathname 原样匹配。
+// 不接时部署在子路径的 SPA 对 /painless/ 全路径失配 → notFound（线上
+// demo 首页渲染 "Page not found" 的根因，e2e 跑 dev server 根路径拦
+// 不住）。BASE_URL 在生产构建被 vite 内联为字面量。
+const routerBaseUrl = import.meta.env.BASE_URL.startsWith('/')
+  ? import.meta.env.BASE_URL.slice(0, -1)
+  : '';
+
 export default function App() {
   return (
     <Router
       routes={routes}
       context={routerContext}
-      // baseUrl={import.meta.env.BASE_URL.slice(0, -1)}
+      baseUrl={routerBaseUrl}
       errorHandler={(e) => <RouterError error={e} />}
       // 未匹配路径 → 页面级 404（@native-router/react ≥1.14 notFound
       // prop：解析以 core 的 NotFoundError 拒绝时渲染，优先于

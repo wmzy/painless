@@ -34,7 +34,15 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # 绝对 base + 构建链内建的 404.html（scripts/make-404.mjs）：GitHub
+      # Pages 不读 public/_redirects（Netlify/Cloudflare 语法），深链回退
+      # 由 404.html 承担；相对 base 下深链回退页的 ./assets 会解析到深
+      # 路径目录，故 Pages 构建必须绝对 base。/painless/ 是项目页前缀
+      # （wmzy.github.io/painless/），路由侧 baseUrl 同源推导
+      #（src/views/index.tsx 读 BASE_URL）。
       - name: Build
+        env:
+          VITE_BASE: /painless/
         run: pnpm run build
 
       - name: Upload artifact
@@ -52,3 +60,17 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+      # 部署后冒烟：首页 200；深链经 404.html 回退（HTTP 404 但正文必是
+      # SPA HTML——含 root 挂载点与入口脚本）。2026-09 前的断裂形态是
+      # 「首页渲染 SPA 自身 404 视图 + 深链 HTTP 404」，e2e 跑 dev server
+      # 根路径拦不住，此断言是线上形态的唯一守门（路由 boot 的完整验证
+      # 由本地 Pages 仿真 e2e/与构建脚本承载）。
+      - name: Smoke (home reachable + deep-link SPA fallback)
+        run: |
+          SITE="${{ steps.deployment.outputs.page_url }}"
+          curl -fsS --retry 5 --retry-delay 5 --retry-all-errors "$SITE" > /dev/null
+          curl -fsS --retry 5 --retry-delay 5 --retry-all-errors -o /dev/null "$SITE/favicon.svg"
+          DEEP="$(curl -s "$SITE/article/smoke-deep-link")"
+          echo "$DEEP" | grep -q 'id="root"'
+          echo "$DEEP" | grep -q '<script'
