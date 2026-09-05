@@ -1034,3 +1034,80 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
   上批同源）+ 308 单测（26 文件，净增 4 条）+ BUILD_DEMO=false build
   + size 121.27 KB + e2e 29 条全绿（首跑 5 红——5febc94 的浮层定位
   欠账，见上；修复后全量复跑通过）。
+
+## 24. React Compiler spike：门禁全绿但体积超标，不采纳（2026-09-05）
+
+- **背景**：第三轮生态评审（对照 TanStack 系）的评估项。React 19.2 已在
+  依赖，模板现行 memo 纪律是「react-toolroom 场景 hook + scalar props
+  `React.memo`」（见 Architecture 的 no-structural-sharing 条目）——
+  React Compiler 理论上可把这套纪律自动化。spike 目标：官方 vite 接入
+  方式全量接线，跑门禁 + 量体积，数据说话决定去留。
+- **接入方式（本工具链上的官方路径）**：任务书原写
+  `babel-plugin-react-compiler` + babel 选项——但该路径在 vite 8 +
+  plugin-react 6.1.1 上已被上游取代：plugin-react 6 **移除了 `babel`
+  选项**（vite 8 的 JSX/TS 转换走 oxc，不走 babel），React Compiler
+  官方接入是 6.1.0 新增的原生 `compiler` 选项（PR #1419，引擎
+  `oxc-transform-react`——React Compiler 的 Rust 移植，编译→TS
+  strip→JSX 一体）。实测接线：`pnpm add -D oxc-transform-react@^0.145.0`
+  （peer 精确 ^0.145.0——0.x caret 锁 minor，latest 0.148.0 不满足，
+  装错版本 `pnpm peers check` 会红）+ vite.config.mts
+  `react({exclude: ['node_modules/**'], compiler: {logDiagnostics: true}})`
+  + vitest.config.mts 镜像同款 react 插件（vitest 配置独立，不镜像则
+  测试管线不经编译器）。babel 引擎路径（`reactCompilerPreset` 自组
+  @rolldown/plugin-babel）在本仓无「与既有 babel 插件共存」问题可言
+  ——**vite 8 管道无任何活动 babel 链**：babel.config.js 的
+  transform-jsx-condition/class 无消费者（x-if 从未生效见第 21 条前
+  记录；本次实证 x-class 同样死配置——转换产物里 `"x-class":
+  "<linaria 类名>"` 作为未知 DOM 属性原样传给 _jsxDEV，类名从未并入
+  className）。
+- **门禁数据（compiler 全开，logDiagnostics: true）**：typecheck ✓ /
+  lint:ci ✓（0 error，1 条既有 `_schema` 警告同源）/ test:run ✓
+  **308/308（26 文件）** / build ✓ exit 0 / **size ✗ 131633 B =
+  128.55 KB > 129024 B（126 KB 硬门禁）exit 1**——CI 会红。
+- **体积（逐文件 gzip level 9 求和口径）**：同树 A/B（唯一变量
+  compiler 开关）：开 131633 B vs 关 125207 B = **+6426 B（+6.28 KB，
+  +5.1%）/ 32 文件不变**；对第 23 条记录基线 124176 B 差 +7457 B，其中
+  +1031 B 是今晨 6fc7a8a 依赖更新的上游漂移（净树实测 125207 B 已复
+  算确认，与 compiler 无关；size-budget 头注释的「最近实测 124176 B」
+  随该批过时，下批顺手同步）。增量归因：逐 chunk 成比例散布在所有含
+  组件的 chunk（Home +1365 B / Article +1031 B / Editor +734 B /
+  About +710 B / Register +507 B / Login +416 B / Layout +411 B，
+  纯视图 chunk 无库变化照样涨），CSS 零增量——每个被编译组件/hook 的
+  memo-cache 槽脚手架（`_c()` 缓存 + memo 化临时值）固有字节，非工具
+  链互作、无配置可压（`compilationMode: 'annotation'` 可近零增量但
+  等于只编译手写 `'use memo'` 的组件——自动化 memo 的价值就不存在了）。
+- **Rules of React 诊断（12 条，全部「跳过优化」级，零致命，未豁免
+  任何一条）**：①`react-compiler(Globals)` ×8 全在
+  `src/views/index.test.tsx`——测试探针惯用法（`const Probe = () =>
+  { router1 = useRouter(); ... }` 外层 let 捕获），测试专用非应用代码；
+  ②`react-compiler(Todo)` ×2 在 `src/util/mock.ts:135,139`——回调内
+  动态 `import('./faker')`，Rust 移植 HIR 暂不支持 import 表达式
+  （babel 版同为此类 Todo），编译器能力缺口非应用违规；③
+  `react-compiler(Hooks)` ×1 在 `src/util/mock.ts:110`——`useInject`
+  以 use 前缀被当 hook 且 `if (import.meta.env.PROD) return;` 早退在
+  源码形态上是条件调用：实际是构建期常量分支折叠 + useInject 非
+  React hook（源码注释明言），约定误报；④`react-compiler(Refs)` ×1
+  在 `src/util/theme.tsx:56`——`mapSetter` mapper 写
+  `manualRef.current`，mapper 实际只在用户写入（事件语境）执行，
+  render 期不访问，编译器保守跳过。结论：应用代码无真实 Rules 违规，
+  308 单测在编译产物上全绿（含 mutations 双层回滚 / loaderCache /
+  blocker 等时序敏感用例）。
+- **结论：不采纳，配置与依赖全量 revert**（本条是唯一留痕）。理由：
+  ①体积判定线（min 增量 ≤1 KB 量级）实测 +6.28 KB，超标 6 倍且直接
+  撞破 126 KB 硬门禁（exit 1）；②增量是编译器输出固有（脚手架字节
+  随组件数线性增长），无调优空间；③模板的 memo 纪律已被
+  react-toolroom 场景 hook（provider 层订阅粒度）+ scalar props
+  `React.memo` 边界覆盖热点，换 6.28 KB 常驻字节买不到对应收益——与
+  「轻量优先」立场一致；④官方路径自身标记 @experimental（plugin-react
+  `compiler` 选项与 oxc Rust 移植均是）。revert 后验证：净树 308/308
+  全绿、size 122.27 KB 过门禁、工作区零 compiler 残留（package.json/
+  lockfile/vite 配置均还原）。
+- **翻案条件**：①编译器脚手架字节显著瘦身（React 团队输出压缩或 oxc
+  移植转正后复测同树 A/B）；②模板规模增长到手工 memo 纪律成为实际
+  维护负担；③若只想给少数热点组件上保险，`annotation` 模式是体积近零
+  的中间态（代价是手写 `'use memo'`，与自动化的初衷不同型）。
+- **顺带发现（本批不动，候选下批清理）**：babel.config.js 与
+  devDeps 里 transform-jsx-condition/class、babel-runtime-jsx-plus（含
+  vite.config.mts `optimizeDeps.include`）在 vite 8 管道全部无消费者
+  ——DevTool.tsx 3 处 `x-class` 实际未转换（dev 面板对应行 flex 布局
+  缺失 + React 未知属性警告），babel 链退役可一并清掉。
