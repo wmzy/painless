@@ -1111,3 +1111,72 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
   vite.config.mts `optimizeDeps.include`）在 vite 8 管道全部无消费者
   ——DevTool.tsx 3 处 `x-class` 实际未转换（dev 面板对应行 flex 布局
   缺失 + React 未知属性警告），babel 链退役可一并清掉。
+
+## 25. 第三轮 review 落地批：core 1.16.1 + toolroom 1.x 集成（2026-09-05）
+
+- **背景**：第三轮生态 review 落地批的最后一步——库侧按「修复 → CI
+  semantic-release 发版 → 模板 npm 显式版本集成（不 link）」流水线
+  产出两个新版本，本批完成模板侧安装与门禁收口。同批主仓先行两笔：
+  566e40a（CI 冻结安装——ci.yml/pages.yml 的 pnpm install 收紧为
+  --frozen-lockfile，改 package.json 不提交 lockfile 的 PR 直接红，
+  供应链可复现性缺口收口）；eff2f6b（CLAUDE.md loader→view typing
+  段落与 createDataLoader 声明点闭合的现状同步，与文档站表述对齐）。
+  第 24 条 React Compiler spike 同日结论不采纳（+6.28 KB 撞破 126 KB
+  硬门禁，配置与依赖已全量 revert），与本批无纠缠。
+- **版本**（npm 轮询确认可见后显式安装 + pnpm dedupe；npm dist
+  gitHead 与库仓 commit 双核验）：@native-router/core ^1.16.0→
+  ^1.16.1——b19a8ae（searchDeps 快路径——声明投影未变即复用视图
+  快照——此前无输入侧校验，未声明键的非法值会静默落进 URL；现复用
+  前对目标 raw search 跑全部命中层级的已声明 schema，拒绝即走完整
+  解析）+ b04db58（逐层 params 累积原先在层 schema 运行前铺 raw
+  string，更深的无 schema 层重声明同名段会把浅层已 coerce 的值打回
+  原始字符串；现保留 coerce 结果）——两笔都是库文档「已知局限」的
+  正确性收案；react 包 docs-only 不发版，@native-router/react 维持
+  ^1.15.0。react-toolroom ^0.24.0→^1.1.0：semantic-release 按 fix!
+  走 major，两连发——1.0.0（gitHead 5e6a0c7：0b71608 fix!
+  createMemoryCacheProvider 默认 cacheTime 由 Infinity 改 5min，对齐
+  TanStack gcTime、消除 loader 预写条目永久驻留；dist 实核 0.24.0
+  `cacheTime=1/0` → 1.1.0 `3e5`）与 1.1.0（gitHead cf20913：
+  useInfinite resetOn；useKeyedResult 随 5e6a0c7 进 1.0.0）。
+- **模板语义影响：零行为变化，全为正确性收案**。core 两笔对现用
+  路径是收紧而非改义——快路径校验只影响「未声明键非法值」这一此前
+  无守护的边角（模板 homeSearch 声明齐全，合法输入路径不变）；
+  coerce 保留需要「更深层无 schema 重声明同名段」，模板唯一 params
+  schema（/editor/:slug）单层声明，场景不成立。toolroom 默认值变化
+  被 wrapper 完全隔离：createQueryCache 自带 DEFAULT_CACHE_TIME=5min
+  显式下传、tagsCache 显式 1h——库默认值从未被模板读取，改前改后
+  等价。useKeyedResult（useResult 收窄到单 args key 的溯源门控读取
+  ——data 仅在「确由这组 args 取回」时可见、loading/error 按 key
+  隔离，与模板场景层 createQueryHook 已实现的 keyed 语义同型）与
+  resetOn（'rerun' 默认；'args' 模式下重跑不清空已翻页聚合）是可选
+  新 API，模板暂不消费：前者待「一个 injectable 同屏多 key」的真实
+  场景再上移（届时可替场景层手写 keyedLoading/keyedData 组合），
+  后者 feed.ts 现用默认语义（源码注释明言手动直调按重置聚合处理），
+  不动。
+- **体积（逐文件 gzip level 9 求和口径）**：终态 **125439 B / 32
+  文件**（size 门禁 122.50 KB / 126.00 KB 通过，余量 3.50 KB 2.8%，
+  raw 364.92 KB）——对第 23 条基线 124176 B 差 +1263 B；同 lockfile
+  A/B（唯一变量双库版本，双向两次复测）：旧组合（core 1.16.0 +
+  toolroom 0.24.0）127844 B → 新组合 125439 B = **净 −2405 B，升级
+  本身缩包**。逐 chunk：context +4238（toolroom 1.x keyed 机制与
+  类型面）对 Router −3917 / auth −2805（core 1.16.1 模块变更引发的
+  chunk 重组，字节搬家非净增），视图 chunk ±20 B 散布。新 API 摇树
+  实核：useKeyedResult 符号 dist 零命中（独立 hook 被 tree-shake）；
+  resetOn 实现字节随 useInfinite 入包——feed.ts 本就消费该 hook，
+  属既有依赖面，非新增入口。备注：第 24 条记录的升级前净树 125207 B
+  本次无法精确复现（同 spec 复测 127844 B；haze 1.22 组合 126754 B；
+  wyw-in-js 2.4.4/2.5.1 产物等价——疑其复算时的本地环境残余），本批
+  结论不依赖该数，以可复现 A/B 双测为准。
+- **验证清单（终态全量，均 exit 0）**：pnpm install
+  --frozen-lockfile（提交 lockfile 与 package.json 一致）/ pnpm
+  peers check（无问题，#18 豁免面未新增）/ typecheck / lint:ci
+  （0 error，1 条既有 `_schema` 警告同源）/ test:run **308/308（26
+  文件）** / build / size **122.50 KB 过** / test:e2e **29/29**；
+  pnpm why 双库各 Found 1 version（全树单实例）。
+- **文档同步**：CLAUDE.md Key Libraries 表两行——core 行补 ≥1.16.1
+  两修复一句（correctness fixes, template behavior unchanged）、
+  toolroom 行补 useKeyedResult（≥1.1，未消费）与 useInfinite
+  resetOn（≥1.1 可选项）及 createMemoryCacheProvider cacheTime ≥1.0
+  默认 5min（breaking from never-expire，模板 wrapper 显式传值不受
+  影响）。README 不动：TanStack 对照表「cacheTime defaults to 5
+  min」描述的是模板 wrapper 语义，升级前后均准确。
