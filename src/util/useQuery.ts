@@ -34,6 +34,13 @@ import {DEFAULT_STALE_TIME, resetRefreshSeen} from './loaderCache';
 // 对齐 TanStack Query 的 gcTime 默认值；低频全局实体可单独放长（见 tagsCache）
 const DEFAULT_CACHE_TIME = 5 * 60_000;
 
+// tags 实体的时间窗口（cacheTime = staleTime 同长 1h）：近乎静态的全局
+// 标签，新鲜窗口与缓存生命周期一致——窗口内 focus/断网事件零重拉
+//（revalidate 门控，见 createQueryHook），挂载超窗照常 SWR 补拉；持久化
+// hydrate 保留真实 cachedAt，冷启动镜像超窗同样只后台补拉一次。导出供
+// useTagsQuery 声明点复用，两处（cacheTime / staleTime）不各自漂移。
+export const TAGS_CACHE_TIME = 60 * 60 * 1000;
+
 // select 已按调用点裁剪，恒等投影是唯一投影：useResultSelect 只要结果存在
 // 就会调 select，传 undefined 会在首个结果到达时抛「select is not a
 // function」；模块级常量保证 select 身份稳定（「结果 + select」双重身份的
@@ -144,10 +151,10 @@ export const profileFeedCache = createQueryCache<ArticlePage, [ProfileFeedQuery]
 );
 /** 文章评论：key = [slug]，发评论后按 slug 失效重拉 */
 export const commentsCache = createQueryCache<Comment[], [string]>('comments');
-/** 全局标签：key = []（单例条目）；唯一持久化实体，cacheTime 放长（1h）对齐盘侧生命周期 */
+/** 全局标签：key = []（单例条目）；唯一持久化实体，cacheTime 与 useTagsQuery 的 staleTime 同长（TAGS_CACHE_TIME，1h） */
 export const tagsCache = createQueryCache<string[], []>(
   'tags',
-  60 * 60 * 1000,
+  TAGS_CACHE_TIME,
   {persist: {key: 'painless.cache.tags', enabled: persistEnabled}}
 );
 
@@ -331,9 +338,14 @@ export function createQueryHook(
     const stale = useCache(injectable, cache, staleTime);
 
     // focus / 断网恢复重验证：args 必须与 useRun 同 key——否则是另一条
-    // 请求线而非命中既有条目；新鲜期内 useCache 直接命中，两处零请求。
-    useFocusRevalidate(injectable, {args});
-    useReconnectRevalidate(injectable, {args});
+    // 请求线而非命中既有条目。cacheProvider + staleTime 把新鲜判定上移
+    // 到事件 hook 自身（TanStack refetchOnWindowFocus 语义）：新鲜期内
+    // 事件整段跳过，不再经注入链做一次「命中即 emitResult 广播同值」的
+    // 订阅广播（连 dataUpdatedAt 时间戳都曾被带偏）；tags 这类长窗口场
+    // 景的 focus 重拉由此收敛到窗口外，超窗照常后台重验。
+    const revalidate = {args, cacheProvider: cache, staleTime};
+    useFocusRevalidate(injectable, revalidate);
+    useReconnectRevalidate(injectable, revalidate);
 
     // initData 注入 init 槽：首帧即有兜底值，但不落 result store——初载
     // 语义的 loading 仍如实为 true。注解 unknown 收口：实现重载的

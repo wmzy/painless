@@ -581,6 +581,40 @@ describe('createQueryHook（场景 hook）', () => {
     expect(fn).toHaveBeenCalledTimes(1);
   });
 
+  // 焦点重验证门控（useFocusRevalidate 带 cacheProvider + staleTime）：
+  // 新鲜期内 focus 事件在 hook 内整段跳过，不再经注入链做「命中即
+  // emitResult 广播同值」——dataUpdatedAt 是「最近一次真实取数」的时间
+  // 戳，广播路径每次都会把它刷新成事件时刻；门控后事件不产生任何
+  // 结果广播，时间戳只随真实取数移动。
+  it('焦点重验证：新鲜期内 focus 事件零广播，dataUpdatedAt 不动', async () => {
+    let now = 1_000_000;
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => now);
+    try {
+      const fn = vi.fn().mockResolvedValue(['v1']);
+      const cache = createQueryCache<any, any>('focus-fresh');
+      const useQ = createQueryHook({
+        queryFn: bindQueryFn(fn, cache),
+        initData: [] as string[],
+        staleTime: 1000
+      });
+
+      const {result} = renderHook(() => useQ([]));
+      await waitFor(() => expect(result.current.data).toEqual(['v1']));
+      const fetchedAt = result.current.dataUpdatedAt;
+      expect(fetchedAt).toBe(now);
+
+      now += 500; // 仍在 staleTime 窗口内，但已是新的「事件时刻」
+      await act(async () => {
+        window.dispatchEvent(new Event('focus'));
+      });
+
+      expect(fn).toHaveBeenCalledTimes(1); // 零重拉
+      expect(result.current.dataUpdatedAt).toBe(fetchedAt); // 时间戳未带偏
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
   // ---- 持久化（opts.persist：localStorage 冷启动镜像）------------------
   //
   // 这组用例各建带 persist 的临时 cache，localStorage 键唯一（共享真键

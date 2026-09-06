@@ -1399,3 +1399,36 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
   头注释同步理由）。
 - **验证**：typecheck + lint:ci（0 error）+ 单测 **369/369**（30 文件，
   相对第 27 批的 317 净增 52 条）+ build + size + e2e **34/34**。
+
+## 29. tags staleTime 对齐 + revalidate 新鲜门控（2026-09-07）
+
+- **背景**：review 发现两处浪费：①tagsCache 的 cacheTime 已放长到 1h
+  （盘侧生命周期），但 useTagsQuery 的 staleTime 仍是 2s 缺省——每次
+  focus>2s 都后台重拉这套近乎静态的全局标签，cacheTime 的意图未传导到
+  新鲜判定；②createQueryHook 的 focus/断网重验证只传 `{args}`（无
+  cacheProvider），事件触发时经注入链做「cache 命中 → emitResult 广播
+  同值」——新鲜期内网络零请求，但订阅广播一次不缺，连 dataUpdatedAt
+  （最近一次真实取数时间戳）都被刷新成事件时刻。
+- **决定**：
+  - **tags staleTime = cacheTime = 1h**：`TAGS_CACHE_TIME`（60×60×1000）
+    导出自 useQuery.ts，tagsCache 的 cacheTime 与 useTagsQuery 的
+    staleTime 同源共用，两处不漂移。近乎静态实体的新鲜窗口表达在场景
+    声明点——窗口 = 缓存生命周期，窗口内 focus/断网事件与挂载 SWR 零
+    重拉，超窗照常后台补拉；持久化 hydrate 保留真实 cachedAt（库语义），
+    冷启动镜像超窗同样只补拉一次。
+  - **revalidate 门控上移**：createQueryHook 把 `cacheProvider: cache`
+    + `staleTime` 一并传给 useFocusRevalidate / useReconnectRevalidate
+    （react-toolroom ≥0.21 RevalidateOptions 门控，TanStack
+    refetchOnWindowFocus 语义）——事件 hook 自己读条目年龄，新鲜期内
+    整段跳过调用；stale/miss 照旧重验证。所有场景 hook 免费获得「新鲜
+    期内焦点事件零广播」，tags 的长窗口由此闭环。
+- **测试**：useQuery.test 增「焦点重验证：新鲜期内 focus 事件零广播，
+  dataUpdatedAt 不动」——受控时钟下 focus 事件后断言 fn 零重拉且
+  dataUpdatedAt 保持真实取数时刻（旧接线实测该断言失败：广播路径把
+  时间戳刷成事件时刻，正反双证）。e2e 断网恢复组按新契约重写：tags
+  用例改负向（新鲜窗口内 reconnect 零重拉、omega 缺位、计数停 1），
+  重验证的正向端到端证明移至评论场景（useCommentsQuery，staleTime
+  缺省 2s 短窗：等满窗口后 offline→online，第二条评论上屏 + 计数 2）。
+- **验证**：typecheck + lint:ci（0 error）+ 单测 **371/371**（30 文件）+
+  build + size **128.37 KB / 141 KB** 过（相对 #28 基线 +0.11 KB，门控
+  接线的正当成本）+ e2e **35/35**。

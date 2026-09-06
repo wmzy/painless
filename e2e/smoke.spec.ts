@@ -707,24 +707,21 @@ test('author deletes own comment and own article via confirm dialogs', async ({p
   ).toBeVisible();
 });
 
-// 断网恢复重验证（useReconnectRevalidate）：Tags 侧栏经 useQuery 订阅
-// tagsCache（key=[]，staleTime 默认 2000ms），window online 事件时对
-// miss/stale 条目后台重拉。mock 用可变闭包让 GET /tags 依次返回两个
-// 标签集：首拉 ['alpha'] 上屏 → 等条目过期 → offline→online 触发重拉
-// ['alpha','omega']——omega chip 出现是「重验证真发生了」的 UI 铁证，
-// 请求计数（首拉 1 次、重拉 1 次）同时排除风暴式重发。
-//
-// 时序取舍：过期是纯时间条件，没有可等待的 UI 观测点（Tags 的 stale
-// 只映射为 opacity 样式类，且组件内 stale 标志只在重验证周期里翻转，
-// 不会随时间独自置真），故以 waitForTimeout(2100) 等满 staleTime——
-// 等的是「前置条件本身」，不是拿 sleep 等某个会自行发生的 UI 变化。
+// 断网恢复重验证 × 近乎静态实体（useReconnectRevalidate 的新鲜门控）：
+// useTagsQuery 的 staleTime 与 tagsCache 的 cacheTime 同长（1h，
+// TAGS_CACHE_TIME）——tags 是近乎静态的全局标签，新鲜窗口内 window
+// online 事件零重拉（门控在事件 hook 内整段跳过，连「命中即广播同
+// 值」都不发生）。mock 用可变闭包记账 GET /tags：首拉 ['alpha'] 上屏
+// → offline→online → omega 永不出现、请求计数停在 1。online 后的观察
+// 窗口（1500ms）给「假性重拉」留出显形时间再断言缺位——负向契约的
+// 既有等待，不是拿 sleep 等某个会自行发生的 UI 变化。
 //
 // 断网模拟：context.setOffline 走 CDP 网络仿真，与 page.route 的
 // fulfill 互不干扰（被 mock 命中的请求不出网络栈）；setOffline(false)
 // 恢复时 Chromium 原生派发 online 事件且此刻 navigator.onLine 已翻真
 // ——reconnect 处理器先查 onLine 再动作，条件必须成立，因此用真实
 // 断网而非手工 dispatchEvent（后者绕开 onLine 门槛，覆盖是假的）。
-test('tags refetch on reconnect (offline → online)', async ({
+test('tags near-static: reconnect inside freshness window does not refetch', async ({
   page,
   context
 }) => {
@@ -743,14 +740,65 @@ test('tags refetch on reconnect (offline → online)', async ({
   await expect(page.getByRole('button', {name: 'alpha'})).toBeVisible();
   await expect.poll(() => tagsGets).toBe(1);
 
-  // 等满 staleTime（默认 2000ms），理由见上方时序注释
-  await page.waitForTimeout(2100);
+  await context.setOffline(true);
+  await context.setOffline(false);
+
+  await page.waitForTimeout(1500); // 观察窗口：假性重拉在此显形
+  await expect(page.getByRole('button', {name: 'omega'})).toHaveCount(0);
+  await expect.poll(() => tagsGets).toBe(1);
+});
+
+// 断网恢复重验证 × 短新鲜窗口实体：tags 放长 staleTime 后，重验证的
+// e2e 正向证明落在评论场景（useCommentsQuery，staleTime 缺省 2000ms）。
+// 可变闭包让 GET /articles/:slug/comments 依次返回两个评论集：首拉单
+// 条上屏 → 等满 2s 新鲜窗（前置条件等待，时序取舍同上面的 tags 用例）
+// → offline→online 触发重拉 → 第二条评论出现是「重验证真发生了」的
+// UI 铁证，请求计数（首拉 1 次、重拉 1 次）同时排除风暴式重发。
+// 评论 fixture 形状逐字段对齐 mockApi 内建 handler（dev e2e 走 ajv
+// 响应校验，字段失配会在渲染前暴露）。
+test('comments refetch on reconnect (offline → online)', async ({
+  page,
+  context
+}) => {
+  const comment = (id: string, body: string) => ({
+    id,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    body,
+    slug: article1.slug,
+    author
+  });
+  const commentPayloads = [
+    [comment('c1', 'First comment before reconnect.')],
+    [
+      comment('c1', 'First comment before reconnect.'),
+      comment('c2', 'Second comment after reconnect.')
+    ]
+  ];
+  let commentsGets = 0;
+  await mockApi(page, {published: false});
+  await page.route('**/api/articles/*/comments', (route) => {
+    const comments =
+      commentPayloads[Math.min(commentsGets, commentPayloads.length - 1)];
+    commentsGets++;
+    return json(route, 200, {comments});
+  });
+
+  await page.goto(`/article/${article1.slug}`);
+  await expect(
+    page.getByText('First comment before reconnect.')
+  ).toBeVisible();
+  await expect.poll(() => commentsGets).toBe(1);
+
+  await page.waitForTimeout(2100); // 跨过 staleTime=2000ms，条目转 stale
 
   await context.setOffline(true);
   await context.setOffline(false);
 
-  await expect(page.getByRole('button', {name: 'omega'})).toBeVisible();
-  await expect.poll(() => tagsGets).toBe(2);
+  await expect(
+    page.getByText('Second comment after reconnect.')
+  ).toBeVisible();
+  await expect.poll(() => commentsGets).toBe(2);
 });
 
 // 401 自动登出：http 层在错误映射处判「401 且 tokenGetter() 非空」→

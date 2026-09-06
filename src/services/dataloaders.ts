@@ -16,7 +16,8 @@ import {
   homeCache,
   profileCache,
   profileFeedCache,
-  tagsCache
+  tagsCache,
+  TAGS_CACHE_TIME
 } from '@/util/useQuery';
 import {createDataLoader} from '@/util/dataLoader';
 
@@ -82,8 +83,9 @@ export const useCommentsQuery = createQueryHook({
 /**
  * 组件通道（Home 侧栏 Tags）：fetchTags() → tagsCache[[]]（单例条目）。
  * 同上只消费 queryFn；tagsCache 是唯一持久化实体（localStorage 镜像，
- * cacheTime 1h）。mock（tagList schema）从 Tags.tsx 调用点移到此处声明
- * ——选项在场景声明点闭合，DevTool 面板的 tagList 条目行为不变。
+ * cacheTime 1h，staleTime 同长——近乎静态，见下方声明）。mock（tagList
+ * schema）从 Tags.tsx 调用点移到此处声明——选项在场景声明点闭合，
+ * DevTool 面板的 tagList 条目行为不变。
  */
 export const [, , queryTags] = createDataLoader({
   fetch: articleService.fetchTags,
@@ -93,6 +95,11 @@ export const [, , queryTags] = createDataLoader({
 export const useTagsQuery = createQueryHook({
   queryFn: queryTags,
   initData: [],
+  // 近乎静态：staleTime 与 tagsCache 的 cacheTime 同长（TAGS_CACHE_TIME，
+  // 1h）——2s 缺省下每次 focus>2s 都会后台重拉这套全局标签；同长后新鲜
+  // 窗口 = 缓存生命周期，窗口内 focus/断网事件与挂载 SWR 零重拉（事件侧
+  // 由 createQueryHook 的 revalidate 门控兜住），超窗照常补拉。
+  staleTime: TAGS_CACHE_TIME,
   // tagListSchema 来自 .schema 虚拟模块（typings/schema.d.ts 通配声明，
   // 导出 any）：显式断 unknown 收口，避免 any 沿 MockConfig 字面量扩散
   //（article.ts 的 schemas 收纳同款先例）
