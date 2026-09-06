@@ -16,7 +16,7 @@ import {
   useSearch,
   type StandardSchemaV1
 } from '@native-router/react';
-import {navigate} from '@native-router/core';
+import {navigate, invalidate} from '@native-router/core';
 
 
 import * as auth from '@/services/auth';
@@ -78,8 +78,15 @@ export default function Login() {
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (values: {email: string; password: string}) => {
+    // 新一轮提交即刻撤下上次顶部错误，避免提交窗口内显示过期错误误导
+    setError(null);
     try {
       await auth.login(values.email, values.password);
+      // 对称登出链路：auth 层同批已加清 query 缓存，这里清 viewStack 会话
+      // 快照——防登录后同文档 back 重放匿名视图（或绕过会话内已执行过的
+      // requireLogin 守卫）。invalidate 同步无返回值，无 NCE 之虞；下方
+      // navigate 的吞除惯例跟随现状
+      invalidate(router);
       // 回跳原目的页；非法/缺失（直接访问 /login）落首页。被取代/取消的
       // 导航 reject NCE（core 1.15）：吞掉即「停在旧视图」语义，与旧版
       // void（永不 settle）等价

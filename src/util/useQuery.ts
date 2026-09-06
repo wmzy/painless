@@ -87,8 +87,16 @@ export const allCaches: CacheRegistryEntry[] = [];
 // 磁盘读写：内存缓存照常更新，登出擦盘（clear 内建的 removeItem）与跨
 // tab 收敛不被它拦。导出供持久化实体声明点与持久化契约测试共用（同
 // resetAllCaches 的测试工具先例）。
-export const persistEnabled = () =>
-  !Object.values(getMockConfigs()).some((c) => c.when === 'always');
+// DEV 三元：生产构建把 import.meta.env.DEV 定换为 false 后，dev 分支整支
+// 摇掉——getMockConfigs 引用消失、mock-config 模块随之摇出。此前构建实测
+// auth chunk 内存在 `()=>!Object.values(E()).some(e=>e.when==='always')`
+// 闭包：这是 dev-only 语义（mock 面板生产不可达），却让生产为它付字节并
+// 把 mock-config 拖进依赖图，违反仓库自我声明。vitest 走 vite 管线时 DEV
+// 恒真，契约测试（useQuery.test.ts 的 persistEnabled 用例）落 dev 分支，
+// 行为不变。
+export const persistEnabled = import.meta.env.DEV
+  ? () => !Object.values(getMockConfigs()).some((c) => c.when === 'always')
+  : () => true;
 
 export function createQueryCache<T, K extends unknown[]>(
   name: string,

@@ -236,7 +236,9 @@ describe('Editor', () => {
     pending.resolve({article: makeArticle()});
     const restored = asButton(await screen.findByRole('button', {name: 'Update Article'}));
     expect(restored.disabled).toBe(false);
-    expect(navigateMock).toHaveBeenCalled();
+    // 编辑态保存成功 → 直达文章页：落点用返回的权威 slug（响应的
+    // makeArticle 默认 slug 即 old-title-1）
+    expect(navigateMock).toHaveBeenCalledWith(state.router, '/article/old-title-1');
   });
 
   it('tagList：TagInput 录入的标签进入提交 payload', async () => {
@@ -344,7 +346,25 @@ describe('Editor', () => {
     await screen.findByRole('button', {name: 'Update Article'});
     expect(homeCache.peek!([{offset: 0, limit: 10}])).toBeUndefined();
     expect(articleCache.peek!(['old-title-1'])).toBeUndefined();
-    expect(navigateMock).toHaveBeenCalled();
+    // 编辑态落文章页（PUT 响应的权威 slug），新建态落首页由发布用例覆盖
+    expect(navigateMock).toHaveBeenCalledWith(state.router, '/article/old-title-1');
+  });
+
+  // 第五轮 review（P1）：编辑态保存后的落点细节——①slug 取 PUT 响应的
+  // 权威值而非编辑前的 article.slug（服务端改标题时可改写 slug）；②slug
+  // 经 encodeURIComponent 进路径段：slug 带空格时裸拼 '/article/old
+  // title-1' 会被路由器当成另一段路径，匹配落 404。
+  it('编辑态保存成功：落点用返回的权威 slug 且路径段已 URL 编码', async () => {
+    state.article = makeArticle();
+    putMock.mockResolvedValueOnce({article: makeArticle({slug: 'old title-1'})});
+    render(<Editor />);
+
+    fireEvent.click(screen.getByRole('button', {name: 'Update Article'}));
+    await screen.findByRole('button', {name: 'Update Article'});
+
+    expect(navigateMock).toHaveBeenCalledWith(state.router, '/article/old%20title-1');
+    // 双分支的另一侧：编辑态不再落首页
+    expect(navigateMock).not.toHaveBeenCalledWith(state.router, '/');
   });
 
   // 失败自动不失效（useMutation 契约）：422 被拒时缓存条目保留，错误仍

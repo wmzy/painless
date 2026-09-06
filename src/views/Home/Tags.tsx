@@ -27,9 +27,13 @@ export default function Tags() {
   const setSearch = useSetSearch(homeSearchWriteSchema);
 
   // 点 tag 写入 search（由 Home 的 route loader 重新查询），再点同一个则
-  // 清空；undefined 值不是合法的 URL 输入，条件构造而非传 undefined
+  // 清空；undefined 值不是合法的 URL 输入，条件构造而非传 undefined。
+  // 第二参 {replace: true}：tag 筛选是过滤面而非导航面——replace 改写
+  // 当前历史条目，back 不逐条回放筛选态（连点三个 tag 不堆三条
+  // history）；与分页 TypedLink 的 push（可回退翻页）是刻意并存的两种
+  // 导航语义
   const toggleTag = (t: string) => {
-    void setSearch(activeTag === t ? {} : {tag: t});
+    void setSearch(activeTag === t ? {} : {tag: t}, {replace: true});
   };
 
   // 三分支收敛给 haze-ui AsyncSection（1.21）：loading 占位 / error

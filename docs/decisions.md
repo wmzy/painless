@@ -1249,3 +1249,77 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
   两条 Pages 通道并存，本批两者都接了 VITE_BASE 与 404.html，未做
   通道统一（超范围）；③usb/`file://` 形态深链天然无回退，README
   平台段已按「根路径 + 相对 base」口径描述。
+
+## 27. 第五轮 review P0/P1 落地批：登录清场链 + core 1.16.2 预取失效集成（2026-09-06）
+
+- **背景**：第五轮生态 review（对照 TanStack 系，四 scout 并行深挖模板 +
+  七库源码）产出 P0×1 / P1×5 改进清单；本批四 agent 按独占文件边界并行
+  实施（auth / 表单+Editor / 构建配置 / 文档+Home）。
+- **P0 登录清场（正确性）**：`login()`/`register()` 此前只 `setUser`，
+  匿名期 settle 的缓存（per-user 投影：favorited/following 恒 false）会在
+  登录后 staleTime 窗口内被 loader 新鲜命中——logout 有「先清后 set」而
+  登录没有，清场不对称。修法两层：auth 层 `login`/`register` 在
+  `setUser` 前调 `clearAllCaches()`（对称 logout，覆盖换账号再登录）；
+  Login/Register 视图提交成功后、navigate 前 `invalidate(router)`（清
+  viewStack 会话快照，防登录后同文档 back 重放匿名视图）。auth.test 补
+  「登录/注册清场（含 tagsCache 擦盘）」与「readStoredUser 缺 email 按
+  未登录」契约用例；既有 logout 清场用例适配（预置改登录后置入——
+  logout 契约是「登出时刻在场即清，与写入时点无关」）。
+- **集成期发现并修复库侧缺口（core invalidate × preloadCache）**：上述
+  修法落地后 e2e `favorite 500` 稳定红。插桩定位（事件级日志）根因双层
+  ①登录清空 query 缓存后，文章视图的数据来自 router `preloadCache` 里
+  **匿名期 viewport 预取**解析的条目（30s TTL）——commit 预取条目不重跑
+  守卫/加载器，登录后的 viewStack/queryCache 清场对它无效（bfcache >
+  viewStack > queryCache 之外的第四层，无人失效）；②`cache.mutation`
+  miss-bail——articleCache 被清空后 favorite 乐观写静默 no-op，DOM 永不
+  翻转、无任何缓存事件。即第三轮 review RouterCompare 报告的 L1
+  （invalidate 不清 preloadCache）的实证：库侧修复走流水线——
+  `invalidate()` 现同步清空 preloadCache 并按并发上限逐出的同款语义
+  abort 在飞预取（FIFO 逐出先例：无人观测的后台噪音），core 仓
+  da0daf3（`fix(core)` → semantic-release **1.16.2**，npm dist gitHead
+  双核验）+ 两条 core 测试（失效后 preload 重跑守卫 / 在飞预取被 abort）
+  ；painless 显式版本集成 `@native-router/core@^1.16.2`，pnpm why 单实
+  例。集成后原红用例直绿。
+- **P1 批**（四 agent 并行，文件独占互不相交）：
+  - **表单提交链**（FormSubmit）：四表单（Login/Register/Editor/Article
+    评论）handleSubmit 首行 `setError(null)`——重提交窗口不再显示上次
+    的顶部过期错误；Editor 编辑态保存后导航 `/article/<encoded slug>`
+    （saveArticle 返回的权威 slug；新建态维持回首页）——「编辑→保存→看
+    结果」最短路径；e2e edit 用例落点断言同步。
+  - **生产泄漏**（BuildConfig）：`persistEnabled` 是 tagsCache
+    persist.enabled 的生产运行时调用方，把 mock-config 模块态拽进生产
+    chunk（构建实测：auth chunk 内
+    `()=>!Object.values(E()).some(e=>e.when==='always')` 闭包）——改
+    `import.meta.env.DEV` 三元，生产折叠为常量真值后 getMockConfigs
+    引用消失、mock-config 整模块摇出（复验 dist 零命中）；DEV 行为不变
+    （persistEnabled 契约测试仍绿）。
+  - **类型/配置**：vite.d.ts 的空 `type ImportMetaEnv`（type 别名无法与
+    vite/client 声明合并）改 interface 合并 + `VITE_API_URL?: string`，
+    http.ts 断言删除；`bindUnauthorizedRedirect(router: unknown)` 收
+    `RouterInstance<any>`（删内部断言，routerHost.ts 同款口径）；
+    DevTool MockView 三枚 radio 补 fieldset+legend 分组语义（读屏成组
+    播报）+ `refresh` 断言换类型谓词守卫；vitest `pool: 'vmThreads'`
+    （jsdom 每文件重建 26 次占 38% 时间 → 全量 3.4s，两次全绿保留）。
+  - **文档漂移**（DocHome）：AGENTS.md「Comment refresh」段改精确前缀
+    失效 `[[commentsCache, article.slug]]`（原描述整实体失效——照做即
+    退化）+ 双粒度论证；「Editor form pitfalls」「Textarea/Input value
+    semantics」「Forms」三段 render-prop/control 时代表述改为现行声明式
+    `input={Core}` 桥；Auth chain 段补双向清场（本批行为）。
+  - **Home 交互**：tag 筛选写入（Tags 点选 + 取消）传 `{replace: true}`
+    ——过滤面非导航面，back 不逐条回放筛选态（分页 TypedLink 保持
+    push，两种语义刻意并存）；`pageSearch` 非缺省 limit 显式携带（手工
+    `?limit=5` 翻页不再静默回落 10）。
+- **体积**：124.46 KB / 126.00 KB 过（余量 1.54 KB）；相对 #26 批
+  （124.35）净 +0.11 KB——persistEnabled 摇出的收缩被 fieldset/
+  invalidate 接线/isRefreshFn 等新增抵消后微增。
+- **验证**：typecheck + lint:ci（0 error，1 条既有 `_schema` 警告同源）
+  + **317/317** 单测（26 文件，净增 9 条：auth 4 / Login 1 / Register 1
+  / Editor 1 / Home 1 / DevTool 1）+ build + size + **e2e 29/29**（含
+  core 1.16.2 集成后的 favorite 500 复绿）+ 构建产物 grep（mock-config
+  闭包零命中）。vmThreads 两轮全绿后保留。
+- **遗留（下批候选）**：Login/Register 近复制未收敛（AuthShell 抽象，
+  本批只做 setError 收敛的最小面）；review 报告的库侧 backlog（react-
+  toolroom persistence listener 无退订 / useMutation 回调不隔离 /
+  ArgsStatus any，fetch-fun pipe 按名替换，react-f0rm reset 缺省陷阱、
+  required 短路，native-router PrefetchLink 失败不重试、TypedPrefetchLink
+  缺参静默、redirect 无 replace 型）——均已在第五轮 review 产出中留档。

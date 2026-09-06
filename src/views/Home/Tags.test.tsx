@@ -77,8 +77,14 @@ describe('Tags 侧栏（真实 haze-ui 渲染）', () => {
       screen.getByRole('heading', {level: 3, name: 'Popular Tags'})
     ).toBeDefined();
 
+    // 第二参 {replace: true}：tag 筛选是过滤面而非导航面——改写当前
+    // 历史条目，back 不逐条回放筛选态（与分页 TypedLink 的 push 刻意
+    // 并存）
     fireEvent.click(screen.getByRole('button', {name: 'react'}));
-    expect(state.setSearch).toHaveBeenCalledWith({tag: 'react'});
+    expect(state.setSearch).toHaveBeenCalledWith(
+      {tag: 'react'},
+      {replace: true}
+    );
   });
 
   it('active tag：命中项 aria-pressed=true，其余 false', () => {
@@ -100,7 +106,7 @@ describe('Tags 侧栏（真实 haze-ui 渲染）', () => {
     renderView(<Tags />);
 
     fireEvent.click(screen.getByRole('button', {name: 'react'}));
-    expect(state.setSearch).toHaveBeenCalledWith({});
+    expect(state.setSearch).toHaveBeenCalledWith({}, {replace: true});
   });
 
   it('loading：AsyncSection 占位（role=status + 默认文案），children 不渲染', () => {

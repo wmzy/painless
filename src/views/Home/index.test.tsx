@@ -365,6 +365,26 @@ describe('Home 视图', () => {
     expect(navigateMock).toHaveBeenCalledWith(state.router, '/?offset=10');
   });
 
+  // 非缺省 limit 的翻页载荷：手工 URL 的 ?limit=5 必须随翻页携带——
+  // 丢失则落页解析回缺省 10，页码/步进/缓存 key 全部静默换轨；等于
+  // 缺省仍省略（上一用例的 /?offset=10 即省略态），URL 干净原则不变
+  it('非缺省 limit 翻页：载荷显式携带 limit，回首页仍保留', () => {
+    state.search = '?limit=5&offset=5';
+    state.data = {articles: makeArticles(5), articlesCount: 25};
+    renderView(<Home />);
+
+    expect(screen.getByText('2 / 5')).toBeDefined();
+    const {prev, next} = paginationLinks();
+    expect(next.getAttribute('href')).toBe('/?offset=10&limit=5');
+    expect(prev.getAttribute('href')).toBe('/?limit=5');
+
+    fireEvent.click(next);
+    expect(navigateMock).toHaveBeenCalledWith(
+      state.router,
+      '/?offset=10&limit=5'
+    );
+  });
+
   it('search 含 tag：展示可取消 Chip，关闭即清空筛选', () => {
     state.search = '?tag=react';
     renderView(<Home />);
@@ -373,8 +393,9 @@ describe('Home 视图', () => {
 
     fireEvent.click(screen.getByRole('button', {name: 'Remove tag'}));
     // 取消筛选（useSetSearch 写入口）：整段 search 清空（写 schema 抹
-    // 缺省后为空），URL 端为 /
-    expect(state.setSearch).toHaveBeenCalledWith({});
+    // 缺省后为空），URL 端为 /；同 tag 点选一样走 replace——取消是
+    // 过滤面的收尾，改写当前条目而非新增导航记录
+    expect(state.setSearch).toHaveBeenCalledWith({}, {replace: true});
   });
 
   it('第二页：Previous 可用且翻页保留 tag、回到首页时省略 offset', () => {

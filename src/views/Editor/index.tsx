@@ -111,22 +111,33 @@ export default function Editor() {
   });
 
   const handleSubmit = async (values: {title: string; description: string; body: string; tagList: string[]}) => {
+    // 新一轮提交即刻撤下上次顶部错误，避免提交窗口内显示过期错误误导
+    setError(null);
     try {
       // await 保证 isSubmitting 覆盖整个提交 + 失效窗口，invalidates 在
-      // mutate 的成功分支里先于本 await 返回执行——navigate 时缓存必已失效
-      await save(article?.slug, {
+      // mutate 的成功分支里先于本 await 返回执行——navigate 时缓存必已失效。
+      // 返回值是 saveArticle 解包出的服务端权威实体：slug 以它为准（编辑
+      // 改标题后服务端可能改写 slug，不能拿编辑前的 article?.slug 当落点）
+      const saved = await save(article?.slug, {
         title: values.title,
         description: values.description,
         body: values.body,
         tagList: values.tagList
       });
       // 保存成功：刚提交的值即「已保存态」，以之为新 initialValues 把
-      // 表单拉回干净——否则随后的 navigate('/') 会被未离开保存拦截
+      // 表单拉回干净——否则随后的 navigate 会被未离开保存拦截
       // 否决（live values 仍与旧 initialValues 不同，isDirty 仍真）
       setInitialValues(form, values);
-      // 被取代/取消的导航 reject NCE（core 1.15）：吞掉即「停在旧视图」
-      // 语义，与旧版 void（永不 settle）等价
-      void navigate(router, '/').catch(() => undefined);
+      // 编辑态保存后直达该文章页（/article/:title 的 :title 即 slug，
+      // 口径见 types/params.ts 与 views/index.tsx 的路由声明）：路径段
+      // 必须 encodeURIComponent，slug 带保留字符（空格、/ 等）时裸拼
+      // 会破坏路由匹配；新建态维持落首页。被取代/取消的导航 reject NCE
+      //（core 1.15）：吞掉即「停在旧视图」语义，与旧版 void（永不
+      // settle）等价
+      void navigate(
+        router,
+        article?.slug ? `/article/${encodeURIComponent(saved.slug)}` : '/'
+      ).catch(() => undefined);
     } catch (e: unknown) {
       // 422 字段错误回填到对应字段下方，顶部 Alert 只兜非字段错误
       setError(applyApiFieldErrors(form, e, ['title', 'description', 'body', 'tagList']));

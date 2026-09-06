@@ -24,10 +24,15 @@ vi.mock('@native-router/react', () => ({
   )
 }));
 // navigate 返回 Promise：产线对被取代/取消的导航 reject NCE 挂了
-// .catch（core 1.15 语义），undefined 会让提交回调同步抛 TypeError
+// .catch（core 1.15 语义），undefined 会让提交回调同步抛 TypeError。
+// invalidate 桩：视图 handleSubmit 在 navigate 前清 viewStack 会话
+// 快照（对称登出链路），mock 缺桩会让 undefined 调用同步抛 TypeError
 vi.mock('@native-router/core', () => ({
-  navigate: vi.fn(async () => undefined)
+  navigate: vi.fn(async () => undefined),
+  invalidate: vi.fn()
 }));
+
+import {invalidate} from '@native-router/core';
 
 import * as auth from '@/services/auth';
 
@@ -35,6 +40,7 @@ import Register from './index';
 
 const registerMock = vi.mocked(auth.register);
 const profileMock = vi.mocked(auth.fetchProfile);
+const invalidateMock = vi.mocked(invalidate);
 
 // 第 4 参确认密码默认与密码一致：既有用例不关心一致性校验，保持
 // 「填完即可过字段校验」的原语义；一致性差异场景由新用例显式传入。
@@ -47,6 +53,7 @@ function fill(username: string, email: string, password: string, confirm = passw
 
 beforeEach(() => {
   registerMock.mockReset();
+  invalidateMock.mockReset();
   // 查重基线：404（用户名可用）。不关心查重的用例一律走可用基线，
   // 不因占用分叉；占用 / 网络错场景由异步查重用例显式覆盖
   profileMock.mockReset().mockRejectedValue({status: 404});
@@ -119,6 +126,53 @@ describe('Register 表单', () => {
       expect(errorEl?.getAttribute('role')).toBe('alert');
       expect(errorEl?.textContent).toBe('has already been taken');
       expect(screen.queryByText('email has already been taken')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // 第五轮 review（P0）：顶部错误的时序边界——新一轮提交一开始（提交
+  // 回调首行 setError(null)）即撤下上次错误，不等结果落定。Register 的
+  // 提交先等 username 查重的 debounce 窗口（300ms）走完才进 handleSubmit，
+  // 故「提交开始」可观测点在窗口走完、register 第二次发出之后；手动挂起
+  // 的请求让「错误已清、请求在途」的提交窗口可观测。成功路径同时钉
+  // invalidate（navigate 前清 viewStack 会话快照，对称登出链路）。
+  it('失败显示顶部错误 → 重新提交开始即清错误；成功后 invalidate 再 navigate', async () => {
+    // 第一轮：非结构化错误落顶部 Alert
+    registerMock.mockRejectedValueOnce(new Error('Network down'));
+    vi.useFakeTimers();
+    try {
+      render(<Register />);
+      const submit = screen.getByRole('button', {name: 'Register'});
+
+      fill('alice', 'alice@example.com', 'password123');
+      fireEvent.click(submit);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(300);
+      });
+      expect(screen.getByText('Network down')).toBeDefined();
+
+      // 第二轮挂起（请求在途）：handleSubmit 已开始（register 第二次
+      // 发出），错误 Alert 即撤下——证明清错不等结果落定
+      type RegisterResult = Awaited<ReturnType<typeof auth.register>>;
+      let resolveSecond!: (value: RegisterResult) => void;
+      registerMock.mockImplementationOnce(
+        () => new Promise<RegisterResult>((resolve) => (resolveSecond = resolve))
+      );
+      fireEvent.click(submit);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(300);
+      });
+      expect(registerMock).toHaveBeenCalledTimes(2);
+      expect(screen.queryByText('Network down')).toBeNull();
+
+      // 第二轮成功：navigate 前先 invalidate（清 viewStack 会话快照，
+      // 防登录后同文档 back 重放匿名视图）
+      await act(async () => {
+        resolveSecond(undefined as unknown as RegisterResult);
+      });
+      expect(invalidateMock).toHaveBeenCalledWith(state.router);
+      expect(screen.queryByText('Network down')).toBeNull();
     } finally {
       vi.useRealTimers();
     }

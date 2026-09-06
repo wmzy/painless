@@ -79,6 +79,8 @@ export default function ArticleView() {
   };
 
   const handleCommentSubmit = async (values: {body: string}) => {
+    // 新一轮提交即刻撤下上次顶部错误，避免提交窗口内显示过期错误误导
+    setError(null);
     try {
       await mutateAddComment(article.slug, values.body);
       // 评论字段的 TextareaCore 经 FormItem value 直出后是受控语义

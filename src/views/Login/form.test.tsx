@@ -28,12 +28,15 @@ vi.mock('@native-router/react', () => ({
   )
 }));
 // navigate 返回 Promise：产线对被取代/取消的导航 reject NCE 挂了
-// .catch（core 1.15 语义），undefined 会让提交回调同步抛 TypeError
+// .catch（core 1.15 语义），undefined 会让提交回调同步抛 TypeError。
+// invalidate 桩：视图 handleSubmit 在 navigate 前清 viewStack 会话
+// 快照（对称登出链路），mock 缺桩会让 undefined 调用同步抛 TypeError
 vi.mock('@native-router/core', () => ({
-  navigate: vi.fn(async () => undefined)
+  navigate: vi.fn(async () => undefined),
+  invalidate: vi.fn()
 }));
 
-import {navigate} from '@native-router/core';
+import {navigate, invalidate} from '@native-router/core';
 
 import * as auth from '@/services/auth';
 
@@ -41,6 +44,7 @@ import Login, {sanitizeRedirect} from './index';
 
 const loginMock = vi.mocked(auth.login);
 const navigateMock = vi.mocked(navigate);
+const invalidateMock = vi.mocked(invalidate);
 
 function fill(email: string, password: string) {
   fireEvent.change(screen.getByPlaceholderText('Email'), {target: {value: email}});
@@ -49,6 +53,7 @@ function fill(email: string, password: string) {
 
 beforeEach(() => {
   loginMock.mockReset();
+  invalidateMock.mockReset();
 });
 
 describe('Login 表单', () => {
@@ -150,6 +155,39 @@ describe('Login 表单', () => {
     expect(await screen.findByText('Network down')).toBeDefined();
   });
 
+  // 第五轮 review（P0）：顶部错误的时序边界——新一轮提交一开始（提交
+  // 回调首行 setError(null)）即撤下上次错误，不等结果落定。手动挂起的
+  // 第二轮请求让「错误已清、请求在途」的提交窗口可观测：若等结果才清，
+  // 慢请求期间旧错误会一直误导用户。
+  it('失败显示顶部错误 → 重新提交开始即清错误（不等结果落定）', async () => {
+    // 第一轮：非结构化错误落顶部 Alert
+    loginMock.mockRejectedValueOnce(new Error('Network down'));
+    render(<Login />);
+    const submit = screen.getByRole('button', {name: 'Login'});
+
+    fill('alice@example.com', 'secret');
+    fireEvent.click(submit);
+    expect(await screen.findByText('Network down')).toBeDefined();
+
+    // 第二轮挂起（请求在途）：错误 Alert 在提交开始即撤下——清错不是
+    // 「提交被拦」的副作用，请求确已发出；断言此刻 promise 仍悬置，
+    // 证明清错不等结果落定
+    type LoginResult = Awaited<ReturnType<typeof auth.login>>;
+    let resolveSecond!: (value: LoginResult) => void;
+    loginMock.mockImplementationOnce(
+      () => new Promise<LoginResult>((resolve) => (resolveSecond = resolve))
+    );
+    fireEvent.click(submit);
+    await waitFor(() => expect(loginMock).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText('Network down')).toBeNull();
+
+    // 收尾：第二轮成功（invalidate/navigate 链路由 redirect 组覆盖）
+    await act(async () => {
+      resolveSecond(undefined as unknown as LoginResult);
+    });
+    await waitFor(() => expect(screen.queryByText('Network down')).toBeNull());
+  });
+
   // #11 防重复/防无效提交：disabled = !canSubmit（react-f0rm ≥0.8 的
   // useCanSubmit 复合 flag，= !isSubmitting && !hasErrors）。初始可点是
   // 刻意语义（mode='onSubmit' 下首次校验由提交触发，errors 初始为
@@ -232,7 +270,8 @@ describe('登录后回跳原目的页（redirect）', () => {
     navigateMock.mockReset();
   });
 
-  // 合法提交：auth.login 成功后视图调 navigate(router, expected)
+  // 合法提交：auth.login 成功后视图先 invalidate（清 viewStack 会话快照，
+  // 对称登出链路——防登录后同文档 back 重放匿名视图）再 navigate
   async function submitAndExpectNavigate(expected: string) {
     loginMock.mockResolvedValueOnce(
       undefined as unknown as Awaited<ReturnType<typeof auth.login>>
@@ -240,9 +279,10 @@ describe('登录后回跳原目的页（redirect）', () => {
     render(<Login />);
     fill('alice@example.com', 'secret');
     fireEvent.click(screen.getByRole('button', {name: 'Login'}));
-    await waitFor(() =>
-      expect(navigateMock).toHaveBeenCalledWith(state.router, expected)
-    );
+    await waitFor(() => {
+      expect(invalidateMock).toHaveBeenCalledWith(state.router);
+      expect(navigateMock).toHaveBeenCalledWith(state.router, expected);
+    });
   }
 
   it('带合法 redirect：登录成功导航回原目的页（含 search 深链）', async () => {

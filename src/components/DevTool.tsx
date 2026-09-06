@@ -492,6 +492,16 @@ function RouteView() {
   );
 }
 
+// refresh 的类型谓词守卫：面板条目的真实形态由 mock.ts 两处工厂
+//（mockViewData/useMock 的 localConfig）写入，恒带 () => void 的清缓存
+// 重跑闭包；但存储货币 MockConfigValue 是宽松 Record（schema/location
+// 等未定形字段透传所需）。谓词替代原读取点断言 `as () => void`：宽进
+// 严出，畸形条目（理论不可达——面板条目只来自两处工厂）只是 Refresh
+// 静默无操作，不炸面板。
+function isRefreshFn(v: unknown): v is () => void {
+  return typeof v === 'function';
+}
+
 function MockView({
   name,
   value,
@@ -502,10 +512,23 @@ function MockView({
   onChange?: (when: string) => void;
 }) {
   const [show, setShow] = useControl<boolean>(undefined, false);
+  const refresh = isRefreshFn(value.refresh) ? value.refresh : undefined;
 
   return (
     <div>
-      <div onChange={(e) => onChange?.((e.target as HTMLInputElement).value)}>
+      {/* fieldset+legend 补齐单选分组语义：input name 只管互斥不管可达
+          性，无 legend 时读屏把三枚 radio 播报成孤立选项；分组名沿用
+          面板英文短词风格（Routes / Nav events / Cache & Calls）。
+          onChange 事件委托保留——radio 的 change 冒泡，fieldset 代收后
+          统一转出 onChange；target 泛化为 EventTarget，按 DOM 事实用
+          instanceof 收窄到 radio input（React 19 下 fieldset 事件类型
+          无 overlap 直转 HTMLInputElement 会报 TS2352） */}
+      <fieldset
+        onChange={(e) => {
+          if (e.target instanceof HTMLInputElement) onChange?.(e.target.value);
+        }}
+      >
+        <legend>Intercept</legend>
         {['always', 'empty', 'disabled'].map((when) => (
           <label key={when}>
             <input
@@ -517,8 +540,8 @@ function MockView({
             {when}
           </label>
         ))}
-      </div>
-      <Button onClick={value.refresh as () => void}>Refresh</Button>
+      </fieldset>
+      <Button onClick={() => refresh?.()}>Refresh</Button>
       <Button onClick={() => setShow(!show)}>
         {show ? 'Hide' : 'Show'} Schema
       </Button>

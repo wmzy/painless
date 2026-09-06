@@ -15,8 +15,8 @@ importers:
         specifier: ^8.2.0
         version: 8.2.0(supports-color@10.2.2)
       '@native-router/core':
-        specifier: ^1.16.1
-        version: 1.16.1
+        specifier: ^1.16.2
+        version: 1.16.2
       '@native-router/react':
         specifier: ^1.15.0
         version: 1.15.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -465,8 +465,8 @@ packages:
       '@emnapi/core': ^1.7.1 || ^2.0.0-alpha.4
       '@emnapi/runtime': ^1.7.1 || ^2.0.0-alpha.4
 
-  '@native-router/core@1.16.1':
-    resolution: {integrity: sha512-gWAeuvqXvU1EYtMRRjZcDVRbpSc/4A8DK3H3cP40MyCHnKIX7mDsydYzgBR/PdbndP6utlnbRNp3dnXrv8qWZA==}
+  '@native-router/core@1.16.2':
+    resolution: {integrity: sha512-LoxO6plFytoX6f9byEXy3E4wVLii59AslFbhMeC7mc3P8ASDL2iZLL2tkymI5PXAba6FtPYjnXBlu3DoKGT+xQ==}
     engines: {node: '>=18'}
 
   '@native-router/react@1.15.0':
@@ -4077,14 +4077,14 @@ snapshots:
       '@tybys/wasm-util': 0.10.3
     optional: true
 
-  '@native-router/core@1.16.1':
+  '@native-router/core@1.16.2':
     dependencies:
       history: 5.3.0
       path-to-regexp: 8.4.2
 
   '@native-router/react@1.15.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
     dependencies:
-      '@native-router/core': 1.16.1
+      '@native-router/core': 1.16.2
       history: 5.3.0
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)

@@ -1,7 +1,14 @@
 import type {Article, Comment} from '@/types';
 
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
-import {render, screen, fireEvent, act, waitFor} from '@testing-library/react';
+import {
+  render,
+  screen,
+  fireEvent,
+  act,
+  waitFor,
+  within
+} from '@testing-library/react';
 import {useControl} from 'react-use-control';
 
 import {stableHash} from 'react-toolroom/async';
@@ -16,6 +23,7 @@ import {
   resetAllCaches
 } from '@/util/useQuery';
 import {clearRequestLogs, pushRequestLog} from '@/util/requestLog';
+import {getMockConfig, setMockConfig} from '@/util/mock';
 import {
   getPublishedRouter,
   publishRouter,
@@ -74,6 +82,31 @@ describe('DevTool 角标/面板（haze Popover 集成）', () => {
     fireEvent.click(screen.getByText('DEV'));
     expect(trigger.getAttribute('aria-expanded')).toBe('false');
     expect(screen.queryByText('Close')).toBeNull();
+  });
+
+  it('MockView 单选组：fieldset+legend 承载分组语义，切 when 经事件委托转出', () => {
+    // 面板 Mock 条目的消费面（mock.ts 工厂经 setMockConfig 落库）：三态
+    // radio（always/empty/disabled）必须成组——fieldset 隐式 group 角色 +
+    // legend 作可达名（此前裸 div 无分组，读屏把三枚 radio 播报成孤立
+    // 选项）；点击 radio 走 fieldset 上的 change 事件委托触发 onChange
+    //（setMockConfig + clearAllCaches 链路，见 DevToolInner 的处理）
+    // noop 满足 MockConfigValue.refresh 形状（setMockConfig 只落库不调用）
+    const noop = () => undefined;
+    setMockConfig('mock-view-probe', {when: 'always', refresh: noop});
+    try {
+      openPanel();
+      const group = screen.getByRole('group', {name: 'Intercept'});
+      expect(within(group).getAllByRole('radio').length).toBe(3);
+      expect(
+        within(group).getByRole('radio', {name: 'always', checked: true})
+      ).toBeDefined();
+
+      fireEvent.click(within(group).getByRole('radio', {name: 'disabled'}));
+      expect(getMockConfig('mock-view-probe').when).toBe('disabled');
+    } finally {
+      // mockConfig 是模块级全局态：收尾复位，不渗透给下游用例
+      setMockConfig('mock-view-probe', {when: 'disabled'});
+    }
   });
 });
 

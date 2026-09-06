@@ -7,6 +7,7 @@ import {Title, Text, Flex, Chip, ButtonLink, useTitle} from 'haze-ui';
 import {
   homeSearchSchema,
   homeSearchWriteSchema,
+  DEFAULT_LIMIT,
   type HomeSearchInput
 } from '@/types/search';
 import {favoriteOnHome} from '@/services/mutations';
@@ -36,7 +37,9 @@ export default function Home() {
   // homeSearchWriteSchema：输入按 URL 侧的字符串形态给出（coerce 交给
   // schema），等于缺省的字段被抹去——URL 保持 offset 为 0 / limit 为
   // 缺省时不出现，写入口与读入口共用同一契约。分页已迁移 TypedLink
-  // （见下），本写入口只服务「取消 tag 筛选」
+  //（见下），本写入口只服务「取消 tag 筛选」——同属过滤面，写点带
+  // {replace: true} 改写当前历史条目（back 不回放筛选态），与分页的
+  // push 语义刻意并存
   const setSearch = useSetSearch(homeSearchWriteSchema);
 
   const page = Math.floor(offset / limit) + 1;
@@ -46,10 +49,14 @@ export default function Home() {
   // schema），等于缺省的字段省略——与 homeSearchWriteSchema 的「抹去
   // 缺省」同一约定，TypedLink 把它序列化进 href 预览与点击导航两者。
   // 返回类型即链接契约：homeSearchSchema 的 Input 位（HomeSearchInput），
-  // TypedLink 的 search prop 按同一类型判别
+  // TypedLink 的 search prop 按同一类型判别。limit 的例外：非缺省时
+  // 显式携带——手工 URL 的 ?limit=5 若在翻页载荷里丢失，落页解析回
+  // 缺省 10，页码/步进/缓存 key 全部静默换轨；等于缺省仍省略（URL
+  // 干净原则不变）
   const pageSearch = (target: number): HomeSearchInput => ({
     ...(activeTag != null ? {tag: activeTag} : {}),
-    ...(target > 0 ? {offset: String(target)} : {})
+    ...(target > 0 ? {offset: String(target)} : {}),
+    ...(limit !== DEFAULT_LIMIT ? {limit: String(limit)} : {})
   });
 
   // 卡片级乐观收藏：toggleFavorite 已收敛进 useFavorite（views/_shared/
@@ -72,7 +79,10 @@ export default function Home() {
         <div>
           {activeTag != null && (
             <Flex align='center' justify='center' gap='xs'>
-              <Chip color='primary' onClose={() => void setSearch({})}>
+              <Chip
+                color='primary'
+                onClose={() => void setSearch({}, {replace: true})}
+              >
                 {activeTag}
               </Chip>
             </Flex>

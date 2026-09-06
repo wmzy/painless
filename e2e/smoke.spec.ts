@@ -267,10 +267,13 @@ test('edit article from /editor/:slug: schema+loader 预填并 PUT 更新', asyn
     .fill('Updated by the edit flow test');
   await page.getByRole('button', {name: 'Update Article'}).click();
 
-  // 更新成功 → 跳回首页（提交后 setInitialValues 清 dirty，navigate
-  // 不被未保存拦截否决）；PUT 命中正确的 slug 与载荷
+  // 更新成功 → 编辑态直达文章页（第五轮 review：落点从首页改为
+  // /article/<权威 slug>——PUT 响应的 slug 经 encodeURIComponent 进路径
+  // 段；提交后 setInitialValues 清 dirty，navigate 不被未保存拦截否决）；
+  // PUT 命中正确的 slug 与载荷
+  await expect(page).toHaveURL(new RegExp(`/article/${article1.slug}$`));
   await expect(
-    page.getByRole('heading', {name: article2.title})
+    page.getByRole('heading', {name: article1.title})
   ).toBeVisible();
   expect(puts).toEqual([
     {slug: article1.slug, description: 'Updated by the edit flow test'}

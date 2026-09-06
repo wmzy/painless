@@ -1,3 +1,4 @@
+import type {RouterInstance} from '@native-router/core';
 import type {Article, ArticlePage} from '@/types';
 
 import {describe, it, expect, vi, beforeEach} from 'vitest';
@@ -46,6 +47,29 @@ describe('auth service', () => {
       });
       expect(result).toEqual(mockUser.user);
     });
+
+    it('should clear all entity caches on login', async () => {
+      // beforeEach 的 resetModules 后首次 import：与 auth 实际持有的是同
+      // 一批实体 cache 实例（同 logout 清场用例的隔离口径，本用例内不再
+      // reset）
+      const {tagsCache} = await import('@/util/useQuery');
+
+      // 匿名浏览期 settle 的缓存（tags 是唯一持久化实体，顺带覆盖擦盘路
+      // 径）：实体投影按观察者视角计算，不清场则匿名期数据在登录后
+      // staleTime 窗口内被 loader 当新鲜命中
+      tagsCache.set([], ['dragons']);
+      expect(tagsCache.get([])).toBeDefined();
+
+      vi.mocked(http.post).mockResolvedValue({
+        user: {username: 'test', email: 'test@test.com', token: 'abc'}
+      });
+      await auth.login('test@test.com', 'password');
+
+      // 身份变化后旧缓存整体取不到，不得跨账号命中渲染
+      expect(tagsCache.get([])).toBeUndefined();
+      // 持久化镜像随 clear 内建擦盘：新身份冷启动不得 hydrate 回旧数据
+      expect(localStorage.getItem('painless.cache.tags')).toBeNull();
+    });
   });
 
   describe('register', () => {
@@ -61,6 +85,21 @@ describe('auth service', () => {
         user: {username: 'test', email: 'test@test.com', password: 'password'}
       });
       expect(result).toEqual(mockUser.user);
+    });
+
+    it('should clear all entity caches on register', async () => {
+      const {articleCache} = await import('@/util/useQuery');
+
+      articleCache.set(['anon-slug'], {slug: 'anon-slug'} as Article);
+      expect(articleCache.get(['anon-slug'])).toBeDefined();
+
+      vi.mocked(http.post).mockResolvedValue({
+        user: {username: 'test', email: 'test@test.com', token: 'abc'}
+      });
+      await auth.register('test', 'test@test.com', 'password');
+
+      // 注册同样完成匿名 → 实名身份变化，清场语义与 login/logout 一致
+      expect(articleCache.get(['anon-slug'])).toBeUndefined();
     });
   });
 
@@ -187,6 +226,33 @@ describe('auth service', () => {
       expect(fresh.getCurrentUser()).toBeNull();
     });
 
+    // email 与 token/username 同为 User 类型上必有的 string 字段：UI 暂无
+    // 消费点，但存储校验对齐类型形状——缺失/非 string 一律按未登录处理，
+    // 不让脏存储以「已登录」身份漂进运行时。
+    it('should treat stored user with missing email as logged out', async () => {
+      localStorage.setItem(
+        'painless.user',
+        JSON.stringify({username: 'test', token: 'tok'})
+      );
+      vi.resetModules();
+
+      const fresh = await import('@/services/auth');
+
+      expect(fresh.getCurrentUser()).toBeNull();
+    });
+
+    it('should treat stored user with non-string email as logged out', async () => {
+      localStorage.setItem(
+        'painless.user',
+        JSON.stringify({username: 'test', email: 42, token: 'tok'})
+      );
+      vi.resetModules();
+
+      const fresh = await import('@/services/auth');
+
+      expect(fresh.getCurrentUser()).toBeNull();
+    });
+
     it('should treat stored user with non-string image as logged out', async () => {
       localStorage.setItem(
         'painless.user',
@@ -235,10 +301,13 @@ describe('auth service', () => {
         '@/util/useQuery'
       );
 
-      // 预置两条“已缓存数据”：一条登录前、一条登录后写入（跨两个实体）
-      articleCache.set(['test-feed-slug'], {slug: 'a'} as Article);
+      // 预置两条“已缓存数据”（跨两个实体）。原“登录前写入”的预置路径
+      // 已被 login 自身的清场吃掉（见 login 组用例），改为登录后在两个实
+      // 体上置入——logout 的契约是「登出时刻在场的缓存一律清空」，与写入
+      // 时点无关
       vi.mocked(http.post).mockResolvedValue({user});
       await auth.login('test@test.com', 'password');
+      articleCache.set(['test-feed-slug'], {slug: 'a'} as Article);
       homeCache.set([{offset: 0, limit: 10}], {
         articles: [{slug: 'b'}] as ArticlePage['articles'],
         articlesCount: 1
@@ -283,7 +352,9 @@ describe('auth service', () => {
     // location 经 pushState 设定回跳场景（pathname+search）
     async function setup(pathname: string, search = '') {
       window.history.pushState({}, '', `${pathname}${search}`);
-      const router = {history: {}};
+      // 形参已收窄为 RouterInstance：替身只满足运行时使用（断言按引用比
+      // 较），类型经一次断言对齐——同 Layout 测试的 router 替身先例
+      const router = {history: {}} as unknown as RouterInstance<any>;
       auth.bindUnauthorizedRedirect(router);
       expect(http.setUnauthorizedHandler).toHaveBeenCalledTimes(1);
       const handler = vi.mocked(http.setUnauthorizedHandler).mock.calls[0]![0];

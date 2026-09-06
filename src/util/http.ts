@@ -3,9 +3,10 @@ import * as ff from 'fetch-fun';
 import {parseApiError} from './apiError';
 import {pushRequestLog} from './requestLog';
 
+// 自定义环境变量已并入 ImportMetaEnv 声明合并（src/typings/vite.d.ts），
+// 直接读即得 string | undefined，无需断言
 const BASE_URL: string =
-  (import.meta.env.VITE_API_URL as string | undefined) ||
-  'https://api.realworld.io/api/';
+  import.meta.env.VITE_API_URL || 'https://api.realworld.io/api/';
 
 // RealWorld 非 2xx 错误体是 {errors: {field: string[]}}（如 422
 // {"errors":{"email":["has already been taken"]}}}），也有 {message} 形状：
