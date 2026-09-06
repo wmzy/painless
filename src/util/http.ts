@@ -147,10 +147,11 @@ const toggleBase = import.meta.env.DEV
   : toggleClient;
 
 // init 的其余字段直接合入 Options，自定义 headers 逐个合并以覆盖默认头。
-// schema 是校验指令不是请求参数：解构剥离（不散进 Options，由出口处的
-// withSchema 消费）。
+// schema 是校验指令不是请求参数：从 rest 剥离（不散进 Options，由出口处的
+// withSchema 消费）。rest 是解构新建的对象，delete 不会动到调用方 init。
 function withInit(o: ff.Options, init?: RequestInitish) {
-  const {headers, schema: _schema, ...rest} = init ?? {};
+  const {headers, ...rest} = init ?? {};
+  delete rest.schema;
   let result = {...o, ...rest} as ff.Options;
   for (const [name, value] of Object.entries(headers ?? {})) {
     result = ff.header(result, name, value);

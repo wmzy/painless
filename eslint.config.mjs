@@ -1,5 +1,10 @@
 import compat from 'eslint-plugin-compat';
-import config from 'tools-config/eslint';
+// tools-config 0.4 起默认入口退为非 type-aware（strict/stylistic），
+// type-aware 规则（strictTypeChecked/stylisticTypeChecked —— no-unsafe-*、
+// no-deprecated、no-unnecessary-type-parameters 等）收敛到独立入口；
+// 本工程 tsconfig 完整覆盖源码，继续用 type-checked 入口保持原有检查面
+// （projectService 定位见下方覆写，tsconfigRootDir 锚定仓库根）。
+import config from 'tools-config/eslint/type-checked';
 
 const reactFreeConfig = config.filter(
   (c) =>

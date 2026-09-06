@@ -2,10 +2,12 @@
   "extends": "tools-config/typescript",
   "compilerOptions": {
     "lib": ["dom", "esnext"],
-    "outDir": "dist/types",
     // vite 配置以显式 .mts 扩展名导入项目内插件（vite-plugin-haze-css.mts）：
-    // 无扩展名/.ts 形态会被 vite 配置打包器按 CJS 探测告警。要求 noEmit 或
-    // emitDeclarationOnly（基础配置已含后者）。
+    // 无扩展名/.ts 形态会被 vite 配置打包器按 CJS 探测告警。
+    // allowImportingTsExtensions 要求 noEmit 或 emitDeclarationOnly——
+    // tools-config 0.4 起基础配置不再声明后者，本工程 tsc 只做类型检查、
+    // 产物由 vite 产出，故此处声明 noEmit。
+    "noEmit": true,
     "allowImportingTsExtensions": true,
     "paths": {
       "@/*": ["./src/*"]

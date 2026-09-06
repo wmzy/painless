@@ -10,13 +10,18 @@ import type {ReactNode} from 'react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import {screen, fireEvent, waitFor} from '@testing-library/react';
 
-const state = vi.hoisted(() => ({
-  profile: {
+const state = vi.hoisted(() => {
+  // 显式标注 Author：bio/image 在 RealWorld 契约里可空（null），换档案
+  // 用例（image: null）要求 profile 槽位是可空类型，不能由首值字面量
+  // 收窄成全 string。
+  const profile: Author = {
     username: 'alice',
     bio: 'hello world',
     image: 'https://example.com/a.png',
     following: false
-  },
+  };
+  return {
+    profile,
   // useMatched/useData 的当前路由参数：换档案回归测试（profile→profile
   // 导航不卸载组件）靠改这里 + emit 重渲染模拟
   params: {username: 'alice'},
@@ -26,7 +31,8 @@ const state = vi.hoisted(() => ({
   emit: () => {
     for (const l of state.listeners) l();
   }
-}));
+  };
+});
 
 vi.mock('@native-router/react', async () => {
   const React = await import('react');
