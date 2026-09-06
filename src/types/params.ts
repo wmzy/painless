@@ -41,3 +41,32 @@ export const editorParamsSchema: StandardSchemaV1<unknown, EditorParams> = {
     validate: (input) => parseEditorParams(input)
   }
 };
+
+// /profile/:username 路由的 params 契约：与 editorParamsSchema 同构的
+// trim + 非空校验——URL 解码后的首尾空白不是 username 的一部分，trim
+// 后为空（/profile/%20 之类病态输入）即非法，报 issue 走 ParamsError →
+// RouterError，而不是带空 username 去请求档案。
+export type ProfileParams = {
+  username: string;
+};
+
+const parseProfileParams = (
+  input: unknown
+): CoreSchemaV1.Result<ProfileParams> => {
+  const raw = (input ?? {}) as Record<string, unknown>;
+  const username = typeof raw.username === 'string' ? raw.username.trim() : '';
+  if (username === '') {
+    return {
+      issues: [{message: 'username must be a non-empty path segment'}]
+    };
+  }
+  return {value: {username}};
+};
+
+export const profileParamsSchema: StandardSchemaV1<unknown, ProfileParams> = {
+  '~standard': {
+    version: 1,
+    vendor: 'painless',
+    validate: (input) => parseProfileParams(input)
+  }
+};

@@ -9,7 +9,7 @@
 // 归并建议：Home/Article 视图测试保持 UI 口径（按钮态/toast/卡片重渲染），
 // cache 语义断言以本文件为准；若后续出现双份断言漂移，优先把视图测试里的
 // 缓存形状断言收敛到此处，视图侧只留用户可见行为。
-import type {Article, ArticlePage, Author} from '@/types';
+import type {Article, ArticlePage, Author, ProfileFeedQuery} from '@/types';
 import type {HomeSearch} from '@/types/search';
 
 import {describe, it, expect, vi, beforeEach} from 'vitest';
@@ -27,6 +27,12 @@ vi.mock('@/util/useQuery', async (importOriginal) => {
     ),
     homeCache: actual.createQueryCache<ArticlePage, [HomeSearch]>(
       'home@mutations.test'
+    ),
+    profileCache: actual.createQueryCache<Author, [string]>(
+      'profile@mutations.test'
+    ),
+    profileFeedCache: actual.createQueryCache<ArticlePage, [ProfileFeedQuery]>(
+      'profileFeed@mutations.test'
     )
   };
 });
@@ -38,10 +44,21 @@ vi.mock('@/services/article', () => ({
   followAuthor: vi.fn()
 }));
 
-import {articleCache, homeCache} from '@/util/useQuery';
+import {
+  articleCache,
+  homeCache,
+  profileCache,
+  profileFeedCache
+} from '@/util/useQuery';
 import {favoriteArticle, followAuthor} from '@/services/article';
 
-import {favoriteOnArticle, favoriteOnHome, followOnArticle} from './mutations';
+import {
+  favoriteOnArticle,
+  favoriteOnHome,
+  favoriteOnProfileFeed,
+  followOnArticle,
+  followOnProfile
+} from './mutations';
 
 const favoriteMock = vi.mocked(favoriteArticle);
 const followMock = vi.mocked(followAuthor);
@@ -85,6 +102,8 @@ beforeEach(() => {
   vi.resetAllMocks();
   articleCache.clear();
   homeCache.clear();
+  profileCache.clear();
+  profileFeedCache.clear();
 });
 
 describe('favorite 双层组合（article 实体层 × home 投影层）', () => {
@@ -219,5 +238,132 @@ describe('follow 的 peek-merge（apply 以 settle 时当前值为基）', () =>
       following: true
     });
     expect(settled).toMatchObject({favorited: true, favoritesCount: 9});
+  });
+});
+
+// Profile 页两个维度的查询 key：与视图侧 useProfileFeedQuery 的 args
+// 同形（scope×username×分页组合，hashArgs 归一）
+const profileFeedKey = (
+  scope: ProfileFeedQuery['scope'],
+  offset = 0
+): [ProfileFeedQuery] => [
+  {username: 'alice', scope, offset, limit: 10}
+];
+
+describe('followOnProfile（profile 实体层）', () => {
+  const base: Author = author(false);
+
+  beforeEach(() => {
+    profileCache.set(['alice'], base);
+  });
+
+  it('成功写穿：update 乐观翻转 following，apply 以服务端权威 following 收口', async () => {
+    const pending = deferred<Author>();
+    followMock.mockReturnValueOnce(pending.promise);
+
+    const result = followOnProfile('alice', true);
+
+    // 乐观步在调用表达式返回后即落缓存（无 useMutation 的 scope 队列）
+    expect(profileCache.peek?.(['alice'])?.value).toMatchObject({
+      following: true
+    });
+
+    pending.resolve({...base, following: true});
+    await result;
+
+    // settle 后仍是服务端权威值；bio/image 是当前值（响应即全量 profile）
+    expect(profileCache.peek?.(['alice'])?.value).toEqual({
+      ...base,
+      following: true
+    });
+    expect(followMock).toHaveBeenCalledWith('alice', true);
+  });
+
+  it('服务拒绝：回滚到写前引用（悲观方向同样收口）', async () => {
+    const pending = deferred<Author>();
+    followMock.mockReturnValueOnce(pending.promise);
+
+    const result = followOnProfile('alice', false);
+
+    expect(profileCache.peek?.(['alice'])?.value).toMatchObject({
+      following: false
+    });
+
+    pending.reject(new Error('down'));
+    await expect(result).rejects.toThrow('down');
+
+    // 引用复原即内容复原（journal 恢复写前实体）
+    expect(profileCache.peek?.(['alice'])?.value).toBe(base);
+  });
+});
+
+describe('favoriteOnProfileFeed（article 实体层 × profileFeed 投影层）', () => {
+  const base = article('slug-x', 5);
+  const neighbor = article('slug-y', 7);
+  const page: ArticlePage = {articles: [base, neighbor], articlesCount: 2};
+  // 不含 slug-x 的条目：miss-bail 观测对象（update 返回 undefined →
+  // 整页跳过，写与回滚都不触达）
+  const untouchedPage: ArticlePage = {
+    articles: [article('slug-z', 1)],
+    articlesCount: 1
+  };
+
+  beforeEach(() => {
+    articleCache.set(['slug-x'], base);
+    profileFeedCache.set(profileFeedKey('author'), page);
+    profileFeedCache.set(profileFeedKey('favorited', 10), untouchedPage);
+  });
+
+  it('成功写穿两层：投影页内仅目标项被替换，其它 key 的条目不动', async () => {
+    favoriteMock.mockResolvedValueOnce({
+      ...base,
+      favorited: true,
+      favoritesCount: 9
+    });
+
+    await favoriteOnProfileFeed('slug-x', true);
+
+    expect(articleCache.peek?.(['slug-x'])?.value).toMatchObject({
+      favorited: true,
+      favoritesCount: 9
+    });
+    const settled = profileFeedCache.peek?.(profileFeedKey('author'))?.value;
+    expect(settled?.articles[0]).toMatchObject({
+      slug: 'slug-x',
+      favorited: true,
+      favoritesCount: 9
+    });
+    expect(settled?.articles[1]).toBe(neighbor);
+    // 其它查询组合（favorited 维度的页）不含目标 slug：apply 的补丁
+    // no-op 换新页引用但内容等价
+    expect(profileFeedCache.peek?.(profileFeedKey('favorited', 10))?.value).toEqual(
+      untouchedPage
+    );
+  });
+
+  it('服务拒绝：同步乐观步写穿两层，settle 后两层各自回滚到原引用', async () => {
+    const pending = deferred<Article>();
+    favoriteMock.mockReturnValueOnce(pending.promise);
+
+    const result = favoriteOnProfileFeed('slug-x', true);
+
+    expect(articleCache.peek?.(['slug-x'])?.value).toMatchObject({
+      favorited: true,
+      favoritesCount: 6
+    });
+    const optimistic = profileFeedCache.peek?.(profileFeedKey('author'))?.value;
+    expect(optimistic?.articles[0]).toMatchObject({
+      favorited: true,
+      favoritesCount: 6
+    });
+
+    pending.reject(new Error('network down'));
+    await expect(result).rejects.toThrow('network down');
+
+    expect(articleCache.peek?.(['slug-x'])?.value).toBe(base);
+    expect(profileFeedCache.peek?.(profileFeedKey('author'))?.value).toBe(page);
+    expect(profileFeedCache.peek?.(profileFeedKey('favorited', 10))?.value).toBe(
+      untouchedPage
+    );
   });
 });

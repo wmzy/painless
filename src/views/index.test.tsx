@@ -152,9 +152,9 @@ describe('未匹配路径 → notFound 视图（MemoryRouter 集成）', () => {
 });
 
 describe('isGuardedPath（守卫前缀表推导）', () => {
-  // 推导源是 ./index 的真路由表：/editor 与 /editor/:slug 带 beforeLoad:
-  // requireLogin——断言直接钉在推导结果上，新增守卫路由自动入选，不再
-  // 有手写镜像可漏同步（原 GUARDED_PATH_PREFIX 的隐患）
+  // 推导源是 ./index 的真路由表：/editor、/editor/:slug 与 /settings 带
+  // beforeLoad: requireLogin——断言直接钉在推导结果上，新增守卫路由自动
+  // 入选，不再有手写镜像可漏同步（原 GUARDED_PATH_PREFIX 的隐患）
   it('守卫路由本尊与静态前缀覆盖的路径命中（/editor/:slug 截动态段）', () => {
     expect(isGuardedPath('/editor')).toBe(true);
     expect(isGuardedPath('/editor/')).toBe(true);
@@ -162,9 +162,16 @@ describe('isGuardedPath（守卫前缀表推导）', () => {
     expect(isGuardedPath('/editor/my-slug/deeper')).toBe(true);
   });
 
+  it('静态守卫路由本尊命中（/settings 全段静态）', () => {
+    expect(isGuardedPath('/settings')).toBe(true);
+    expect(isGuardedPath('/settings/')).toBe(true);
+  });
+
   it('段边界外的相似前缀与普通路由不命中', () => {
     expect(isGuardedPath('/editorfoo')).toBe(false);
     expect(isGuardedPath('/editor-foo')).toBe(false);
+    expect(isGuardedPath('/settings-foo')).toBe(false);
+    expect(isGuardedPath('/settingsfoo')).toBe(false);
     expect(isGuardedPath('/about')).toBe(false);
     expect(isGuardedPath('/')).toBe(false);
   });

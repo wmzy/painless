@@ -2,12 +2,12 @@ import type {AppPaths} from '@/views';
 
 import {useEffect, useState} from 'react';
 import {View, useRouter, ScrollRestoration, TypedNavLink} from '@native-router/react';
-import {navigate, invalidate, refresh} from '@native-router/core';
+import {refresh} from '@native-router/core';
 import {NavigationBar, NavLink as HazeNavLink, Container, Title} from 'haze-ui';
 
 import {
   getCurrentUser,
-  logout,
+  logoutAndNavigate,
   onAuthChange,
   type User
 } from '@/services/auth';
@@ -67,26 +67,25 @@ export default function Layout() {
         <ThemeToggle />
         {user ? (
           <>
-            <span>{user.username}</span>
+            {/* 用户名即本人档案入口（RealWorld 惯例）：动态段 params
+                必传，username 经 TypedLink 编译期判别 */}
+            <TypedNavLink<AppPaths>
+              as={HazeNavLink}
+              to='/profile/:username'
+              params={{username: user.username}}
+            >
+              {user.username}
+            </TypedNavLink>
             <TypedNavLink<AppPaths> as={HazeNavLink} to='/editor'>
               New Article
             </TypedNavLink>
+            <TypedNavLink<AppPaths> as={HazeNavLink} to='/settings'>
+              Settings
+            </TypedNavLink>
             {/* Logout 不是导航：保持 haze-ui NavLink 的按钮语义（href 缺省
-                落 '#' + preventDefault），onClick 里的登出链路原样 */}
-            <HazeNavLink
-              onClick={() => {
-                // logout 已清全部实体缓存；viewStack 里还留着本会话旧账号
-                // 的视图快照——不清则 POP 回退会直接渲染旧账号数据、绕过
-                // 会话内已执行过的守卫。invalidate 丢弃全部快照，后续
-                // POP 落入重解析路径（守卫+loader 重跑）；当前视图不受
-                // 影响，由随后的 navigate 接管。
-                logout();
-                invalidate(router);
-                // 被取代/取消的导航 reject NCE（core 1.15）：吞掉即「停在
-                // 旧视图」语义，与旧版 void（永不 settle）等价
-                void navigate(router, '/').catch(() => undefined);
-              }}
-            >
+                落 '#' + preventDefault），onClick 里的登出链路原样——
+                三段链收敛进 logoutAndNavigate（见 services/auth.ts） */}
+            <HazeNavLink onClick={() => logoutAndNavigate(router)}>
               Logout
             </HazeNavLink>
           </>

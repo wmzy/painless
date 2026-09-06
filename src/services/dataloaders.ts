@@ -5,6 +5,7 @@
 // 被路由表（views/index.tsx）与视图消费；util 侧保持零应用知识的机制层，
 // 将来上移（decisions.md 第 2 条）时本文件留在模板侧继续做绑定点。
 import type {HomeSearch} from '@/types/search';
+import type {ProfileFeedQuery} from '@/types';
 
 import {articlePageSchema, tagListSchema} from '@/types/index.schema';
 
@@ -13,11 +14,14 @@ import {
   commentsCache,
   createQueryHook,
   homeCache,
+  profileCache,
+  profileFeedCache,
   tagsCache
 } from '@/util/useQuery';
 import {createDataLoader} from '@/util/dataLoader';
 
 import * as articleService from './article';
+import * as profileService from './profile';
 
 // ctx 注解约定：keyOf 的 ctx 按本路由的实际形状标注（native-router ≥1.13
 // 的 params 类型闭合后，/article/:title 匹配段流入 data ctx 的
@@ -93,4 +97,40 @@ export const useTagsQuery = createQueryHook({
   // 导出 any）：显式断 unknown 收口，避免 any 沿 MockConfig 字面量扩散
   //（article.ts 的 schemas 收纳同款先例）
   mock: {schema: tagListSchema as unknown, key: 'tagList'}
+});
+
+/**
+ * Profile 路由（/profile/:username）：fetchProfile(username) →
+ * profileCache[[username]]。匿名可查（无守卫）；用户不存在时 loader 404
+ * → 路由级 errorComponent（Profile/NotFound）。follow 乐观写穿
+ *（followOnProfile，见 mutations.ts）与 loader 共用同一 key：写穿后的
+ * set 事件经 bindRefresh 自动 refresh，loader 纯本地命中。
+ * 刻意不挂 DevTool mock（与 articleLoader/editorLoader 同款取舍）：mock
+ * 管道的 'empty' 模式会在 API 错误时用 faker 造数兜底——404 被假档案
+ * 掩掉，路由级错误组件（404 语义是规范要求的可观测行为）在 dev/e2e
+ * 永不可达；档案实体本身也不是 DevTool 造数演示的数据集。
+ */
+export const [profileLoader, useProfileData] = createDataLoader({
+  fetch: profileService.fetchProfile,
+  cache: profileCache,
+  keyOf: ({params}: {params: {username: string}}): [string] => [params.username]
+});
+
+/**
+ * 组件通道（Profile 文章列表）：queryProfileFeed(q) →
+ * profileFeedCache[[q]]。与 CommentList 同款「只消费 queryFn」三元组
+ * ——loader/useData 元素当前无路由挂载，keyOf 的 ctx 按「若挂路由则
+ * search 即完整查询」预置。文章列表由页面 tabs 驱动的场景 hook 取数
+ *（见 useProfileFeedQuery），mock 走 'profileFeed' 独立数据集条目：
+ * 与 homeLoader 的 'articlePage' 分家——两个通道各自刷新语义（loader
+ * 清全场 vs 组件删单条），DevTool 面板条目不互相覆盖。
+ */
+export const [, , queryProfileFeed] = createDataLoader({
+  fetch: articleService.queryProfileFeed,
+  cache: profileFeedCache,
+  keyOf: ({search}: {search: ProfileFeedQuery}): [ProfileFeedQuery] => [search],
+  mock: {schema: articlePageSchema, key: 'profileFeed'}
+});
+export const useProfileFeedQuery = createQueryHook({
+  queryFn: queryProfileFeed
 });

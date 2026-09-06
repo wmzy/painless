@@ -9,11 +9,14 @@ import {render, screen, fireEvent, act} from '@testing-library/react';
 
 const state = vi.hoisted(() => ({router: {pathname: '/register'}}));
 
-// Register 视图经 util/validators 的 usernameAvailable 调 auth.fetchProfile
-// 查重、直接调 auth.register 提交，整体 mock 服务层；422 拒绝值用鸭子
-// 形状普通对象（catch 侧按 {status, data.errors} 形状判断）
+// Register 视图经 util/validators 的 usernameAvailable 调
+// services/profile 的 fetchProfile 查重、直接调 auth.register 提交，整体
+// mock 服务层；422 拒绝值用鸭子形状普通对象（catch 侧按
+// {status, data.errors} 形状判断）
 vi.mock('@/services/auth', () => ({
-  register: vi.fn(),
+  register: vi.fn()
+}));
+vi.mock('@/services/profile', () => ({
   fetchProfile: vi.fn()
 }));
 vi.mock('@native-router/react', () => ({
@@ -35,11 +38,12 @@ vi.mock('@native-router/core', () => ({
 import {invalidate} from '@native-router/core';
 
 import * as auth from '@/services/auth';
+import * as profileService from '@/services/profile';
 
 import Register from './index';
 
 const registerMock = vi.mocked(auth.register);
-const profileMock = vi.mocked(auth.fetchProfile);
+const profileMock = vi.mocked(profileService.fetchProfile);
 const invalidateMock = vi.mocked(invalidate);
 
 // 第 4 参确认密码默认与密码一致：既有用例不关心一致性校验，保持

@@ -12,14 +12,20 @@ import {initHistoryStack} from '@native-router/core';
 import Loading from '@/components/Loading';
 import RouterError from '@/components/RouterError';
 import {bindUnauthorizedRedirect, getCurrentUser, type User} from '@/services/auth';
-import {articleLoader, editorLoader, homeLoader} from '@/services/dataloaders';
+import {
+  articleLoader,
+  editorLoader,
+  homeLoader,
+  profileLoader
+} from '@/services/dataloaders';
 import {homeSearchSchema} from '@/types/search';
-import {editorParamsSchema} from '@/types/params';
+import {editorParamsSchema, profileParamsSchema} from '@/types/params';
 import {publishRouter, unpublishRouter} from '@/util/routerHost';
 
 import ArticleNotFound from './Article/NotFound';
 import HomeSkeleton from './Home/Skeleton';
 import NotFound from './NotFound';
+import ProfileNotFound from './Profile/NotFound';
 
 // 应用级 router context（@native-router ≥1.10）：一个同步值随 router
 // 实例注入，data loader 与 beforeLoad 守卫经 ctx.context 取用。auth
@@ -106,6 +112,22 @@ const routes = createRoutes({
       errorComponent: ArticleNotFound
     },
     {
+      path: '/profile/:username',
+      // params schema（profileParamsSchema）：resolve 期 trim/校验
+      // username（同 /editor/:slug 的 editorParamsSchema），loader 拿到
+      // 的已是 coerce 后的值；非法值走 ParamsError → 全局 RouterError。
+      // 匿名可查（无守卫）——档案是公开实体。
+      params: profileParamsSchema,
+      // withCache(profileCache) 双通道见 profileLoader（dataloaders.ts）：
+      // Profile 视图的 follow 乐观写穿（followOnProfile）与 loader 共用
+      // 同一 key（[username]），写穿后 set 事件自动 refresh
+      data: profileLoader,
+      // 用户不存在（loader 404）/加载失败渲染页面级提示——与
+      // /article/:title 同款路由级错误通道
+      errorComponent: ProfileNotFound,
+      component: () => import('./Profile')
+    },
+    {
       path: '/help',
       component: () => import('./Help')
     },
@@ -125,6 +147,13 @@ const routes = createRoutes({
       path: '/editor',
       beforeLoad: requireLogin,
       component: () => import('./Editor')
+    },
+    {
+      path: '/settings',
+      // 设置页：纯登录态视图（更新当前用户），无路由 data——表单初值
+      // 由视图从 getCurrentUser() 读（守卫已保证非空）
+      beforeLoad: requireLogin,
+      component: () => import('./Settings')
     },
     {
       path: '/editor/:slug',
@@ -157,8 +186,8 @@ const routes = createRoutes({
 export type AppPaths = RoutePaths<typeof routes>;
 
 // StackWarmer 守卫缓解的窗口判定：直接从上方路由表推导——layout 层
-// children 里带 beforeLoad 守卫的子路由 path（当前 /editor 与
-// /editor/:slug），新增守卫路由自动入选，没有手写镜像可漏同步。动态段
+// children 里带 beforeLoad 守卫的子路由 path（当前 /editor、/editor/:slug
+// 与 /settings），新增守卫路由自动入选，没有手写镜像可漏同步。动态段
 // 截到首个参数段之前（/editor/:slug → /editor）：只守卫动态路由时其
 // 静态前缀也该覆盖；匹配按段边界前缀（pathname === p || 以 `p/` 开头
 // ），宁可多跳过（预热只是优化，跳过无正确性损失），'/editorfoo' 类
@@ -201,7 +230,8 @@ export type AppRoutes = typeof routes;
 // 已知边界与缓解：预热经 resolve 直接取快照、不经 beforeLoad 守卫
 //（库的既定语义，守卫重定向会破坏窗口形状）。缓解：未登录
 //（router.context 的 getUser() 为空，未注入按未登录 fail-safe）且历史
-// 窗口含守卫路由（/editor、/editor/:slug，见 isGuardedPath 的表推导）时
+// 窗口含守卫路由（/editor、/editor/:slug、/settings，见 isGuardedPath
+// 的表推导）时
 // 整窗跳过预热——POP 落回惰性重解析路径，守卫照常重跑；代价是这类
 // 窗口内的普通条目也退回重解析（预热只是优化，跳过无正确性损失）。
 // 会话内守卫语义由登出链路的 invalidate 清场承担（见 Layout）；残余

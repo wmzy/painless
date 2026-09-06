@@ -216,4 +216,81 @@ describe('article service', () => {
       );
     });
   });
+
+  describe('queryProfileFeed', () => {
+    // Profile 页两个维度的投影：scope='author' → ?author=<username>，
+    // scope='favorited' → ?favorited=<username>，offset/limit 原样透传
+    it('should map author scope onto the author query param', async () => {
+      vi.mocked(http.get).mockResolvedValue({articles: [], articlesCount: 0});
+
+      await article.queryProfileFeed({
+        username: 'alice',
+        scope: 'author',
+        offset: 10,
+        limit: 5
+      });
+
+      expect(http.get).toHaveBeenCalledWith(
+        'articles',
+        {author: 'alice', offset: 10, limit: 5},
+        {signal: undefined, schema: expect.any(Object)}
+      );
+    });
+
+    it('should map favorited scope onto the favorited query param', async () => {
+      vi.mocked(http.get).mockResolvedValue({articles: [], articlesCount: 0});
+
+      await article.queryProfileFeed({
+        username: 'alice',
+        scope: 'favorited',
+        offset: 0,
+        limit: 10
+      });
+
+      expect(http.get).toHaveBeenCalledWith(
+        'articles',
+        {favorited: 'alice', offset: 0, limit: 10},
+        {signal: undefined, schema: expect.any(Object)}
+      );
+    });
+  });
+
+  describe('deletions', () => {
+    // 删除是「移除既有实体」的写：DELETE 在 fetch-fun 默认重试白名单
+    //（幂等方法）内——重复施加收敛到同一终态，走主 client 的普通 del
+    //（与 toggle 专用 delRetryable 的边界：后者只服务 favorite/follow）
+    it('should DELETE the article endpoint and resolve void', async () => {
+      vi.mocked(http.del).mockResolvedValue({});
+
+      await expect(article.deleteArticle('a')).resolves.toBeUndefined();
+
+      expect(http.del).toHaveBeenCalledWith('articles/a', {
+        signal: undefined
+      });
+      expect(http.delRetryable).not.toHaveBeenCalled();
+    });
+
+    it('should DELETE the comment endpoint with encoded params and resolve void', async () => {
+      vi.mocked(http.del).mockResolvedValue({});
+
+      await expect(
+        article.deleteComment('a b/c', 'id-1')
+      ).resolves.toBeUndefined();
+
+      expect(http.del).toHaveBeenCalledWith('articles/a%20b%2Fc/comments/id-1', {
+        signal: undefined
+      });
+    });
+
+    it('should forward abort signal on deletions', async () => {
+      vi.mocked(http.del).mockResolvedValue({});
+      const controller = new AbortController();
+
+      await article.deleteArticle('a', controller.signal);
+
+      expect(http.del).toHaveBeenCalledWith('articles/a', {
+        signal: controller.signal
+      });
+    });
+  });
 });

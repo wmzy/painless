@@ -1323,3 +1323,79 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
   ArgsStatus any，fetch-fun pipe 按名替换，react-f0rm reset 缺省陷阱、
   required 短路，native-router PrefetchLink 失败不重试、TypedPrefetchLink
   缺参静默、redirect 无 replace 型）——均已在第五轮 review 产出中留档。
+
+## 28. RealWorld 规范视图批次：/profile/:username、/settings、删除文章/评论（2026-09-06）
+
+- **背景**：RealWorld 规范视图此前缺口：无档案页（GET /profiles/:username +
+  文章列表维度）、无设置页（PUT /user）、无删除文章/评论入口（DELETE
+  /articles/{slug}、DELETE /articles/{slug}/comments/{id}）。本批补齐三面，
+  全部落地在既有机制上（createDataLoader 三元组、每实体缓存、cache.mutation
+  乐观管道、FormItem 表单桥、ConfirmDialog），无新抽象。
+- **档案实体服务拆分**：`fetchProfile` 自 `services/auth.ts` 移入新建的
+  `services/profile.ts`（档案实体服务——Profile 路由 loader 与 Register
+  用户名查重共用同一数据源；auth 模块回归纯身份链）。dataloaders 增
+  `profileLoader`/`useProfileData`（`profileCache[[username]]`，新增实体
+  缓存）与 `queryProfileFeed`/`useProfileFeedQuery`（`profileFeedCache
+  [[ProfileFeedQuery]]`——scope×username×分页全组合，`queryProfileFeed`
+  投影到 GET /articles 的 author/favorited 维度）。两个新缓存实体进
+  allCaches 注册表（登出清场/DevTool 面板自动纳入）。
+- **profileLoader 刻意不挂 DevTool mock**：mock 管道的 'empty' 模式在 API
+  错误时用 faker 造数兜底——404 会被假档案掩掉，路由级 errorComponent
+  （Profile/NotFound 的 404 分支，规范要求的可观测行为）在 dev/e2e 永不可
+  达。与 articleLoader/editorLoader 同款取舍（e2e 实测：挂 mock 时
+  /profile/nobody-here 渲染 faker 档案而非 NotFound）。profileFeed 组件
+  通道保留独立 'profileFeed' mock 数据集（与 homeLoader 的 'articlePage'
+  分家——两通道刷新语义不同，面板条目不互相覆盖）。
+- **Profile 页内状态**：tab 经 useControl 绑定 haze Tabs（受控形态），分页
+  状态挂 tab 维度（换维度渲染期回第一页，不产生「新 tab × 旧 offset」的
+  中间查询；切回原维度页位仍在——缓存里的页本来就在）。tab/分页是页内
+  浏览态，刻意不落 URL（与 Home 的 search 过滤面语义并存）。follow 经
+  `followOnProfile`（profileCache 写穿，key=[username] 与 loader 同寻址）；
+  列表收藏经 `favoriteOnProfileFeed`（favoriteOnHome 同构的两层组合——
+  article 实体层 + profileFeed 投影层）。
+- **useControl null 种子坑（react-use-control 运行时）**：
+  `useControl(null, initial)` 的第二参被忽略——运行时分派
+  `controlOrInitial === undefined ? maybeInitial : controlOrInitial` 把显式
+  null 当初始值本身。种子用值形态 `useControl<T>('x')` 或 undefined。
+  类型层无提示（`Control<T> | Nullish` 合法），症状是 tab 恒 undefined、
+  Tabs 面板全隐藏。已记录进 AGENTS.md 的 useControl 节。
+- **设置页**：/settings 挂 requireLogin，无路由 data（表单初值读
+  getCurrentUser）。`updateUser`（auth 服务，PUT /user）走 login/register
+  同款「先清后 set」链——身份不变但 username/bio/image 嵌在各缓存实体里，
+  旧值不得当新鲜命中；视图提交后 invalidate + navigate 到
+  /profile/<服务端权威 username>（Login/Register 同款清场链）。bio/image
+  空串归一 null（契约可 null 语义），密码空串省略键。Layout 与 Settings 的
+  登出三段链收敛为 `logoutAndNavigate(router, to)`（401 处置链条件分支不同，
+  不收敛）。
+- **删除面**：`deleteArticle`/`deleteComment` 走 http.del 默认重试白名单
+  （DELETE 幂等、重放收敛：二次删除 404，无害）。文章删除非乐观：
+  useMutation invalidates [articleCache, homeCache, profileFeedCache,
+  [commentsCache, slug]]（删除改变列表形状不可本地推导，整实体清——Editor
+  保存同理，本批把 profileFeedCache 补进其 invalidates）+ ConfirmDialog
+  确认 + await 后 navigate('/')；评论删除在 CommentList：只渲染本人评论的
+  删除入口（auth change 订阅，同 Article 视图的作者权判定），ConfirmDialog
+  确认后走评论写同款前缀失效 [[commentsCache, slug]]。Edit Article 入口
+  （TypedLink → /editor/:slug）随删除按钮一起只在作者可见。
+- **导航**：登录态导航栏用户名改 TypedNavLink 到本人档案（RealWorld 惯例），
+  新增 Settings 链接；isGuardedPath 的表推导自动纳入 /settings（守卫前缀
+  注释与 StackWarmer 说明同步更新）。
+- **测试**：新增 profile.test.ts（fetchProfile 传输契约自 auth.test 平移）、
+  auth.test 补 updateUser 与 logoutAndNavigate 链（invalidate 先于 navigate）、
+  article.test 补 queryProfileFeed 投影与删除传输契约、mutations.test 补
+  followOnProfile 与 favoriteOnProfileFeed 语义（含两层独立回滚）、
+  params.test 补 profileParamsSchema、Profile/index.test.tsx（banner/tabs/
+  分页/follow，tab 触发的重取必须 waitFor——useRun 的 rerun 在 effect 内异
+  步发起）、Settings/form.test.tsx（初值预填/校验/载荷归一/422 回填/登出）、
+  Article 测试补文章删除与评论删除五用例、Layout 测试补登录态导航与登出
+  委托、Profile/NotFound.test.tsx、useQuery 注册表基线断言扩到六实体。
+  e2e 补 5 条（profile 页含 404 双通道、settings 守卫+更新落点、删除评论/
+  文章全链、Profile/Settings a11y 扫描）+ mockApi 扩展 profiles/PUT user/
+  DELETE 端点与 userArticle fixture；「login → browse」登出断言改用 link
+  角色定位导航栏用户名（userArticle 卡片作者行渲染同一 username）。
+- **体积**：128.26 KB，超旧阈值 126 KB（#27 批 124.46 KB 过，余量
+  1.54 KB）——
+  增长为两个懒加载视图 + 删除面的正当成本（零新依赖，同 lockfile），size
+  基线棘轮按契约上移：基线 128.26 KB / 阈值 141 KB（scripts/size-budget.mjs
+  头注释同步理由）。
+- **验证**：typecheck + lint:ci（0 error）+ 单测 **369/369**（30 文件，
+  相对第 27 批的 317 净增 52 条）+ build + size + e2e **34/34**。

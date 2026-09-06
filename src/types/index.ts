@@ -67,6 +67,17 @@ export type ArticlePage = {
   articlesCount: Uint;
 };
 
+// Profile 页文章列表查询（GET /articles 的 author/favorited 维度）：
+// scope 决定维度——'author' 映射 ?author=<username>（我的文章），
+// 'favorited' 映射 ?favorited=<username>（收藏的文章）。offset/limit 与
+// HomeSearch 同口径（缺省值由调用点给出，缓存 key 经 hashArgs 归一）。
+export type ProfileFeedQuery = {
+  username: string;
+  scope: 'author' | 'favorited';
+  offset: number;
+  limit: number;
+};
+
 /**
  * @minItems 10
  * @maxItems 30

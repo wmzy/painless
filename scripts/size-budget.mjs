@@ -1,12 +1,15 @@
 #!/usr/bin/env node
 // 口径名：dist JS+CSS gzip 总和（zlib level 9，含懒加载 chunk）。
-// 基线：123361 B = 120.47 KB（32 个文件，2026-09-04，Node 24 内置 zlib；
-// 上限阈值锚定的批次基线）。最近实测：125439 B = 122.50 KB（32 个文件，
-// raw 364.92 KB，2026-09-05，第三轮 review 落地批（decisions.md 第 25
-// 条）——core 1.16.1 + toolroom 1.1.0 同 lockfile A/B 双测净 −2405 B，
-// 升级本身缩包；数字与 decisions.md 第 25 条同批实测，阈值与
-// BASELINE_BYTES 代码不动，仅头注释随批同步）。
-// 阈值：126 KB = 129024 B（基线 +10% 余量，取整到 KB）。
+// 基线：131335 B = 128.26 KB（38 个文件，2026-09-06，Node 24 内置 zlib；
+// 上限阈值锚定的批次基线）。最近实测：131335 B = 128.26 KB（38 个文件，
+// raw 381.51 KB，2026-09-06，RealWorld 规范视图批次（decisions.md 第
+// 28 条）——新增 /profile/:username + /settings 两个懒加载视图（Profile
+// 1.46 KB、Settings 0.85 KB，各自独立 chunk）+ Article 删除面（Confirm
+// Dialog 共享 chunk 进入 Article）+ Layout 导航扩展 + profile 双缓存与
+// mutations 投影层接线。相对第 27 批（124.46 KB 实测、阈值 126 KB 过，
+// 余量 1.54 KB）净 +3.8 KB：四个新增可观测页面/交互的正当成本，非依赖
+// 膨胀（零新依赖，同 lockfile）；数字与 decisions.md 第 28 条同批实测。
+// 阈值：141 KB = 144384 B（基线 +10% 余量，取整到 KB）。
 //
 // 口径必须可复现（项目教训：bundle 增量报告曾出现无任何口径能复现的数字）：
 // 逐文件 gzipSync(buf, {level: 9}) 求和。zlib 的 gzip 头不含时间戳（MTIME
@@ -30,9 +33,9 @@ import {join} from 'node:path';
 import {gzipSync} from 'node:zlib';
 
 const KB = 1024;
-const BASELINE_BYTES = 117679;
-const BASELINE_DATE = '2026-08-31';
-const THRESHOLD_BYTES = 126 * KB;
+const BASELINE_BYTES = 131335;
+const BASELINE_DATE = '2026-09-06';
+const THRESHOLD_BYTES = 141 * KB;
 
 // Dirent.path 在 Node 22 存在、24 起更名为 parentPath（旧名移除）；CI 与
 // 本地版本都走 parentPath，回退链只为语义完整。

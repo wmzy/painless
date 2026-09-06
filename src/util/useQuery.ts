@@ -4,7 +4,7 @@
 // 选项在场景声明点闭合、运行时调用点零 option）。归宿已定（2026-09-01）：
 // 评估后不抽包、常驻模板，见 docs/decisions.md 第 2/13 条；loading /
 // select / 结构共享的语义取舍与 bindQueryFn 绑定机制见第 9 条。
-import type {Article, ArticlePage, Comment} from '@/types';
+import type {Article, ArticlePage, Author, Comment, ProfileFeedQuery} from '@/types';
 import type {HomeSearch} from '@/types/search';
 
 import {
@@ -136,6 +136,12 @@ export function createQueryCache<T, K extends unknown[]>(
 export const articleCache = createQueryCache<Article, [string]>('article');
 /** 首页信息流投影：key = [homeSearch]（hash 归一剥 undefined tag） */
 export const homeCache = createQueryCache<ArticlePage, [HomeSearch]>('home');
+/** 公开档案实体：key = [username]，Profile 视图 follow 写穿共用 */
+export const profileCache = createQueryCache<Author, [string]>('profile');
+/** Profile 页文章列表投影：key = [query]（scope×username×分页全组合） */
+export const profileFeedCache = createQueryCache<ArticlePage, [ProfileFeedQuery]>(
+  'profileFeed'
+);
 /** 文章评论：key = [slug]，发评论后按 slug 失效重拉 */
 export const commentsCache = createQueryCache<Comment[], [string]>('comments');
 /** 全局标签：key = []（单例条目）；唯一持久化实体，cacheTime 放长（1h）对齐盘侧生命周期 */
@@ -161,7 +167,7 @@ const BASELINE_CACHES = allCaches.slice();
 // 测试工具：clearAllCaches 全量清场（内存 + 擦盘，语义同登出）后把
 // allCaches 注册表还原到模块加载基线——测试文件 beforeEach 用例间隔离
 // 时，临时 cache 不再在注册表里累积，模块实体（article/home/comments/
-// tags）仍登记在册：后续经应用代码触发的 clearAllCaches（logout、
+// tags/profile/profileFeed）仍登记在册：后续经应用代码触发的 clearAllCaches（logout、
 // DevTool Clear、mock refresh 闭包）行为不变。
 // 边界：cache 建在「测试文件模块级」时（import 期创建、用例间复用同一
 // 实例并依赖 beforeEach 清其内容）不适合换用本工具——首轮 reset 会把它

@@ -1,8 +1,23 @@
+import type {Comment} from '@/types';
+
+import {useEffect, useState} from 'react';
 import {formatDistanceToNow} from 'date-fns';
+import {useMutation} from 'react-toolroom/async';
+import {
+  Avatar,
+  AsyncSection,
+  Button,
+  ConfirmDialog,
+  List,
+  ListItem,
+  Text
+} from 'haze-ui';
 
-import {List, ListItem, Avatar, Text, AsyncSection} from 'haze-ui';
-
+import {getCurrentUser, onAuthChange, type User} from '@/services/auth';
+import * as articleService from '@/services/article';
 import {useCommentsQuery} from '@/services/dataloaders';
+import {commentsCache} from '@/util/useQuery';
+import {useToastError} from '@/util/toastError';
 
 type Props = {
   title: string;
@@ -20,6 +35,38 @@ type Props = {
 export default function CommentList({title}: Props) {
   const {data: comments, loading, error, dataUpdatedAt, refetch} =
     useCommentsQuery([title]);
+
+  // 作者权（每条评论的删除入口可见性）：登录态订阅——401 自动登出/
+  // 换账号登录时按钮态即时收敛
+  const [user, setUser] = useState<User | null>(() => getCurrentUser());
+  useEffect(() => onAuthChange(setUser), []);
+
+  // 删评论 → 声明式前缀失效：commentsCache 的 key 就是精确的 [slug]，
+  // 与发评论同一失效粒度——成功即失效本 slug 条目并重拉本订阅者（挂载
+  // 中的 useCache 消费者经 provider 删除事件被动重拉），失败自动不失效。
+  // 删除不可恢复：点击先弹 ConfirmDialog（pending 持有目标评论），确认
+  // 才走 mutation；失败 toast（列表未动，错误上下文在 toast 足够）。
+  // 进行中（isMutating）禁用删除入口：重复确认二发 DELETE，第二条 404
+  // 的失败 toast 会与首条成功后触发的重拉竞速
+  const [deleteComment, {isMutating: deleting}] = useMutation(
+    articleService.deleteComment,
+    {
+      invalidates: [[commentsCache, title]]
+    }
+  );
+  const toastError = useToastError();
+  const [pending, setPending] = useState<Comment | null>(null);
+
+  const handleDelete = async () => {
+    const target = pending;
+    setPending(null);
+    if (!target) return;
+    try {
+      await deleteComment(title, target.id);
+    } catch (e: unknown) {
+      toastError(e, 'Delete failed');
+    }
+  };
 
   // 三分支收敛给 haze-ui AsyncSection（1.21）：loading 占位 / error
   // 错误框 + Retry / 正常态直渲染 children。Retry 调 refetch：删当前
@@ -48,9 +95,36 @@ export default function CommentList({title}: Props) {
           <ListItem key={c.id}>
             <Avatar src={c.author.image ?? undefined} alt={c.author.username} />
             <Text>{c.body}</Text>
+            {user?.username === c.author.username && (
+              <Button
+                variant='ghost'
+                size='sm'
+                aria-label='Delete comment'
+                disabled={deleting}
+                onClick={() => setPending(c)}
+              >
+                Delete
+              </Button>
+            )}
           </ListItem>
         ))}
       </List>
+      {/* 删除确认（与 Article 的删除确认同款 ConfirmDialog）：条件挂载 +
+          open 布尔，确认走 handleDelete（mutation + 失效重拉），取消/
+          关闭只是关框留列表 */}
+      {pending && (
+        <ConfirmDialog
+          open
+          title='Delete comment?'
+          confirmText='Delete'
+          cancelText='Cancel'
+          onConfirm={() => void handleDelete()}
+          onCancel={() => setPending(null)}
+          onClose={() => setPending(null)}
+        >
+          This will permanently delete the comment.
+        </ConfirmDialog>
+      )}
     </AsyncSection>
   );
 }

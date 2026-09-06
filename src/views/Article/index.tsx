@@ -1,12 +1,29 @@
-import {useState} from 'react';
+import type {AppRoutes} from '@/views';
+
+import {useEffect, useState} from 'react';
 import {Form, useForm, reset, useIsSubmitting} from 'react-f0rm';
 import {useMutation} from 'react-toolroom/async';
-import {Card, Title, Text, Divider, TextareaCore, Alert, Button, FormItem, useTitle} from 'haze-ui';
+import {TypedLink, useRouter} from '@native-router/react';
+import {navigate} from '@native-router/core';
+import {
+  Alert,
+  Button,
+  ButtonLink,
+  Card,
+  ConfirmDialog,
+  Divider,
+  FormItem,
+  Text,
+  TextareaCore,
+  Title,
+  useTitle
+} from 'haze-ui';
 
+import {getCurrentUser, onAuthChange, type User} from '@/services/auth';
 import * as articleService from '@/services/article';
 import {favoriteOnArticle, followOnArticle} from '@/services/mutations';
 import {useArticleData} from '@/services/dataloaders';
-import {commentsCache} from '@/util/useQuery';
+import {articleCache, commentsCache, homeCache, profileFeedCache} from '@/util/useQuery';
 import {useToastError} from '@/util/toastError';
 import FavoriteButton from '@/components/FavoriteButton';
 import {useFavorite, useRequireAuth} from '@/views/_shared/useFavorite';
@@ -47,6 +64,49 @@ export default function ArticleView() {
   const [follow] = useMutation(followOnArticle, {
     scope: (slug: string) => `follow:${slug}`
   });
+
+  // 作者权（Edit/Delete 入口的可见性）：登录态订阅（Profile 视图同款
+  // 形态）——401 自动登出/换账号登录时按钮态即时收敛，不留「已登出仍
+  // 可见编辑入口」的过期 UI
+  const [user, setUser] = useState<User | null>(() => getCurrentUser());
+  useEffect(() => onAuthChange(setUser), []);
+  const isAuthor = user?.username === article.author.username;
+  // 删除文章：deleteArticle(slug) 与缓存失效、跳转的声明式组装——
+  // 成功后整实体失效 articleCache（当前文章条目）+ homeCache /
+  // profileFeedCache（两处列表投影的 key 是完整查询组合，删除改变
+  // 哪些组合无法在写点本地推导，整实体清是唯一声明的正确粒度，同
+  // Editor 保存的论证）+ commentsCache 前缀（文章没了评论条目即成
+  // 孤儿）；失败自动不失效。跳转在 await 之后：invalidates 已在 mutate
+  // 的成功分支先于 await 返回执行，navigate 时缓存必已失效。进行中
+  //（isMutating）门控 Delete 入口：重复确认会二发 DELETE，第二条 404
+  // 的失败 toast 会与首条的跳转竞速
+  const [deleteMutation, {isMutating: deleting}] = useMutation(
+    articleService.deleteArticle,
+    {
+      invalidates: [
+        articleCache,
+        homeCache,
+        profileFeedCache,
+        [commentsCache, article.slug]
+      ]
+    }
+  );
+  // 确认框驱动状态：删除不可恢复，编辑按钮旁的 Delete 先弹 ConfirmDialog
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const router = useRouter();
+
+  const handleDelete = async () => {
+    setConfirmDelete(false);
+    try {
+      await deleteMutation(article.slug);
+      // 被取代/取消的导航 reject NCE（core 1.15）：吞掉即「停在旧视图」
+      void navigate(router, '/').catch(() => undefined);
+    } catch (e: unknown) {
+      // 失败留在本页：乐观不存在（删除无乐观态），toast 只补「为什么
+      // 没发生」
+      toastError(e, 'Delete failed');
+    }
+  };
 
   // 发评论 → 声明式前缀失效：commentsCache 的 key 就是精确的 [slug]
   //（见 dataloaders.ts 的 commentsCache 声明），[commentsCache, article.slug]
@@ -97,6 +157,29 @@ export default function ArticleView() {
     <Card>
       <Title>{article.title}</Title>
       <AuthorLine author={article.author}>
+        {/* 作者权入口：Edit 直达编辑路由（params 即 slug，编译期判别），
+            Delete 先弹确认框（删除不可恢复）——非作者不渲染 */}
+        {isAuthor && (
+          <>
+            <TypedLink<AppRoutes, typeof ButtonLink>
+              as={ButtonLink}
+              to='/editor/:slug'
+              params={{slug: article.slug}}
+              variant='outline'
+              size='sm'
+            >
+              Edit Article
+            </TypedLink>
+            <Button
+              variant='ghost'
+              size='sm'
+              disabled={deleting}
+              onClick={() => setConfirmDelete(true)}
+            >
+              Delete Article
+            </Button>
+          </>
+        )}
         <Button variant='outline' size='sm' onClick={toggleFollow}>
           {article.author.following ? 'Unfollow' : 'Follow'}{' '}
           {article.author.username}
@@ -132,6 +215,23 @@ export default function ArticleView() {
         </button>
       </Form>
       <CommentList title={article.slug} />
+      {/* 删除确认：与 Editor 未保存拦截同款 ConfirmDialog（条件挂载 +
+          open 布尔）。确认走 handleDelete（mutation + 跳转），取消/关闭
+          只是关框留页 */}
+      {confirmDelete && (
+        <ConfirmDialog
+          open
+          title='Delete article?'
+          confirmText='Delete'
+          cancelText='Cancel'
+          onConfirm={() => void handleDelete()}
+          onCancel={() => setConfirmDelete(false)}
+          onClose={() => setConfirmDelete(false)}
+        >
+          This will permanently delete the article. This action cannot be
+          undone.
+        </ConfirmDialog>
+      )}
     </Card>
   );
 }

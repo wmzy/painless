@@ -87,27 +87,36 @@ vi.mock('@native-router/react', async () => {
     end,
     children,
     as: As,
+    params,
     ...rest
   }: {
     to: string;
     end?: boolean;
     children?: ReactNode;
     as?: React.ElementType;
+    params?: Record<string, string>;
   } & Record<string, unknown>) => {
+    // 动态段插值（TypedNavLink 的运行时语义）：/profile/:username +
+    // params 落成真实 href / navigate 目标——替身不复刻的话断言面只剩
+    // 未展开的模式串
+    const href = Object.entries(params ?? {}).reduce(
+      (acc, [k, v]) => acc.replace(`:${k}`, encodeURIComponent(v)),
+      to
+    );
     const {pathname} = state.router.history.location;
     const isActive =
-      pathname === to ||
-      (!end && pathname.startsWith(to.endsWith('/') ? to : `${to}/`));
+      pathname === href ||
+      (!end && pathname.startsWith(href.endsWith('/') ? href : `${href}/`));
     const A = As ?? 'a';
     return React.createElement(
       A,
       {
         ...rest,
-        href: to,
+        href,
         'aria-current': isActive ? 'page' : undefined,
         onClick: (e: React.MouseEvent<HTMLAnchorElement>) => {
           e.preventDefault();
-          void navigate(state.router, to);
+          void navigate(state.router, href);
         }
       },
       children
@@ -133,20 +142,20 @@ vi.mock('@native-router/core', () => ({
 vi.mock('@/services/auth', () => ({
   getCurrentUser: () => state.user,
   logout: vi.fn(),
+  logoutAndNavigate: vi.fn(),
   onAuthChange: () => () => undefined
 }));
 
-import {navigate, invalidate, refresh} from '@native-router/core';
+import {navigate, refresh} from '@native-router/core';
 
 import {renderView} from '@/test-utils';
-import {logout} from '@/services/auth';
+import {logoutAndNavigate} from '@/services/auth';
 
 import Layout from './index';
 
 const navigateMock = vi.mocked(navigate);
-const invalidateMock = vi.mocked(invalidate);
 const refreshMock = vi.mocked(refresh);
-const logoutMock = vi.mocked(logout);
+const logoutAndNavigateMock = vi.mocked(logoutAndNavigate);
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -159,27 +168,26 @@ beforeEach(() => {
 });
 
 describe('Layout 登出', () => {
-  it('Logout：logout → invalidate(viewStack) → navigate("/")，invalidate 先于 navigate', () => {
+  it('Logout：三段链收敛进 logoutAndNavigate(router)（内部语义见 auth.test）', () => {
     renderView(<Layout />);
 
     fireEvent.click(screen.getByText('Logout'));
 
-    expect(logoutMock).toHaveBeenCalledTimes(1);
-    // 清 viewStack：防 POP 回退渲染旧账号数据/绕过守卫（logout 已清
-    // queryCache，快照是最后一块旧账号状态）
-    expect(invalidateMock).toHaveBeenCalledWith(state.router);
-    expect(navigateMock).toHaveBeenCalledWith(state.router, '/');
-    // 顺序：invalidate 必须在 navigate 之前完成快照丢弃
-    expect(invalidateMock.mock.invocationCallOrder[0]).toBeLessThan(
-      navigateMock.mock.invocationCallOrder[0]!
-    );
+    // 登出链（logout → invalidate → navigate('/')）整体收敛进
+    // services/auth 的 logoutAndNavigate——Layout 只做委托；链内部
+    // 契约（顺序/目标）由 auth.test 的 bindUnauthorizedRedirect 组与
+    // 下方 stale 用例覆盖
+    expect(logoutAndNavigateMock).toHaveBeenCalledTimes(1);
+    expect(logoutAndNavigateMock).toHaveBeenCalledWith(state.router);
   });
 
-  it('未登录：导航只渲染 Login/Register，无 Logout 入口', () => {
+  it('未登录：导航只渲染 Login/Register，无 Logout/Settings 入口', () => {
     state.user = null;
     renderView(<Layout />);
 
     expect(screen.queryByText('Logout')).toBeNull();
+    expect(screen.queryByText('Settings')).toBeNull();
+    expect(screen.queryByText('New Article')).toBeNull();
     expect(screen.getByText('Login')).toBeDefined();
   });
 });
@@ -224,6 +232,23 @@ describe('Layout bfcache 恢复补偿', () => {
 });
 
 describe('Layout 导航（NavLink as={HazeNavLink} 组合）', () => {
+  it('登录态：用户名链接展开为本人档案路径，Settings 入口在位', () => {
+    renderView(<Layout />);
+
+    // 动态段经 params 插值成真实 href（TypedNavLink 运行时语义）
+    expect(
+      screen.getByText('me').closest('a')!.getAttribute('href')
+    ).toBe('/profile/me');
+    expect(
+      screen.getByText('Settings').closest('a')!.getAttribute('href')
+    ).toBe('/settings');
+    // 点击用户名走 in-app navigate 到展开后的路径
+    const evt = createEvent.click(screen.getByText('me'));
+    fireEvent(screen.getByText('me'), evt);
+    expect(evt.defaultPrevented).toBe(true);
+    expect(navigateMock).toHaveBeenCalledWith(state.router, '/profile/me');
+  });
+
   it('点击导航链接走 in-app navigate 而非整页跳转', () => {
     renderView(<Layout />);
 

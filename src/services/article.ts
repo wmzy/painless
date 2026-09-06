@@ -3,7 +3,8 @@ import type {
   ArticlePage,
   ArticleQuery,
   Author,
-  Comment
+  Comment,
+  ProfileFeedQuery
 } from '@/types/index';
 
 import {fillPath} from 'fetch-fun';
@@ -84,6 +85,23 @@ export function fetchTags(signal?: AbortSignal): Promise<string[]> {
   return http
     .get<{tags: string[]}>('tags', undefined, {signal, schema: schemas?.tags})
     .then(({tags}) => tags);
+}
+
+// Profile 页文章列表：GET /articles 的 author/favorited 维度。shape 即
+// profileFeedCache 的 key 元组（scope×username×分页全组合，见
+// useQuery.ts 与 dataloaders.ts 的绑定）——复用 query 的管道（分页/
+// 重试/校验），只在本层把 ProfileFeedQuery 投影成 ArticleQuery。
+export function queryProfileFeed(
+  q: ProfileFeedQuery,
+  signal?: AbortSignal
+): Promise<ArticlePage> {
+  const {username, scope, offset, limit} = q;
+  return query(
+    scope === 'author'
+      ? {author: username, offset, limit}
+      : {favorited: username, offset, limit},
+    signal
+  );
 }
 
 // ---- mutations ------------------------------------------------------------
@@ -174,4 +192,30 @@ export function saveArticle(
       )
     : http.post<{article: Article}>('articles', {article}, {signal, schema: schemas?.article});
   return request.then(({article: saved}) => saved);
+}
+
+// ---- deletions ------------------------------------------------------------
+// 删除类写操作（每次调用移除一个实体）：DELETE 在 fetch-fun 默认重试
+// 白名单内（幂等方法），重复施加收敛到同一终态（第二次 404）——重放
+// 无害，与 favorite/follow 的 toggle 语义一致，走主 client 的默认重试
+// 即可。响应是空体 200，无解包。
+export function deleteArticle(
+  slug: string,
+  signal?: AbortSignal
+): Promise<void> {
+  return http
+    .del(fillPath('articles/{slug}', {slug}), {signal})
+    .then(() => undefined);
+}
+
+export function deleteComment(
+  slug: string,
+  id: string,
+  signal?: AbortSignal
+): Promise<void> {
+  return http
+    .del(fillPath('articles/{slug}/comments/{id}', {slug, id}), {
+      signal
+    })
+    .then(() => undefined);
 }

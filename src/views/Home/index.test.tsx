@@ -250,7 +250,10 @@ vi.mock('@/services/article', () => ({
   query: vi.fn(),
   findByTitle: vi.fn(),
   fetchCommentsByTitle: vi.fn(),
-  fetchTags: vi.fn()
+  fetchTags: vi.fn(),
+  // dataloaders 模块级绑定（Profile 三元组）会触碰该导出：mock 缺键
+  // 时模块加载即抛（同款教训见 Article 测试的补充）
+  queryProfileFeed: vi.fn()
 }));
 vi.mock('@/services/auth', () => ({getCurrentUser: vi.fn()}));
 

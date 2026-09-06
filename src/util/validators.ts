@@ -3,15 +3,15 @@
 // validate 回调、并在 catch 里把服务端错误拼成一句话放顶部 Alert，
 // 两处重复都在此收敛。异步校验器（usernameAvailable）依赖 services 层
 // 的查重端点——方向是 util → services 的特例：本文件定位是应用级表单
-// 工具（已耦合 react-f0rm 与 RealWorld 的 422 错误形状），services/auth
-// 的依赖图（http/useQuery）不回指本文件，无环。
+// 工具（已耦合 react-f0rm 与 RealWorld 的 422 错误形状），services/
+// profile 的依赖图（http/jsonSchema）不回指本文件，无环。
 import type {FormInstance} from 'react-f0rm';
 
 import type {ApiFieldErrors} from './apiError';
 
 import {setServerErrors} from 'react-f0rm';
 
-import {fetchProfile} from '@/services/auth';
+import {fetchProfile} from '@/services/profile';
 
 import {parseApiError} from './apiError';
 

@@ -957,10 +957,13 @@ describe('resetAllCaches（测试工具：注册表还原基线）', () => {
 
     resetAllCaches();
 
-    // 注册表回到模块加载基线：只有四个模块实体，临时 cache 出册
+    // 注册表回到模块加载基线：只有六个模块实体（profile/profileFeed
+    // 随 Profile 页批次新增），临时 cache 出册
     expect(allCaches.map(({name}) => name)).toEqual([
       'article',
       'home',
+      'profile',
+      'profileFeed',
       'comments',
       'tags'
     ]);

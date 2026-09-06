@@ -128,7 +128,7 @@ export default function Register() {
       {error && <Alert variant='danger'>{error}</Alert>}
       <Form form={form} onSubmit={handleSubmit} aria-label='Register form'>
         {/* 用户名：异步查重（react-f0rm 异步 validate 协议，查重端点
-            services/auth 的 fetchProfile）。mode='onBlur' 同 email——
+            services/profile 的 fetchProfile）。mode='onBlur' 同 email——
             失焦/提交才校验，避免每次击键一轮请求；validateDebounce 把
             窗口调度交给 useField（窗口内重复触发只跑最后一轮，提交
             trigger 会等窗口走完）。失焦钩子由 input 桥自动接线 */}

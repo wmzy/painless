@@ -8,6 +8,7 @@ import {describe, it, expect, vi, beforeEach} from 'vitest';
 vi.mock('@/util/http', () => ({
   get: vi.fn(),
   post: vi.fn(),
+  put: vi.fn(),
   setTokenGetter: vi.fn(),
   setUnauthorizedHandler: vi.fn()
 }));
@@ -103,45 +104,75 @@ describe('auth service', () => {
     });
   });
 
-  // Register 用户名异步查重的数据源：只验证传输契约（端点/解包/signal
-  // 透传），占用与可用的判定语义在 util/validators 的 usernameAvailable。
-  describe('fetchProfile', () => {
-    it('should call get with profiles endpoint, unwrap profile and pass signal', async () => {
-      const profile = {
-        username: 'alice',
-        bio: '',
-        image: '',
-        following: false
+  // Register 用户名异步查重的数据源已移至 services/profile.ts——
+  // fetchProfile 的传输契约测试见 profile.test.ts，占用与可用的判定语义
+  // 在 util/validators 的 usernameAvailable。
+
+  describe('updateUser', () => {
+    it('should call put with user endpoint and return authoritative user', async () => {
+      const updated = {
+        username: 'renamed',
+        email: 'renamed@test.com',
+        token: 'new-token',
+        bio: 'bio',
+        image: 'https://example.com/a.png'
       };
-      vi.mocked(http.get).mockResolvedValue({profile});
+      vi.mocked(http.put).mockResolvedValue({user: updated});
 
-      const controller = new AbortController();
-      const result = await auth.fetchProfile('alice', controller.signal);
-
-      // fillPath 已在编译期约束参数集合，这里断言最终 URL 形状与
-      // signal 透传（被超越的校验轮次据此撤销在途请求）
-      expect(http.get).toHaveBeenCalledWith(
-        'profiles/alice',
-        undefined,
-        {signal: controller.signal}
-      );
-      expect(result).toEqual(profile);
-    });
-
-    it('should encode path parameters in the username segment', async () => {
-      vi.mocked(http.get).mockResolvedValue({
-        profile: {username: 'a b/c', image: '', following: false}
+      const result = await auth.updateUser({
+        username: 'renamed',
+        bio: 'bio'
       });
 
-      await auth.fetchProfile('a b/c');
+      expect(http.put).toHaveBeenCalledWith('user', {
+        user: {username: 'renamed', bio: 'bio'}
+      });
+      expect(result).toEqual(updated);
+    });
 
-      // 用户名里的空格/斜杠经 fillPath 逐值 encodeURIComponent，
-      // 不依赖调用方手拼模板字符串的裸插值
-      expect(http.get).toHaveBeenCalledWith(
-        'profiles/a%20b%2Fc',
-        undefined,
-        {signal: undefined}
+    it('should clear entity caches and set the new user before resolving', async () => {
+      const {articleCache} = await import('@/util/useQuery');
+      articleCache.set(['pre-update'], {slug: 'pre-update'} as Article);
+
+      const updated = {
+        username: 'renamed',
+        email: 'renamed@test.com',
+        token: 'tok2',
+        bio: null,
+        image: null
+      };
+      vi.mocked(http.put).mockResolvedValue({user: updated});
+
+      await auth.updateUser({username: 'renamed'});
+
+      // username/bio/image 嵌在各缓存实体的 author 里：更新后旧值不可
+      // 再当新鲜命中渲染（同 login/register 的「先清后 set」链）
+      expect(articleCache.get(['pre-update'])).toBeUndefined();
+      // change 事件已发出：订阅者拿新用户；存储已换新
+      expect(auth.getCurrentUser()).toEqual(updated);
+      expect(JSON.parse(localStorage.getItem('painless.user')!)).toEqual(
+        updated
       );
+    });
+
+    it('should forward the update payload unchanged', async () => {
+      // 空密码 → 省略键的归一在视图层（Settings 提交时转 undefined，
+      // JSON.stringify 天然丢 undefined 键）；服务契约只透传调用方给的
+      // UserUpdate，不私自加字段
+      const updated = {
+        username: 'same',
+        email: 'same@test.com',
+        token: 'tok',
+        bio: null,
+        image: null
+      };
+      vi.mocked(http.put).mockResolvedValue({user: updated});
+
+      await auth.updateUser({password: 'new-pass'});
+
+      expect(http.put).toHaveBeenCalledWith('user', {
+        user: {password: 'new-pass'}
+      });
     });
   });
 
@@ -338,6 +369,43 @@ describe('auth service', () => {
       off();
       auth.logout();
       expect(handler).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  // 手动登出三段链（Layout 导航栏与 Settings 页共用的收敛函数）：
+  // logout 清场 → invalidate 丢旧账号 viewStack 快照 → navigate 接管
+  // 当前视图。401 处置链不收敛于此（目标带 redirect 且条件分支不同）。
+  describe('logoutAndNavigate（手动登出三段链）', () => {
+    const user = {username: 'test', email: 'test@test.com', token: 'tok'};
+
+    it('登出 → invalidate → navigate("/")，invalidate 先于 navigate', async () => {
+      const {articleCache, clearAllCaches} = await import('@/util/useQuery');
+      vi.mocked(http.post).mockResolvedValue({user});
+      await auth.login('test@test.com', 'password');
+      articleCache.set(['stale-slug'], {slug: 'stale-slug'} as Article);
+
+      const {navigate, invalidate} = await import('@native-router/core');
+      const router = {history: {}} as unknown as RouterInstance<any>;
+      auth.logoutAndNavigate(router);
+
+      // 清场：登录态与实体缓存同刻消失（POP 回退不得重放旧账号数据）
+      expect(auth.getCurrentUser()).toBeNull();
+      expect(articleCache.get(['stale-slug'])).toBeUndefined();
+      // 快照丢弃先于导航接管（同 Layout 旧实现断言的顺序契约）
+      expect(invalidate).toHaveBeenCalledWith(router);
+      expect(navigate).toHaveBeenCalledWith(router, '/');
+      expect(invalidate).toHaveBeenCalledBefore(vi.mocked(navigate));
+
+      clearAllCaches();
+    });
+
+    it('显式目标：navigate 落调用方给的路径', async () => {
+      const {navigate} = await import('@native-router/core');
+      const router = {history: {}} as unknown as RouterInstance<any>;
+
+      auth.logoutAndNavigate(router, '/login');
+
+      expect(navigate).toHaveBeenCalledWith(router, '/login');
     });
   });
 

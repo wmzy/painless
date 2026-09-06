@@ -1,9 +1,7 @@
 import type {RouterInstance} from '@native-router/core';
-import type {Author} from '@/types';
 
 import {invalidate, navigate} from '@native-router/core';
 import {create, on, emit} from '@for-fun/event-emitter';
-import {fillPath} from 'fetch-fun';
 
 import * as http from '@/util/http';
 import {clearAllCaches} from '@/util/useQuery';
@@ -16,6 +14,17 @@ export type User = {
   token: string;
   bio: string | null;
   image: string | null;
+}
+
+// Settings 更新载荷（openapi.d.ts 的 UpdateUser schema）：全部字段可选，
+// 至少一个字段——省略密码表示不改密码（空串由视图层转成省略），
+// bio/image 可置 null（清空简介/头像）。
+export type UserUpdate = {
+  email?: string;
+  username?: string;
+  password?: string;
+  bio?: string | null;
+  image?: string | null;
 }
 
 const STORAGE_KEY = 'painless.user';
@@ -96,6 +105,22 @@ export function logout() {
   setUser(null);
 }
 
+// 手动登出的三段链收敛（Layout 导航栏与 Settings 页两处同构调用）：
+// logout 清缓存+登录态 → invalidate 丢旧账号 viewStack 快照（不清则
+// POP 回退直接渲染旧账号数据、绕过会话内已执行过的守卫）→ navigate
+// 接管当前视图（缺省回首页）。被取代/取消的导航 reject NCE（core
+// 1.15）：吞掉即「停在旧视图」语义。401 处置链不收敛于此——其 navigate
+// 目标带 redirect 且已在 /login 时不导航，条件分支不同（见
+// bindUnauthorizedRedirect）。
+export function logoutAndNavigate(
+  router: RouterInstance<any>,
+  to = '/'
+) {
+  logout();
+  invalidate(router);
+  void navigate(router, to).catch(() => undefined);
+}
+
 // 401 处置链（http 层判「401 且 token 非空」后触发——登录/注册失败的
 // 401 发生在未登录态，token 为空，天然不进来）：登出清场后回跳登录页，
 // 复用 Layout 手动登出的同一套语义（logout 清缓存+登录态 → invalidate
@@ -156,24 +181,22 @@ export async function register(
   return user;
 }
 
-// 按 username 查公开档案：RealWorld 契约 GET profiles/{username}，无需
-// 鉴权（匿名可查），200 返回 {profile}（Author 形状），用户不存在时 404
-// ——非 2xx 由 http 层统一映射为 ff.HTTPError（status/data 可判别），
-// 调用方据此区分「占用 / 可用」。Register 的用户名异步查重正是复用该
-// 端点：200 = 已被占用，404 = 可用（见 util/validators 的
-// usernameAvailable）。路径参数经 fillPath（同 services/article.ts 先例）
-// ：`{username}` 占位符在编译期约束参数集合，运行时逐值
-// encodeURIComponent，用户名里的空格/斜杠/中文不依赖裸插值。尾参 signal
-// 透传给 fetch——被超越的校验轮次可撤销在途请求，与其余只读查询一致。
-export function fetchProfile(
-  username: string,
-  signal?: AbortSignal
-): Promise<Author> {
-  return http
-    .get<{profile: Author}>(
-      fillPath('profiles/{username}', {username}),
-      undefined,
-      {signal}
-    )
-    .then(({profile}) => profile);
+// Settings 页更新当前用户：RealWorld 契约 PUT /user（鉴权，请求体
+// {user: UpdateUser}，200 返回 {user}）。账号身份不变但用户可见面变了
+// ——username/bio/image 嵌在各缓存实体（article.author、comment.author、
+// profileCache）里，旧值会在 staleTime 窗口内被当新鲜命中渲染成过时
+// 数据；与 login/register 同一「先清后 set」链：clearAllCaches 保证
+// setUser 的 change 事件订阅者（Layout 导航）随即发起的新请求从空缓存
+// 出发。返回服务端权威 User（含可能被改写的 username）供视图跳转。
+export async function updateUser(update: UserUpdate): Promise<User> {
+  const {user} = await http.put<{user: User}>('user', {user: update});
+  clearAllCaches();
+  setUser(user);
+  return user;
 }
+
+
+// 按 username 查公开档案已移至 services/profile.ts（档案实体服务，
+// Profile 路由 loader 与 Register 查重共用同一数据源）——auth 模块只
+// 管身份链（登录态、token、账号切变清场）。
+

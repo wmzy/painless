@@ -66,11 +66,38 @@ const newArticle = {
   favoritesCount: 0
 };
 
+// 作者即登录用户本人的文章：删除文章/删除评论用例的作者权入口依赖它
+//（article1/2 的作者是 alice/bob，与登录用户错开）
+const userArticle = {
+  slug: 'e2e-own-article',
+  title: 'Own E2E Article',
+  description: 'Authored by the fixture user.',
+  body: 'Body of the fixture user article.',
+  tagList: [],
+  author: {
+    username: user.username,
+    bio: user.bio,
+    image: user.image,
+    following: false
+  },
+  createdAt: '2026-01-06T00:00:00.000Z',
+  updatedAt: '2026-01-06T00:00:00.000Z',
+  favorited: false,
+  favoritesCount: 0
+};
+
 type Article = typeof article1;
 
 // 路由状态：POST /articles 发布后，后续 GET /articles 的 feed 才包含
-// 新文章——模拟「服务端已写入」的可观测行为
-type ApiState = {published: boolean};
+// 新文章——模拟「服务端已写入」的可观测行为。deletedComments /
+// deletedArticle 让删除端点有可观测效果（重拉列表不再含已删条目）；
+// settings 是当前用户的权威副本（PUT /user 写入，profiles 端点读回）
+type ApiState = {
+  published: boolean;
+  deletedComments?: string[];
+  deletedArticle?: string;
+  settings?: typeof user;
+};
 
 const json = (route: Route, status: number, body: unknown) =>
   route.fulfill({
@@ -84,10 +111,13 @@ const json = (route: Route, status: number, body: unknown) =>
 // 解析 pathname）。未预期的端点回 404，让 mock 缺口在断言处显式暴露
 // 而不是静默挂起。
 async function mockApi(page: Page, state: ApiState) {
+  // 可选状态位归一：调用方只给 {published} 的既有形态不变
+  state.deletedComments ??= [];
+  state.settings ??= {...user};
   const bySlug = (slug: string): Article | undefined =>
-    [article1, article2, ...(state.published ? [newArticle] : [])].find(
-      (a) => a.slug === slug
-    );
+    [article1, article2, userArticle, ...(state.published ? [newArticle] : [])]
+      .filter((a) => a.slug !== state.deletedArticle)
+      .find((a) => a.slug === slug);
 
   await page.route('**/api/**', async (route) => {
     const req = route.request();
@@ -95,15 +125,48 @@ async function mockApi(page: Page, state: ApiState) {
     const api = path.replace(/^\/api/, '');
 
     if (req.method() === 'POST' && api === '/users/login') {
-      return json(route, 200, {user});
+      return json(route, 200, {user: state.settings});
+    }
+    if (req.method() === 'PUT' && api === '/user') {
+      // Settings 更新：请求体 {user: UpdateUser}（password 可省略），
+      // 权威用户照单合并（password 只消费不返回，显式挑字段）——后续
+      // GET /profiles/<新 username> 读回新档案。字段回退用 undefined
+      // 判定而非 ??：应用层把清空 bio/image 归一成显式 null 下发
+      //（services/auth updateUser），?? 会把 null 误当「未提供」回退
+      // 旧值；undefined 才是省略键
+      const {user: update} = req.postDataJSON() as {
+        user: Partial<typeof user> & {password?: string};
+      };
+      const current = state.settings!;
+      const pick = <T,>(next: T | undefined, old: T): T =>
+        next === undefined ? old : next;
+      state.settings = {
+        username: pick(update.username, current.username),
+        email: pick(update.email, current.email),
+        bio: pick(update.bio, current.bio),
+        image: pick(update.image, current.image),
+        token: current.token
+      };
+      return json(route, 200, {user: state.settings});
     }
     if (req.method() === 'GET' && api === '/tags') {
       return json(route, 200, {tags: ['e2e', 'smoke']});
     }
     if (req.method() === 'GET' && api === '/articles') {
-      const articles = state.published
-        ? [newArticle, article1, article2]
-        : [article1, article2];
+      const {searchParams} = new URL(req.url());
+      const all = state.published
+        ? [newArticle, article1, article2, userArticle]
+        : [article1, article2, userArticle];
+      // Profile 页的两个维度按查询参数过滤（fixture 口径：alice 收藏了
+      // bob 的文章）；Home 无 author/favorited 参数照常全量
+      const byAuthor = searchParams.get('author');
+      const byFavorited = searchParams.get('favorited');
+      const articles = all
+        .filter((a) => a.slug !== state.deletedArticle)
+        .filter((a) => !byAuthor || a.author.username === byAuthor)
+        .filter(
+          (a) => !byFavorited || (byFavorited === author.username && a.slug === article2.slug)
+        );
       return json(route, 200, {articles, articlesCount: articles.length});
     }
     if (req.method() === 'POST' && api === '/articles') {
@@ -115,8 +178,9 @@ async function mockApi(page: Page, state: ApiState) {
       return json(route, 201, {article: {...newArticle, ...article}});
     }
 
-    // Article 详情页的 CommentList 订阅评论实体（含一条 fixture 让列表
-    // 渲染出真实条目——空列表扫不到 Avatar/ListItem 的可访问性）
+    // Article 详情页的 CommentList 订阅评论实体（两条 fixture：alice 的
+    // 一条 + 登录用户本人的一条——删除评论用例的作者权入口；空列表扫
+    // 不到 Avatar/ListItem 的可访问性）
     const comments = /^\/articles\/([^/]+)\/comments$/.exec(api);
     if (req.method() === 'GET' && comments) {
       return json(route, 200, {
@@ -130,9 +194,51 @@ async function mockApi(page: Page, state: ApiState) {
             body: 'Fixture comment for the article page.',
             slug: comments[1],
             author
+          },
+          {
+            id: 'c2',
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:00:00.000Z',
+            body: 'My own comment from the fixture user.',
+            slug: comments[1],
+            author: {
+              username: user.username,
+              bio: user.bio,
+              image: user.image,
+              following: false
+            }
           }
-        ]
+        ].filter((c) => !state.deletedComments!.includes(c.id))
       });
+    }
+    const commentDel = /^\/articles\/([^/]+)\/comments\/([^/]+)$/.exec(api);
+    if (req.method() === 'DELETE' && commentDel) {
+      state.deletedComments!.push(commentDel[2]!);
+      return json(route, 200, {});
+    }
+
+    // 档案端点（Profile 路由 loader 与 Register 查重共用）：alice 与
+    // 当前用户（settings 权威副本）命中，其余 404
+    const follow = /^\/profiles\/([^/]+)\/follow$/.exec(api);
+    if (req.method() === 'POST' && follow) {
+      return json(route, 200, {
+        profile: {...author, following: true}
+      });
+    }
+    const profile = /^\/profiles\/([^/]+)$/.exec(api);
+    if (req.method() === 'GET' && profile) {
+      const name = decodeURIComponent(profile[1]!);
+      if (name === author.username) return json(route, 200, {profile: author});
+      if (name === state.settings!.username)
+        return json(route, 200, {
+          profile: {
+            username: state.settings!.username,
+            bio: state.settings!.bio,
+            image: state.settings!.image,
+            following: false
+          }
+        });
+      return json(route, 404, {errors: {profile: ['not found']}});
     }
 
     const favorite = /^\/articles\/([^/]+)\/favorite$/.exec(api);
@@ -155,6 +261,11 @@ async function mockApi(page: Page, state: ApiState) {
       if (!base) return json(route, 404, {errors: {article: ['not found']}});
       return json(route, 200, {article: base});
     }
+    if (req.method() === 'DELETE' && single) {
+      // 删除文章：记为已删（后续 feed/详情端点随之 404/缺位），响应空体 200
+      state.deletedArticle = single[1];
+      return json(route, 200, {});
+    }
 
     return json(route, 404, {errors: {body: [`unmocked ${req.method()} ${api}`]}});
   });
@@ -169,7 +280,10 @@ async function login(page: Page) {
   await page.getByPlaceholder('Password').fill(PASSWORD);
   // 表单提交按钮（button）与导航栏 Login（link）角色不同，天然不冲突
   await page.getByRole('button', {name: 'Login'}).click();
-  await expect(page.getByText(user.username)).toBeVisible();
+  // 导航栏用户名以 link 角色断言：home feed 的 userArticle 卡片作者行
+  // 同样渲染该 username（纯 Text 非 link，见 _shared/AuthorLine），
+  // getByText 裸匹配双命中触发 strict mode；link 角色只命中导航入口
+  await expect(page.getByRole('link', {name: user.username})).toBeVisible();
 }
 
 test('login → browse → favorite → logout', async ({page}) => {
@@ -198,11 +312,14 @@ test('login → browse → favorite → logout', async ({page}) => {
   await expect(favoritedButton).toBeVisible();
   await expect(favoritedButton).toHaveAttribute('aria-pressed', 'true');
 
-  // 登出：导航回到匿名态，本地凭据清除
+  // 登出：导航回到匿名态，本地凭据清除。导航栏用户名以 link 角色断言
+  //（home feed 含 userArticle——作者即登录用户本人的删除用例 fixture，
+  // 卡片作者行同样渲染该 username，getByText 裸匹配会误伤；link 角色
+  // 只命中导航入口）
   await page.getByRole('link', {name: 'Logout'}).click();
   await expect(page.getByRole('link', {name: 'Login'})).toBeVisible();
   await expect(page.getByRole('link', {name: 'Register'})).toBeVisible();
-  await expect(page.getByText(user.username)).toHaveCount(0);
+  await expect(page.getByRole('link', {name: user.username})).toHaveCount(0);
   const stored = await page.evaluate(() => localStorage.getItem('painless.user'));
   expect(stored).toBeNull();
 });
@@ -453,6 +570,142 @@ test('editor blocks unsaved navbar navigation (in-app) until confirmed', async (
 //   匹配不到 `/api/articles?offset=0&limit=10`，恒带 query 的端点要写
 //   `?*`（glob 的 ? 匹配单个非 / 字符，恰好吃掉 URL 的字面 ?）。
 // ---------------------------------------------------------------------------
+
+// Profile 页（RealWorld 规范视图批次）：档案 banner（匿名可见 + follow）
+// × 维度 tabs（?author / ?favorited 两个查询维度）× 404 路由级错误。
+// 档案 mock 见 mockApi 的 profiles 端点（alice 与当前用户命中，其余 404）。
+test('profile page: banner, follow and tab switching between author/favorited feeds', async ({page}) => {
+  await mockApi(page, {published: false});
+
+  // 先登录：follow 是登录态写操作（匿名点击会跳登录），且与档案用户
+  //（alice）身份错开，本人档案分支（Edit Profile Settings）由设置用例覆盖
+  await page.goto('/');
+  await login(page);
+
+  await page.goto(`/profile/${author.username}`);
+
+  // banner：用户名 heading、bio 与 follow 按钮（匿名可查档案）
+  await expect(page.getByRole('heading', {name: author.username})).toBeVisible();
+  await expect(
+    page.getByRole('button', {name: `Follow ${author.username}`})
+  ).toBeVisible();
+
+  // 默认 author 维度：GET /articles?author=alice → 只有 alice 的文章
+  await expect(page.getByRole('heading', {name: article1.title})).toBeVisible();
+  await expect(page.getByRole('heading', {name: article2.title})).toHaveCount(0);
+
+  // follow：乐观翻转 + mock 响应校正（profileCache 写穿）
+  await page.getByRole('button', {name: `Follow ${author.username}`}).click();
+  await expect(
+    page.getByRole('button', {name: `Unfollow ${author.username}`})
+  ).toBeVisible();
+
+  // 切 favorited 维度：查询参数换 ?favorited，列表换 fixture 口径
+  await page.getByRole('tab', {name: 'Favorited Articles'}).click();
+  await expect(page.getByRole('heading', {name: article2.title})).toBeVisible();
+  await expect(page.getByRole('heading', {name: article1.title})).toHaveCount(0);
+
+  // 档案不存在：loader 404 → 路由级 errorComponent（Profile/NotFound）
+  await page.goto('/profile/nobody-here');
+  await expect(
+    page.getByRole('heading', {name: 'Profile not found'})
+  ).toBeVisible();
+  await expect(page.getByText('The profile does not exist.')).toBeVisible();
+});
+
+// Settings 页（RealWorld 规范视图批次）：登录守卫 + 表单更新 + 落点新档案。
+// PUT /user 写 mock 的 settings 权威副本，GET /profiles/<新 username> 读回
+// ——更新链的「服务端已写入」由后续 profile loader 命中体现。
+test('settings: guarded, update redirects to the new profile with synced nav', async ({page}) => {
+  const state: ApiState = {published: false};
+  await mockApi(page, state);
+
+  // 未登录直访：requireLogin 守卫 resolve 期重定向（URL 不落 /settings）
+  await page.goto('/settings');
+  await expect(page).toHaveURL(/\/login\?redirect=/);
+
+  // 登录后经导航进入（redirect 回跳语义由 Login 视图承接，此处走直接导航）
+  await page.goto('/');
+  await login(page);
+  await page.getByRole('link', {name: 'Settings'}).click();
+  await expect(
+    page.getByRole('heading', {name: 'Your Settings'})
+  ).toBeVisible();
+
+  // 表单初值来自当前用户
+  await expect(page.getByPlaceholder('Username')).toHaveValue(user.username);
+  await expect(page.getByPlaceholder('Email')).toHaveValue(user.email);
+  await expect(page.getByPlaceholder('Short bio about you')).toHaveValue(
+    user.bio
+  );
+
+  // 更新用户名 + 简介 → 提交落点新档案（服务端权威 username 编码进路径段）
+  await page.getByPlaceholder('Username').fill('e2e-renamed');
+  await page.getByPlaceholder('Short bio about you').fill('renamed bio');
+  await page.getByRole('button', {name: 'Update Settings'}).click();
+
+  await expect(page).toHaveURL(new RegExp('/profile/e2e-renamed$'));
+  await expect(page.getByRole('heading', {name: 'e2e-renamed'})).toBeVisible();
+  await expect(page.getByText('renamed bio')).toBeVisible();
+  // 导航栏用户名随 auth change 事件换新（Layout 订阅）
+  await expect(page.getByRole('link', {name: 'e2e-renamed'})).toBeVisible();
+  // mock 的 settings 权威副本确实被 PUT 写入（服务器侧断言）
+  expect(state.settings?.username).toBe('e2e-renamed');
+});
+
+// 删除文章/评论（RealWorld 规范视图批次）：作者权入口只在本人内容上
+// 渲染，删除均经 ConfirmDialog 确认；成功后的可观测效果由 mock 的
+// deletedArticle/deletedComments 状态驱动重拉缺位。
+test('author deletes own comment and own article via confirm dialogs', async ({page}) => {
+  const state = {published: false};
+  await mockApi(page, state);
+  await page.goto('/');
+  await login(page);
+
+  // 删评论：评论列表含一条本人评论（fixture c2）与一条他人评论——只有
+  // 本人评论带删除入口；删除后前缀失效重拉，他人评论原样保留
+  await page.goto(`/article/${article1.slug}`);
+  await expect(
+    page.getByText('My own comment from the fixture user.')
+  ).toBeVisible();
+  await expect(page.getByRole('button', {name: 'Delete comment'})).toHaveCount(1);
+  await page.getByRole('button', {name: 'Delete comment'}).click();
+  await expect(page.getByText('Delete comment?')).toBeVisible();
+  await page.getByRole('button', {name: 'Delete', exact: true}).click();
+  await expect(
+    page.getByText('My own comment from the fixture user.')
+  ).toHaveCount(0);
+  await expect(
+    page.getByText('Fixture comment for the article page.')
+  ).toBeVisible();
+
+  // 他人文章：无作者权入口（alice 的文章，当前用户不是作者）
+  await expect(page.getByRole('link', {name: 'Edit Article'})).toHaveCount(0);
+  await expect(page.getByRole('button', {name: 'Delete Article'})).toHaveCount(0);
+
+  // 本人文章：Edit/Delete 入口在位；删除经确认框 → 落首页且列表缺位
+  await page.goto(`/article/${userArticle.slug}`);
+  await expect(
+    page.getByRole('link', {name: 'Edit Article'})
+  ).toBeVisible();
+  await page.getByRole('button', {name: 'Delete Article'}).click();
+  await expect(page.getByText('Delete article?')).toBeVisible();
+  await page.getByRole('button', {name: 'Delete', exact: true}).click();
+
+  await expect(page).toHaveURL(new RegExp('/$'));
+  await expect(
+    page.getByRole('heading', {name: article1.title})
+  ).toBeVisible();
+  await expect(
+    page.getByRole('heading', {name: userArticle.title})
+  ).toHaveCount(0);
+
+  // 已删文章的详情端点：mock 记为已删 → 404 → 路由级 NotFound
+  await page.goto(`/article/${userArticle.slug}`);
+  await expect(
+    page.getByRole('heading', {name: 'Article not found'})
+  ).toBeVisible();
+});
 
 // 断网恢复重验证（useReconnectRevalidate）：Tags 侧栏经 useQuery 订阅
 // tagsCache（key=[]，staleTime 默认 2000ms），window online 事件时对
@@ -999,6 +1252,30 @@ test('a11y: Article 详情页通过 WCAG A/AA 扫描', async ({page}) => {
   ).toBeVisible();
   // 评论条目渲染出来再扫（空态/加载态扫不到列表语义）
   await expect(page.getByText('Fixture comment for the article page.')).toBeVisible();
+
+  expect(await scanA11y(page)).toEqual([]);
+});
+
+test('a11y: Profile 页通过 WCAG A/AA 扫描', async ({page}) => {
+  await mockApi(page, {published: false});
+
+  // 档案 banner + tabs + 文章列表都渲染出来再扫（含 tablist/tab/tabpanel
+  // 语义与卡片可访问性）
+  await page.goto(`/profile/${author.username}`);
+  await expect(page.getByRole('heading', {name: author.username})).toBeVisible();
+  await expect(page.getByRole('heading', {name: article1.title})).toBeVisible();
+
+  expect(await scanA11y(page)).toEqual([]);
+});
+
+test('a11y: Settings 页通过 WCAG A/AA 扫描', async ({page}) => {
+  await mockApi(page, {published: false});
+  await page.goto('/');
+  await login(page);
+  await page.getByRole('link', {name: 'Settings'}).click();
+  await expect(
+    page.getByRole('heading', {name: 'Your Settings'})
+  ).toBeVisible();
 
   expect(await scanA11y(page)).toEqual([]);
 });

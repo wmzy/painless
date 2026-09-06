@@ -14,7 +14,7 @@ import {useMutation} from 'react-toolroom/async';
 
 import * as articleService from '@/services/article';
 import {useEditorData} from '@/services/dataloaders';
-import {articleCache, homeCache} from '@/util/useQuery';
+import {articleCache, homeCache, profileFeedCache} from '@/util/useQuery';
 import {required, applyApiFieldErrors} from '@/util/validators';
 
 // 表单值形状：validate 回调与 handleSubmit 的 values 都由此约束
@@ -102,12 +102,14 @@ export default function Editor() {
     return () => window.removeEventListener('beforeunload', onBeforeUnload);
   }, [form]);
 
-  // 发布/编辑 → 声明式失效：提交成功后整实体失效 homeCache / articleCache
-  // （0.9 起每实体一 cache，前缀即全部条目）。否则 navigate('/') 后
-  // Home / Article 的 loader 在 staleTime 内新鲜命中旧缓存，新发布/编辑
-  // 的文章 2 秒内不出现。失败自动不失效。同 Article 视图的 addComment。
+  // 发布/编辑 → 声明式失效：提交成功后整实体失效 homeCache /
+  // profileFeedCache / articleCache（0.9 起每实体一 cache，前缀即全部
+  // 条目）。否则 navigate('/') 后 Home / Article / Profile 的 loader 在
+  // staleTime 内新鲜命中旧缓存，新发布/编辑的文章 2 秒内不出现（Profile
+  // 的列表投影 key 是 scope×username×分页组合，同 home 投影不可本地推导
+  // 影响集，整实体清）。失败自动不失效。同 Article 视图的 addComment。
   const [save] = useMutation(articleService.saveArticle, {
-    invalidates: [homeCache, articleCache]
+    invalidates: [homeCache, profileFeedCache, articleCache]
   });
 
   const handleSubmit = async (values: {title: string; description: string; body: string; tagList: string[]}) => {

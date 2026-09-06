@@ -69,7 +69,26 @@ vi.mock('@native-router/react', async () => {
       // state.matchedRoute 注释
       matched: [state.matchedRoute],
       index: 0
-    })
+    }),
+    useRouter: () => state.router,
+    // TypedLink 替身：动态段 params 插值成真实 href（作者 Edit 入口的
+    // 可观测契约——/editor/:slug × params 落成目标编辑路径）
+    TypedLink: ({
+      to,
+      params,
+      children,
+      ...rest
+    }: {
+      to: string;
+      params?: Record<string, string>;
+      children?: React.ReactNode;
+    } & Record<string, unknown>) => {
+      const href = Object.entries(params ?? {}).reduce(
+        (acc, [k, v]) => acc.replace(`:${k}`, encodeURIComponent(v)),
+        to
+      );
+      return React.createElement('a', {...rest, href}, children);
+    }
   };
 });
 vi.mock('@native-router/core', () => ({
@@ -82,12 +101,20 @@ vi.mock('@/services/article', () => ({
   favoriteArticle: vi.fn(),
   followAuthor: vi.fn(),
   addComment: vi.fn(),
+  deleteArticle: vi.fn(),
+  deleteComment: vi.fn(),
+  queryProfileFeed: vi.fn(),
   fetchCommentsByTitle: vi.fn(),
   query: vi.fn(),
   findByTitle: vi.fn(),
   fetchTags: vi.fn()
 }));
-vi.mock('@/services/auth', () => ({getCurrentUser: vi.fn()}));
+// Article 视图与 CommentList 都订阅 auth change 事件（作者权按钮的登录态
+// 收敛）：mock 返回「永不变」的退订函数即可
+vi.mock('@/services/auth', () => ({
+  getCurrentUser: vi.fn(),
+  onAuthChange: vi.fn(() => () => undefined)
+}));
 
 import {navigate, refresh} from '@native-router/core';
 
@@ -110,6 +137,8 @@ const getCurrentUserMock = vi.mocked(getCurrentUser);
 const favoriteMock = vi.mocked(articleService.favoriteArticle);
 const followMock = vi.mocked(articleService.followAuthor);
 const addCommentMock = vi.mocked(articleService.addComment);
+const deleteArticleMock = vi.mocked(articleService.deleteArticle);
+const deleteCommentMock = vi.mocked(articleService.deleteComment);
 const fetchCommentsMock = vi.mocked(articleService.fetchCommentsByTitle);
 
 function deferred() {
@@ -502,5 +531,152 @@ describe('评论加载失败：Retry 入口（CommentList 错误态）', () => {
     // refetch 删条目后重拉：第二条 mock 队列被消费，评论上屏
     expect(await screen.findByText('comment after retry')).toBeDefined();
     expect(fetchCommentsMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('Article 作者权（Edit/Delete 入口）', () => {
+  const authorUser = {
+    username: 'alice',
+    email: 'alice@example.com',
+    token: 'jwt',
+    bio: null,
+    image: null
+  };
+
+  it('非作者：不渲染 Edit/Delete 入口', () => {
+    // 默认 getCurrentUser 是 'me'，文章作者是 alice
+    renderView(<ArticleView />);
+
+    expect(screen.queryByRole('link', {name: 'Edit Article'})).toBeNull();
+    expect(screen.queryByRole('button', {name: 'Delete Article'})).toBeNull();
+  });
+
+  it('作者：Edit 链接指向编辑路由，Delete 按钮在位', () => {
+    getCurrentUserMock.mockReturnValue(authorUser);
+    renderView(<ArticleView />);
+
+    expect(
+      screen.getByRole('link', {name: 'Edit Article'}).getAttribute('href')
+    ).toBe('/editor/some-title-1');
+    expect(screen.getByRole('button', {name: 'Delete Article'})).toBeDefined();
+  });
+
+  it('删除：确认框确认后调 deleteArticle 并 navigate 回首页', async () => {
+    getCurrentUserMock.mockReturnValue(authorUser);
+    deleteArticleMock.mockResolvedValueOnce(undefined);
+    renderView(<ArticleView />);
+
+    fireEvent.click(screen.getByRole('button', {name: 'Delete Article'}));
+
+    // 删除不可恢复：确认框先出（确认按钮名与标题同域）
+    expect(await screen.findByText('Delete article?')).toBeDefined();
+    fireEvent.click(screen.getByRole('button', {name: 'Delete'}));
+
+    expect(deleteArticleMock).toHaveBeenCalledWith('some-title-1');
+    await waitFor(() =>
+      expect(navigateMock).toHaveBeenCalledWith(state.router, '/')
+    );
+    expect(screen.queryByText('Delete article?')).toBeNull();
+  });
+
+  it('删除：取消只关框不发请求、不导航', () => {
+    getCurrentUserMock.mockReturnValue(authorUser);
+    renderView(<ArticleView />);
+
+    fireEvent.click(screen.getByRole('button', {name: 'Delete Article'}));
+    fireEvent.click(screen.getByRole('button', {name: 'Cancel'}));
+
+    expect(deleteArticleMock).not.toHaveBeenCalled();
+    expect(navigateMock).not.toHaveBeenCalled();
+    expect(screen.queryByText('Delete article?')).toBeNull();
+  });
+
+  it('删除失败：toast 错误且留在本页（不导航）', async () => {
+    getCurrentUserMock.mockReturnValue(authorUser);
+    deleteArticleMock.mockRejectedValueOnce(new Error('delete failed'));
+    renderView(<ArticleView />);
+
+    fireEvent.click(screen.getByRole('button', {name: 'Delete Article'}));
+    fireEvent.click(await screen.findByRole('button', {name: 'Delete'}));
+
+    expect(await screen.findByText('delete failed')).toBeDefined();
+    expect(navigateMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('删除评论（CommentList）', () => {
+  const ownComment: Comment = {
+    id: 'c1',
+    body: 'my comment',
+    slug: 'some-title-1',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    author: {username: 'me', bio: null, image: null, following: false}
+  };
+  const otherComment: Comment = {
+    ...ownComment,
+    id: 'c2',
+    body: 'someone else',
+    author: {username: 'bob', bio: null, image: null, following: false}
+  };
+
+  it('只给本人评论渲染 Delete 入口', async () => {
+    fetchCommentsMock.mockResolvedValueOnce([ownComment, otherComment]);
+    renderView(<ArticleView />);
+
+    expect(await screen.findByText('my comment')).toBeDefined();
+    expect(screen.getAllByRole('button', {name: 'Delete comment'})).toHaveLength(1);
+  });
+
+  it('确认删除：调 deleteComment(slug, id)，前缀失效后重拉列表', async () => {
+    fetchCommentsMock
+      .mockResolvedValueOnce([ownComment, otherComment])
+      .mockResolvedValueOnce([otherComment]);
+    deleteCommentMock.mockResolvedValueOnce(undefined);
+    renderView(<ArticleView />);
+
+    expect(await screen.findByText('my comment')).toBeDefined();
+
+    fireEvent.click(screen.getByRole('button', {name: 'Delete comment'}));
+    fireEvent.click(await screen.findByRole('button', {name: 'Delete'}));
+
+    expect(deleteCommentMock).toHaveBeenCalledWith('some-title-1', 'c1');
+    // 前缀失效（[commentsCache, slug]）→ 列表经 provider delete 事件
+    // 被动重拉：被删评论消失、他人评论仍在
+    await waitFor(() => expect(fetchCommentsMock).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText('someone else')).toBeDefined();
+    await waitFor(() =>
+      expect(screen.queryByText('my comment')).toBeNull()
+    );
+  });
+
+  it('取消删除：不发请求，评论原样保留', async () => {
+    fetchCommentsMock.mockResolvedValueOnce([ownComment]);
+    renderView(<ArticleView />);
+
+    expect(await screen.findByText('my comment')).toBeDefined();
+
+    fireEvent.click(screen.getByRole('button', {name: 'Delete comment'}));
+    fireEvent.click(screen.getByRole('button', {name: 'Cancel'}));
+
+    expect(deleteCommentMock).not.toHaveBeenCalled();
+    expect(fetchCommentsMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('my comment')).toBeDefined();
+  });
+
+  it('删除失败：toast 错误，评论仍在（失效未发生）', async () => {
+    fetchCommentsMock.mockResolvedValueOnce([ownComment]);
+    deleteCommentMock.mockRejectedValueOnce(new Error('delete failed'));
+    renderView(<ArticleView />);
+
+    expect(await screen.findByText('my comment')).toBeDefined();
+
+    fireEvent.click(screen.getByRole('button', {name: 'Delete comment'}));
+    fireEvent.click(await screen.findByRole('button', {name: 'Delete'}));
+
+    // 失败不失效：列表不重拉、评论不消失；toast 兜底错误上下文
+    expect(await screen.findByText('delete failed')).toBeDefined();
+    expect(fetchCommentsMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('my comment')).toBeDefined();
   });
 });
