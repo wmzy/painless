@@ -1,5 +1,4 @@
-// 公开档案实体服务（Profile loader 与 Register 查重共用数据源）。与 article.ts 同构：
-// 尾参 signal / fillPath / dev-only 校验 schema 包 DEV 三元（见 article.ts）。
+// Profile loader 与 Register 查重共用数据源；与 article.ts 同构。
 import type {Author} from '@/types';
 
 import {fillPath} from 'fetch-fun';
@@ -13,8 +12,7 @@ const schemas: Record<string, unknown> | undefined = import.meta.env.DEV
   ? {profile: envelope('profile', authorSchema)}
   : undefined;
 
-// GET profiles/{username}（匿名可查），200 {profile} / 404 不存在（ff.HTTPError 判别）；
-// Register 查重复用：200 占用 / 404 可用。路径经 fillPath；尾参 signal 透传。
+// 200 {profile} / 404 不存在（ff.HTTPError 判别）；Register 查重复用。
 export function fetchProfile(
   username: string,
   signal?: AbortSignal

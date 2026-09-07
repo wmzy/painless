@@ -2,16 +2,13 @@ import type {StandardSchemaV1} from '@native-router/react';
 // Result 定义在 core namespace；react 1.9 起 StandardSchemaV1 无 namespace 成员，Result 从 core 取。
 import type {StandardSchemaV1 as CoreSchemaV1} from '@native-router/core';
 
-// /editor/:slug params 契约：手写 Standard Schema（不引 schema 库）。
-// resolve 期匹配后、beforeLoad 前运行（守卫/loader 拿 coerce 后值）；失败走全局 RouterError
-//（params/search 段失败走全局，data 段才走路由级 errorComponent）。校验同步。
-
+// 手写 Standard Schema（不引 schema 库）；resolve 期匹配后、beforeLoad 前运行。
+// params/search 段失败走全局 RouterError，data 段才走路由级 errorComponent。
 export type EditorParams = {
   slug: string;
 };
 
-// 读侧：raw string map → trim + 非空校验。trim 后为空（病态输入）报 issue 走
-// ParamsError → NotFound，而非带空 slug 请求。
+// trim 后为空报 issue 走 ParamsError → NotFound，不带空 slug 请求。
 const parseEditorParams = (
   input: unknown
 ): CoreSchemaV1.Result<EditorParams> => {
@@ -33,8 +30,7 @@ export const editorParamsSchema: StandardSchemaV1<unknown, EditorParams> = {
   }
 };
 
-// /profile/:username params 契约：与 editorParamsSchema 同构 trim + 非空校验；
-// 空 username 报 issue 走 ParamsError → RouterError，不带空 username 请求。
+// 与 editorParamsSchema 同构 trim + 非空校验。
 export type ProfileParams = {
   username: string;
 };

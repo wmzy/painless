@@ -59,7 +59,7 @@ export type ArticlePage = {
   articlesCount: Uint;
 };
 
-// GET /articles 的 author/favorited 维度；offset/limit 与 HomeSearch 同口径（key 经 hashArgs 归一）。
+// offset/limit 与 HomeSearch 同口径（key 经 hashArgs 归一）。
 export type ProfileFeedQuery = {
   username: string;
   scope: 'author' | 'favorited';

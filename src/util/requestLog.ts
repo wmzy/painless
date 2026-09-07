@@ -1,5 +1,4 @@
-// dev-only 请求日志环形缓冲：http.ts 的 withLogging 推入事件，DevTool 面板订阅。
-// msg ∈ Request|Response|Error；data 含 url/method 或 url/status/duration 或 url/error/duration。
+// dev-only 请求日志环形缓冲（http.ts 推入，DevTool 面板订阅）。
 import * as ee from '@for-fun/event-emitter';
 
 export type HttpRequestLog = {
@@ -9,7 +8,7 @@ export type HttpRequestLog = {
   data: unknown;
 };
 
-// 保留最近条数：面板一次能回看一轮典型交互即可
+// 面板一次回看一轮典型交互即可。
 const MAX_LOGS = 40;
 
 const emitter = ee.create<['change', []]>();

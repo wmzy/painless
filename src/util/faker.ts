@@ -13,10 +13,7 @@ async function initFaker() {
   initialized = true;
 }
 
-// json-schema-faker 需经 options.extensions 传 faker 实例，@faker 注解才被调用；
-// lorem.paragraphs 用真实换行 \n 连接（与 Article 视图 split('\n') 一致）。
-// maxDepth 16 / minLength 1：jsf 默认 maxDepth=5 超深节点生成 null、纯 string 可含空串，
-// 根因与修复见 decisions.md #7。
+// jsf 需 extensions 传 faker 实例才调 @faker；paragraphs 用 \n 换行；maxDepth/minLength 覆盖默认（超深 null/空串，decisions.md #7）。
 export async function schemaFaker<T = unknown>(schema: unknown): Promise<T> {
   await initFaker();
   const [{generate}, {faker}] = await Promise.all([

@@ -8,9 +8,7 @@ export const DEFAULT_LIMIT = 10;
 
 export type HomeSearch = {
   tag?: string;
-  /** 页偏移，缺省 0 */
   offset: number;
-  /** 页大小，缺省 10 */
   limit: number;
 };
 
@@ -19,7 +17,7 @@ const positiveInt = (v: unknown): number | undefined => {
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : undefined;
 };
 
-// 读侧：URL 输入 → coerce + 补缺省；读/写共用保证契约单点。
+// 读/写共用保证契约单点。
 const parseHomeSearch = (input: unknown): HomeSearch => {
   const raw = (input ?? {}) as Record<string, unknown>;
   const value: HomeSearch = {
@@ -30,8 +28,7 @@ const parseHomeSearch = (input: unknown): HomeSearch => {
   return value;
 };
 
-// 读侧 schema 的 Input 位（只服务链接契约）：offset/limit 放宽 string|number（写入 String() 化后进 query）。
-// 标注后字段拼错/多传编译期报（unknown 会退化为宽松 SearchInput）；validate 恒收 unknown，解析行为不变。
+// Input 位只服务链接契约：offset/limit 放宽 string|number（写入 String() 化）。
 export type HomeSearchInput = {
   tag?: string;
   offset?: string | number;
@@ -46,8 +43,7 @@ export const homeSearchSchema: StandardSchemaV1<HomeSearchInput, HomeSearch> = {
   }
 };
 
-// 写侧由 writeSchema 从读 schema 派生（decisions.md #16）：先经读契约 validate，再抹等于缺省
-// 与 undefined 的键（URL 干净形态 + 往返不变量由库保证）。
+// 从读 schema 派生（decisions.md #16）：先读契约 validate，再抹等于缺省与 undefined 的键。
 export const homeSearchWriteSchema = writeSchema(homeSearchSchema, {
   offset: 0,
   limit: DEFAULT_LIMIT

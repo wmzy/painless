@@ -1,5 +1,4 @@
-// mock 配置纯状态模块（自 mock.ts 抽出，决策见 decisions.md #12）：useQuery.persistEnabled
-// 也读它，从 mock.ts import 会构成 useQuery↔mock 循环。mock.ts re-export 全套。
+// 独立纯状态模块：useQuery.persistEnabled 也读它，从 mock.ts import 会成循环（decisions.md #12）。
 import * as ee from '@for-fun/event-emitter';
 
 const emitter = ee.create();
@@ -17,7 +16,7 @@ export function getMockConfig(key: string): MockConfigValue {
 
 export function setMockConfig(key: string, config: MockConfigValue): void {
   mockConfig = {...mockConfig, [key]: config};
-  // 纯状态写入：mockViewData/useMock 每次请求都调，清缓存只在用户交互点（DevTool 切 when/Refresh/Clear）。
+  // setMockConfig 每次请求都调；清缓存只在用户交互点（DevTool 切 when/Refresh/Clear）。
   ee.emit(emitter, 'change');
 }
 
