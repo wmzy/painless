@@ -1432,3 +1432,47 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
 - **验证**：typecheck + lint:ci（0 error）+ 单测 **371/371**（30 文件）+
   build + size **128.37 KB / 141 KB** 过（相对 #28 基线 +0.11 KB，门控
   接线的正当成本）+ e2e **35/35**。
+
+## 30. http 出口改派生链参数：init 退役，schema 静态烘焙 + phantom 品牌（2026-09-08）
+
+- **背景**：http.ts 的 `init`（`RequestInitish`，signal/headers/schema）
+  实际只有 signal + schema 两个消费方——`applyInit` 手拼 fetch-fun 词汇、
+  一个通用参数装着两个专用指令，且 schema 的 label（`GET <url>`）必须在
+  method+url 同时可见处合成。fetch-fun 升 0.13.0：`validate` 新增 factory
+  形态（校验时收到合并链，可读任意晚挂选项）、`Options.context` 业务槽，
+  label 改由现场派生成为可能。
+- **决定**：
+  - **请求函数第三参 = 派生链**：`get/post/put/del` 默认 `api`，
+    `postRetryable/delRetryable` 默认 `toggleApi`；`RequestInitish`/
+    `applyInit`/`withSchema` 全删。`api`/`toggleApi` 带 phantom symbol
+    品牌（`readonly [apiBrand]: never`，铸点唯一、经 unknown 中转一次，
+    之后品牌随 pipe 的 `this: T` 泛型流转）——`ff.create(...)` 裸链在
+    编译期被拒，auth/401/retry/timeout/mapError 整链不变量从约定升级
+    为类型保证。
+  - **`withDevValidation(o, schema)`**：DEV 响应校验烘焙进链，label 由
+    validate factory 在 fetch 时读合并链的 url/method 现场合成——同一
+    烘焙链可服务多个 URL，调用点不再手写 label。生产折叠后恒等返回 o
+    （prod bundle 中 `painless/json-schema` 为 0 字节）。
+  - **`withSignal(o, signal?)`**：每请求瞬态信号挂点（显式存 undefined
+    保调用点契约形状稳定）。
+  - **服务层静态烘焙**：schema 是每端点静态配置——article.ts 模块级
+    `clients` 表（api 基 5 条 + toggleApi 基 2 条），调用点只剩
+    `withSignal(clients.x, signal)`。openapi 演示的孪生 `devValidate`
+    删除，复用 withDevValidation（派生 label 与手写静态 label 逐字一致，
+    既有 message 断言不变）。
+- **环境**：haze-ui 升 1.26.0 后其 optional peer `@tanstack/react-table`
+  （DataTable 顶层 import）缺失——pnpm 默认不装 optional peers，dev
+  server 与 13 个视图测试文件解析 barrel 即失败；已显式安装为
+  dependency（9.2.4）。
+- **测试**：http.test 迁移到派生链形态（headers 走 `api.pipe(ff.header)`、
+  signal 走 withSignal、校验走 withDevValidation）；「schema 不散进
+  Options」用例退役（指令活在 middleware 闭包，结构上不可能漏进 fetch）；
+  「方法语义固定」用例改证运行时兜底——client 参数放行 method 进链，
+  get 后置 pipe 覆盖。article.test/profile.test 的 vi.mock 工厂改
+  importOriginal：只 mock 出口函数，api/withSignal/withDevValidation
+  保持真实、服务层链派生照实执行；断言收窄为
+  `expect.objectContaining({signal})` 钉透传。
+- **验证**：typecheck + lint:ci（0 error）+ 单测 **369/369**（30 文件，
+  相对 #29 的 371 净 -2：退役 1 条 schema-strip 用例、合并 1 条方法
+  语义用例）+ build + size **131.54 KB / 141 KB** 过（增长 +3.17 KB
+  来自 haze-ui 1.26 升级，本次重构 DEV 折叠后零生产字节）。

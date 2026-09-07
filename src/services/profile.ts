@@ -12,6 +12,9 @@ const schemas: Record<string, unknown> | undefined = import.meta.env.DEV
   ? {profile: envelope('profile', authorSchema)}
   : undefined;
 
+// schema 静态烘焙进链；signal 每请求经 withSignal 挂载（同 article.ts）。
+const profileClient = http.withDevValidation(http.api, schemas?.profile);
+
 // 200 {profile} / 404 不存在（ff.HTTPError 判别）；Register 查重复用。
 export function fetchProfile(
   username: string,
@@ -21,7 +24,7 @@ export function fetchProfile(
     .get<{profile: Author}>(
       fillPath('profiles/{username}', {username}),
       undefined,
-      {signal, schema: schemas?.profile}
+      http.withSignal(profileClient, signal)
     )
     .then(({profile}) => profile);
 }

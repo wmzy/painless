@@ -2,9 +2,14 @@ import {describe, it, expect, vi, beforeEach} from 'vitest';
 
 import * as article from '@/services/article';
 
-vi.mock('@/util/http', () => ({
+// 只 mock 传输出口：api/toggleApi/withSignal/withDevValidation 保持真实，
+// 服务层的链派生（schema 静态烘焙 + signal 每请求挂载）照实执行，
+// 断言经 objectContaining 钉住落在 get 第三参上的 signal。
+vi.mock('@/util/http', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/util/http')>()),
   get: vi.fn(),
   post: vi.fn(),
+  put: vi.fn(),
   del: vi.fn(),
   postRetryable: vi.fn(),
   delRetryable: vi.fn()
@@ -24,9 +29,7 @@ describe('article service', () => {
 
       const result = await article.query();
 
-      expect(http.get).toHaveBeenCalledWith('articles', undefined, {
-        signal: undefined, schema: expect.any(Object)
-      });
+      expect(http.get).toHaveBeenCalledWith('articles', undefined, expect.objectContaining({signal: undefined}));
       expect(result).toEqual(mockData);
     });
 
@@ -37,9 +40,7 @@ describe('article service', () => {
       const params = {limit: 10, offset: 0, tag: 'react'};
       await article.query(params);
 
-      expect(http.get).toHaveBeenCalledWith('articles', params, {
-        signal: undefined, schema: expect.any(Object)
-      });
+      expect(http.get).toHaveBeenCalledWith('articles', params, expect.objectContaining({signal: undefined}));
     });
 
     it('should forward abort signal to http.get', async () => {
@@ -48,9 +49,7 @@ describe('article service', () => {
 
       await article.query({limit: 10}, controller.signal);
 
-      expect(http.get).toHaveBeenCalledWith('articles', {limit: 10}, {
-        signal: controller.signal, schema: expect.any(Object)
-      });
+      expect(http.get).toHaveBeenCalledWith('articles', {limit: 10}, expect.objectContaining({signal: controller.signal}));
     });
   });
 
@@ -64,7 +63,7 @@ describe('article service', () => {
       expect(http.get).toHaveBeenCalledWith(
         'articles/test-article',
         undefined,
-        {signal: undefined, schema: expect.any(Object)}
+        expect.objectContaining({signal: undefined})
       );
       expect(result).toEqual(mockArticle);
     });
@@ -77,9 +76,7 @@ describe('article service', () => {
 
       await article.findByTitle('a', controller.signal);
 
-      expect(http.get).toHaveBeenCalledWith('articles/a', undefined, {
-        signal: controller.signal, schema: expect.any(Object)
-      });
+      expect(http.get).toHaveBeenCalledWith('articles/a', undefined, expect.objectContaining({signal: controller.signal}));
     });
   });
 
@@ -96,7 +93,7 @@ describe('article service', () => {
       expect(http.get).toHaveBeenCalledWith(
         'articles/test-article/comments',
         undefined,
-        {signal: undefined, schema: expect.any(Object)}
+        expect.objectContaining({signal: undefined})
       );
       expect(result).toEqual(mockComments);
     });
@@ -109,9 +106,7 @@ describe('article service', () => {
 
       const result = await article.fetchTags();
 
-      expect(http.get).toHaveBeenCalledWith('tags', undefined, {
-        signal: undefined, schema: expect.any(Object)
-      });
+      expect(http.get).toHaveBeenCalledWith('tags', undefined, expect.objectContaining({signal: undefined}));
       expect(result).toEqual(mockTags);
     });
 
@@ -121,9 +116,7 @@ describe('article service', () => {
 
       await article.fetchTags(controller.signal);
 
-      expect(http.get).toHaveBeenCalledWith('tags', undefined, {
-        signal: controller.signal, schema: expect.any(Object)
-      });
+      expect(http.get).toHaveBeenCalledWith('tags', undefined, expect.objectContaining({signal: controller.signal}));
     });
   });
 
@@ -142,7 +135,7 @@ describe('article service', () => {
       expect(http.postRetryable).toHaveBeenCalledWith(
         'articles/a/favorite',
         {},
-        {signal: undefined, schema: expect.any(Object)}
+        expect.objectContaining({signal: undefined})
       );
       expect(http.post).not.toHaveBeenCalled();
       expect(result).toEqual(mockArticle);
@@ -153,9 +146,7 @@ describe('article service', () => {
 
       const result = await article.favoriteArticle('a', false);
 
-      expect(http.delRetryable).toHaveBeenCalledWith('articles/a/favorite', {
-        signal: undefined, schema: expect.any(Object)
-      });
+      expect(http.delRetryable).toHaveBeenCalledWith('articles/a/favorite', expect.objectContaining({signal: undefined}));
       expect(http.del).not.toHaveBeenCalled();
       expect(result).toEqual(mockArticle);
     });
@@ -168,7 +159,7 @@ describe('article service', () => {
       expect(http.postRetryable).toHaveBeenCalledWith(
         'profiles/jake/follow',
         {},
-        {signal: undefined, schema: expect.any(Object)}
+        expect.objectContaining({signal: undefined})
       );
       expect(http.post).not.toHaveBeenCalled();
       expect(result).toEqual(mockAuthor);
@@ -179,9 +170,7 @@ describe('article service', () => {
 
       const result = await article.followAuthor('jake', false);
 
-      expect(http.delRetryable).toHaveBeenCalledWith('profiles/jake/follow', {
-        signal: undefined, schema: expect.any(Object)
-      });
+      expect(http.delRetryable).toHaveBeenCalledWith('profiles/jake/follow', expect.objectContaining({signal: undefined}));
       expect(http.del).not.toHaveBeenCalled();
       expect(result).toEqual(mockAuthor);
     });
@@ -197,7 +186,7 @@ describe('article service', () => {
       expect(http.post).toHaveBeenCalledWith(
         'articles/a/comments',
         {comment: {body: 'Nice'}},
-        {signal: undefined, schema: expect.any(Object)}
+        expect.objectContaining({signal: undefined})
       );
       expect(http.postRetryable).not.toHaveBeenCalled();
       expect(result).toEqual(mockComment);
@@ -212,7 +201,7 @@ describe('article service', () => {
       expect(http.post).toHaveBeenCalledWith(
         'articles/a/comments',
         {comment: {body: 'Nice'}},
-        {signal: controller.signal, schema: expect.any(Object)}
+        expect.objectContaining({signal: controller.signal})
       );
     });
   });
@@ -233,7 +222,7 @@ describe('article service', () => {
       expect(http.get).toHaveBeenCalledWith(
         'articles',
         {author: 'alice', offset: 10, limit: 5},
-        {signal: undefined, schema: expect.any(Object)}
+        expect.objectContaining({signal: undefined})
       );
     });
 
@@ -250,7 +239,7 @@ describe('article service', () => {
       expect(http.get).toHaveBeenCalledWith(
         'articles',
         {favorited: 'alice', offset: 0, limit: 10},
-        {signal: undefined, schema: expect.any(Object)}
+        expect.objectContaining({signal: undefined})
       );
     });
   });
@@ -264,9 +253,7 @@ describe('article service', () => {
 
       await expect(article.deleteArticle('a')).resolves.toBeUndefined();
 
-      expect(http.del).toHaveBeenCalledWith('articles/a', {
-        signal: undefined
-      });
+      expect(http.del).toHaveBeenCalledWith('articles/a', expect.objectContaining({signal: undefined}));
       expect(http.delRetryable).not.toHaveBeenCalled();
     });
 
@@ -277,9 +264,7 @@ describe('article service', () => {
         article.deleteComment('a b/c', 'id-1')
       ).resolves.toBeUndefined();
 
-      expect(http.del).toHaveBeenCalledWith('articles/a%20b%2Fc/comments/id-1', {
-        signal: undefined
-      });
+      expect(http.del).toHaveBeenCalledWith('articles/a%20b%2Fc/comments/id-1', expect.objectContaining({signal: undefined}));
     });
 
     it('should forward abort signal on deletions', async () => {
@@ -288,9 +273,7 @@ describe('article service', () => {
 
       await article.deleteArticle('a', controller.signal);
 
-      expect(http.del).toHaveBeenCalledWith('articles/a', {
-        signal: controller.signal
-      });
+      expect(http.del).toHaveBeenCalledWith('articles/a', expect.objectContaining({signal: controller.signal}));
     });
   });
 });

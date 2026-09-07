@@ -2,6 +2,7 @@ import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import * as ff from 'fetch-fun';
 
 import {
+  api,
   get,
   del,
   post,
@@ -9,8 +10,11 @@ import {
   postRetryable,
   delRetryable,
   setTokenGetter,
-  setUnauthorizedHandler
+  setUnauthorizedHandler,
+  withDevValidation,
+  withSignal
 } from '@/util/http';
+import {getRequestLogs, clearRequestLogs} from '@/util/requestLog';
 
 // fetch-fun 的 json reader 通过 res.text() 读取响应体，HTTPError 构造
 // 读取 status/statusText/url，fetchData 检查 res.type，retry 会读
@@ -290,26 +294,13 @@ describe('http utilities', () => {
       fetchMock.mockResolvedValue(mockResponse({data: 'test'}));
 
       // Authorization 由 withAuth 中间件统一接管（每次请求都会重设），
-      // 这里用普通自定义头验证逐个合并逻辑。
-      await get('test', undefined, {
-        headers: {'x-custom': '42'}
-      });
+      // 这里用普通自定义头验证派生链上的 ff.header 合并进基链。
+      await get('test', undefined, api.pipe(ff.header, 'x-custom', '42'));
 
       expect(sentHeaders(fetchMock).get('x-custom')).toBe('42');
       expect(sentHeaders(fetchMock).get('content-type')).toBe(
         'application/json'
       );
-    });
-
-    it('strips the schema directive out of the options (never reaches fetch)', async () => {
-      fetchMock.mockResolvedValue(mockResponse({data: 'ok'}));
-
-      // schema 是校验指令不是请求参数：applyInit 不触碰它，不得散进
-      // Options（原生 fetch 不认识该字段；透传等于把指令当参数发出去）
-      await get('test', undefined, {schema: {type: 'object'}});
-
-      const init = fetchMock.mock.calls[0]![1]!;
-      expect('schema' in init).toBe(false);
     });
 
     it('should append query string when params provided', async () => {
@@ -323,11 +314,11 @@ describe('http utilities', () => {
       );
     });
 
-    it('should forward signal via init', async () => {
+    it('should forward signal via derived chain', async () => {
       fetchMock.mockResolvedValue(mockResponse({data: 'test'}));
       const controller = new AbortController();
 
-      await get('articles', undefined, {signal: controller.signal});
+      await get('articles', undefined, withSignal(api, controller.signal));
 
       // 超时/中止复合信号：controller abort 时复合信号同步中止
       const init = fetchMock.mock.calls[0]![1]!;
@@ -336,15 +327,13 @@ describe('http utilities', () => {
       expect((init.signal!).aborted).toBe(true);
     });
 
-    it('forces the GET method: init 不收 method，误传时运行时以 get 后置覆盖', async () => {
+    it('forces the GET method: 派生链上的 method 被出口后置覆盖', async () => {
       fetchMock.mockResolvedValue(mockResponse({data: 'test'}));
 
       // get 的方法语义由出口固定：调用方换方法会与 schema label
-      // （`GET <url>`）脱节——init 类型 Omit<RequestInitish,'method'>
-      // 在编译期拒绝；这里断链传 method 验证运行时兜底（后置合并，
-      // 真实请求仍是 get，不是调用方误写的 POST）
-      // @ts-expect-error init 不收 method：Omit 收紧，误传应编译期报错
-      await get('articles', undefined, {method: 'POST'});
+      // （`GET <url>`）脱节。client 参数放行 method 进链（品牌只挡
+      // 外来链），运行时由 get 后置 pipe 覆盖——真实请求仍是 get。
+      await get('articles', undefined, api.pipe(ff.method, 'post'));
 
       expect(fetchMock).toHaveBeenCalledWith(
         'https://api.realworld.io/api/articles',
@@ -365,11 +354,11 @@ describe('http utilities', () => {
       );
     });
 
-    it('should forward signal via init', async () => {
+    it('should forward signal via derived chain', async () => {
       fetchMock.mockResolvedValue(mockResponse({success: true}));
       const controller = new AbortController();
 
-      await del('articles/123', {signal: controller.signal});
+      await del('articles/123', withSignal(api, controller.signal));
 
       // 超时/中止复合信号：controller abort 时复合信号同步中止
       const init = fetchMock.mock.calls[0]![1]!;
@@ -546,9 +535,11 @@ describe('http utilities', () => {
       fetchMock.mockImplementation(hangingFetch());
       const controller = new AbortController();
 
-      const outcome = get('articles', undefined, {
-        signal: controller.signal
-      }).catch((e: unknown) => e);
+      const outcome = get(
+        'articles',
+        undefined,
+        withSignal(api, controller.signal)
+      ).catch((e: unknown) => e);
       // 用户主动取消：AbortError 身份原样穿透（不会被误标 TimeoutError）。
       // fetch-fun 0.11.1 起退避期察觉 signal 已中止即停止重试循环——用户
       // 中止不再重放任何一趟（旧版会 1+2 次全部立即失败），单次调用即落定。
@@ -591,10 +582,11 @@ describe('http utilities', () => {
     });
   });
 
-  // dev-only 响应校验（init.schema → fetch-fun validate → util/validate）：
-  // vitest 环境 import.meta.env.DEV 为 true，走真实管线（含 ajv 动态
-  // import）。schema 与 services/article.ts 的用法同构（生成 schema +
-  // envelope 组合），并带 mock 造数口径注解（minItems）验证剔除逻辑。
+  // dev-only 响应校验（withDevValidation → fetch-fun validate factory →
+  // util/validate）：vitest 环境 import.meta.env.DEV 为 true，走真实管线
+  // （含 ajv 动态 import）。schema 与 services/article.ts 的用法同构
+  // （生成 schema + envelope 组合），并带 mock 造数口径注解（minItems）
+  // 验证剔除逻辑。label 由 factory 从合并链现场合成（`GET articles`）。
   describe('response validation', () => {
     const pageSchema = {
       type: 'object',
@@ -621,7 +613,11 @@ describe('http utilities', () => {
         mockResponse({articles: [{title: 42}], articlesCount: 1})
       );
 
-      const error = await get('articles', undefined, {schema: pageSchema}).then(
+      const error = await get(
+        'articles',
+        undefined,
+        withDevValidation(api, pageSchema)
+      ).then(
         () => undefined,
         (e: unknown) => e
       );
@@ -648,7 +644,7 @@ describe('http utilities', () => {
       fetchMock.mockResolvedValue(mockResponse(page));
 
       await expect(
-        get('articles', undefined, {schema: pageSchema})
+        get('articles', undefined, withDevValidation(api, pageSchema))
       ).resolves.toEqual(page);
     });
 
@@ -662,7 +658,7 @@ describe('http utilities', () => {
       fetchMock.mockResolvedValue(mockResponse(lastPage));
 
       await expect(
-        get('articles', undefined, {schema: pageSchema})
+        get('articles', undefined, withDevValidation(api, pageSchema))
       ).resolves.toEqual(lastPage);
     });
 
@@ -672,7 +668,11 @@ describe('http utilities', () => {
         mockResponse({errors: {body: ['is invalid']}}, false)
       );
 
-      const error = await post('articles', {}, {schema: pageSchema}).then(
+      const error = await post(
+        'articles',
+        {},
+        withDevValidation(api, pageSchema)
+      ).then(
         () => undefined,
         (e: unknown) => e
       );
@@ -685,6 +685,27 @@ describe('http utilities', () => {
       fetchMock.mockResolvedValue(mockResponse({whatever: 1}));
 
       await expect(get('articles')).resolves.toEqual({whatever: 1});
+    });
+  });
+
+  // 日志中间件挂在共享基链（withLogging 声明 outer: NORMAL，排序系统
+  // 把它放在兄弟链各自的 retry 之外）：一次调用只记一组事件，重试的
+  // 每次尝试不得在 DevTool 请求日志里刷多行。若将来有人把日志换成匿名
+  // 中间件或在基链上改 pipe 顺序，3 次尝试会推 3 组 Request。
+  describe('request logging placement', () => {
+    it('logs one event set per request, not per retry attempt', async () => {
+      clearRequestLogs();
+      fetchMock.mockResolvedValue(
+        mockResponse({message: 'unavailable'}, false, 503, {
+          'retry-after': '0'
+        })
+      );
+
+      await get('test').catch(() => undefined);
+
+      expect(fetchMock).toHaveBeenCalledTimes(3); // 1 + 2 次重试
+      const msgs = getRequestLogs().map((l) => l.msg);
+      expect(msgs.filter((m) => m.startsWith('Request'))).toHaveLength(1);
     });
   });
 });

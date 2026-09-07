@@ -4,7 +4,10 @@
 // 语义在 util/validators 的 usernameAvailable。
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 
-vi.mock('@/util/http', () => ({
+// 只 mock 传输出口：api/withSignal/withDevValidation 保持真实（同
+// article.test.ts），断言经 objectContaining 钉住 signal。
+vi.mock('@/util/http', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/util/http')>()),
   get: vi.fn()
 }));
 
@@ -33,7 +36,7 @@ describe('profile service', () => {
       const result = await profile.fetchProfile('alice', controller.signal);
 
       // fillPath 已在编译期约束参数集合，这里断言最终 URL 形状与
-      // signal 透传（被超越的校验轮次据此撤销在途请求）。init 还带
+      // signal 透传（被超越的校验轮次据此撤销在途请求）。链上还带
       // DEV 校验 schema（测试环境 import.meta.env.DEV 恒真）——断言只
       // 收窄到 signal 契约，schema 形状由 dev 校验链路自身承担
       expect(http.get).toHaveBeenCalledWith(

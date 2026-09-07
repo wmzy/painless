@@ -66,15 +66,16 @@
   "dependencies": {
     "@for-fun/event-emitter": "^1.1.0",
     "@linaria/core": "^8.2.0",
-    "@native-router/core": "^1.16.2",
-    "@native-router/react": "^1.15.0",
+    "@native-router/core": "^1.17.0",
+    "@native-router/react": "^1.16.0",
+    "@tanstack/react-table": "^9.2.4",
     "date-fns": "^4.4.0",
-    "fetch-fun": "^0.12.2",
-    "haze-ui": "^1.24.1",
+    "fetch-fun": "^0.13.0",
+    "haze-ui": "^1.26.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-f0rm": "^1.1.1",
-    "react-toolroom": "^1.1.0",
+    "react-toolroom": "^1.1.1",
     "react-use-control": "^1.6.0"
   }
 }
