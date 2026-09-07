@@ -1,9 +1,5 @@
-// mock 配置状态（自 mock.ts 抽出）：独立的纯状态模块——useQuery.ts 的
-// persistEnabled 也要读它（always 激活期间经 opts.persist 的 enabled 挂起
-// 镜像写入，语义源自模板旧 attachPersistence，见 docs/decisions.md 第 12
-// 条与第 4 条补记），若从 mock.ts import 会与其 clearAllCaches 依赖构成
-// useQuery↔mock 循环。mock.ts 仍 re-export 全套，DevTool 等既有消费方的
-// import 路径不破。
+// mock 配置纯状态模块（自 mock.ts 抽出，决策见 decisions.md #12）：useQuery.persistEnabled
+// 也读它，从 mock.ts import 会构成 useQuery↔mock 循环。mock.ts re-export 全套。
 import * as ee from '@for-fun/event-emitter';
 
 const emitter = ee.create();
@@ -21,11 +17,7 @@ export function getMockConfig(key: string): MockConfigValue {
 
 export function setMockConfig(key: string, config: MockConfigValue): void {
   mockConfig = {...mockConfig, [key]: config};
-  // 纯状态写入：mockViewData/useMock 每次 loader 运行/请求都会调本函数
-  // 刷新面板条目（携带 location/refresh 闭包），若在此清缓存等于 dev 下
-  // 「凡带 mock 的请求即清空共享缓存」，withCache 的命中全被击穿。清
-  // 缓存只挂在真正的用户交互点：DevTool 切换 when、Refresh 按钮
-  // （mockViewData 的 refresh 闭包）与 CacheView 的 Clear。
+  // 纯状态写入：mockViewData/useMock 每次请求都调，清缓存只在用户交互点（DevTool 切 when/Refresh/Clear）。
   ee.emit(emitter, 'change');
 }
 

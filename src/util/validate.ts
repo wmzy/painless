@@ -1,11 +1,6 @@
-// dev-only 运行时校验执行侧：JSON Schema（@/types/index.schema 生成）
-// → 可定位的错误。生产隔离与 ./faker 同款：本模块只被 DEV 分支内的
-// 动态 import 引用（http.ts 的 Standard Schema 适配器、mock.ts 的
-// always 分支），ajv 与本文件都不会进生产 chunk。
-//
-// issue 形状对齐 Standard Schema v1 的约定（message 字段）——fetch-fun
-// 的 ValidationError 取首个 issue 的 message 当错误文案，所以 message
-// 自带完整定位：请求 + 实例指针 + 期望 + 实际值。
+// dev-only 运行时校验执行侧（JSON Schema → 可定位错误）；仅被 DEV 分支动态 import
+//（ajv 不进生产 chunk，decisions.md #7）。issue 形状对齐 Standard Schema v1：
+// message 自带完整定位（fetch-fun ValidationError 取首个 issue.message 当文案）。
 import type {ValidateFunction} from 'ajv';
 import type Ajv from 'ajv';
 
@@ -28,9 +23,7 @@ export type CheckResult =
 
 let ajv: Ajv | undefined;
 
-// 编译缓存：key 是调用方传入的原 schema 对象（服务层/module 侧恒为
-// 模块级常量，身份稳定），值是「剔除 mock 注解后的 schema + 编译产物」
-//——同一 schema 只付一次 strip + compile 成本。
+// 编译缓存：按原 schema 对象身份，同一 schema 只付一次 strip + compile。
 const cache = new WeakMap<object, {relaxed: object; validate: ValidateFunction}>();
 
 async function entryFor(schema: object) {
@@ -38,9 +31,7 @@ async function entryFor(schema: object) {
   if (!entry) {
     if (!ajv) {
       const {default: Ajv} = await import('ajv');
-      // strict:false：ts-json-schema-generator 会原样输出非标准注解
-      //（@faker/@unique 等），ajv 严格模式会拒之门外；allErrors:true
-      // 一次跑出全部失配点，而不是只报第一个。
+      // strict:false（生成 schema 含非标准注解）+ allErrors:true（一次报全部失配）。
       ajv = new Ajv({allErrors: true, strict: false, logger: false});
     }
     const relaxed = forResponse(schema) as object;
@@ -64,12 +55,8 @@ function actualAt(data: unknown, pointer: string): string {
   return text.length > 80 ? `${text.slice(0, 80)}…` : text;
 }
 
-/**
- * 校验一份数据是否满足 JSON Schema（剔除 mock 生成注解后）。
- * 成功返回 `{value: data}`（Standard Schema v1 成功形状，fetch-fun 的
- * validate 中间件会以它替换响应数据）；失败返回 `{issues}`，由中间件
- * 抛成 `ff.ValidationError`。schema 非对象（如手写桩）视为无契约，放行。
- */
+/** 校验数据是否满足 JSON Schema（剔除 mock 注解）。成功 {value}（Standard Schema v1），
+ * 失败 {issues}（中间件抛 ValidationError）；schema 非对象视为无契约放行。 */
 export async function check(
   schema: unknown,
   data: unknown,

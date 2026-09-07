@@ -1,26 +1,17 @@
 import type {StandardSchemaV1} from '@native-router/react';
-// Result（Success/Failure 判别）定义在 core 的 namespace 声明里；
-// @native-router/react 1.9 起 StandardSchemaV1 是扁平泛型接口（无
-// namespace 成员），Result 需从 core 侧取。
+// Result 定义在 core namespace；react 1.9 起 StandardSchemaV1 无 namespace 成员，Result 从 core 取。
 import type {StandardSchemaV1 as CoreSchemaV1} from '@native-router/core';
 
-// /editor/:slug 路由的 params 契约（@native-router ≥1.9 的 route.params）。
-// 手写 Standard Schema（与 src/types/search.ts 同风格）——模板不为此引入
-// schema 库，同时演示 params 校验对任何标准实现开放。schema 在 resolve
-// 期匹配后、beforeLoad 前运行：守卫与 loader 拿到的已是 coerce 后的值；
-// 校验失败以 ParamsError 经路由器全局 errorHandler（RouterError）呈现
-// （native-router 的通道分工：params/search 段失败走全局，data 段失败
-// 才走路由级 errorComponent）。校验必须同步完成。
+// /editor/:slug params 契约：手写 Standard Schema（不引 schema 库）。
+// resolve 期匹配后、beforeLoad 前运行（守卫/loader 拿 coerce 后值）；失败走全局 RouterError
+//（params/search 段失败走全局，data 段才走路由级 errorComponent）。校验同步。
 
 export type EditorParams = {
   slug: string;
 };
 
-// 读侧核心：matcher 抽出的原始 string map → coerce（trim）+ 校验。
-// slug 即文章路径段（RealWorld 的 GET articles/{title}，e2e 对
-// /article/:title 的注释：:title 即 slug）。URL 解码后的首尾空白不是
-// slug 的一部分，trim 掉；trim 后为空（/editor/%20 之类病态输入）即
-// 非法——报 issue 走 ParamsError → NotFound，而不是带空 slug 去请求。
+// 读侧：raw string map → trim + 非空校验。trim 后为空（病态输入）报 issue 走
+// ParamsError → NotFound，而非带空 slug 请求。
 const parseEditorParams = (
   input: unknown
 ): CoreSchemaV1.Result<EditorParams> => {
@@ -42,10 +33,8 @@ export const editorParamsSchema: StandardSchemaV1<unknown, EditorParams> = {
   }
 };
 
-// /profile/:username 路由的 params 契约：与 editorParamsSchema 同构的
-// trim + 非空校验——URL 解码后的首尾空白不是 username 的一部分，trim
-// 后为空（/profile/%20 之类病态输入）即非法，报 issue 走 ParamsError →
-// RouterError，而不是带空 username 去请求档案。
+// /profile/:username params 契约：与 editorParamsSchema 同构 trim + 非空校验；
+// 空 username 报 issue 走 ParamsError → RouterError，不带空 username 请求。
 export type ProfileParams = {
   username: string;
 };
