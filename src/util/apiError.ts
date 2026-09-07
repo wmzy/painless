@@ -1,7 +1,7 @@
 // RealWorld 错误契约唯一解析点：http 文案与表单回填共用（decisions.md #22）。
 export type ApiFieldErrors = Record<string, string[]>;
 
-export type ParsedApiError = {
+type ParsedApiError = {
   message?: string;
   fieldErrors?: ApiFieldErrors;
 };

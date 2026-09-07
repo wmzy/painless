@@ -6,9 +6,9 @@ import {mockViewData} from './mock';
 import {bindQueryFn, type EntityCache, type QueryFn} from './useQuery';
 
 // 宽松 LoaderCtx：createRoutes 的 Route 成员不接受窄 ctx（1.13 实测，decisions.md #13 补记）。
-export type DataLoader<T> = (ctx: LoaderCtx) => Promise<T>;
+type DataLoader<T> = (ctx: LoaderCtx) => Promise<T>;
 
-export type UseData<T> = {
+type UseData<T> = {
   (opts?: {optional?: false}): T;
   (opts: {optional: true}): T | undefined;
 };

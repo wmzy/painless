@@ -15,7 +15,7 @@ import {useCallback} from 'react';
 import {query} from './article';
 
 // 对齐 RealWorld 契约的默认 limit（GET /articles）。
-export const FEED_LIMIT = 10;
+const FEED_LIMIT = 10;
 
 // 模块级常量让 useRun 的 args 引用稳定（消 dev 内联参数警告）。
 const FIRST_PAGE: [number] = [0];

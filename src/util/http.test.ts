@@ -2,7 +2,6 @@ import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import * as ff from 'fetch-fun';
 
 import {
-  fetchJSON,
   get,
   del,
   post,
@@ -82,71 +81,13 @@ describe('http utilities', () => {
     vi.useRealTimers();
   });
 
-  describe('fetchJSON', () => {
-    it('should make a request with correct headers', async () => {
-      fetchMock.mockResolvedValue(mockResponse({data: 'test'}));
-
-      const result = await fetchJSON('test');
-
-      expect(fetchMock).toHaveBeenCalledWith(
-        'https://api.realworld.io/api/test',
-        expect.anything()
-      );
-      expect(sentHeaders(fetchMock).get('content-type')).toBe(
-        'application/json'
-      );
-      expect(sentHeaders(fetchMock).get('accept')).toBe('application/json');
-      expect(result).toEqual({data: 'test'});
-    });
-
-    it('should merge custom headers', async () => {
-      fetchMock.mockResolvedValue(mockResponse({data: 'test'}));
-
-      // Authorization 由 withAuth 中间件统一接管（每次请求都会重设），
-      // 这里用普通自定义头验证逐个合并逻辑。
-      await fetchJSON('test', {
-        headers: {'x-custom': '42'}
-      });
-
-      expect(sentHeaders(fetchMock).get('x-custom')).toBe('42');
-      expect(sentHeaders(fetchMock).get('content-type')).toBe(
-        'application/json'
-      );
-    });
-
-    it('strips the schema directive out of the merged options (never reaches fetch)', async () => {
-      fetchMock.mockResolvedValue(mockResponse({data: 'ok'}));
-
-      // schema 是校验指令不是请求参数：withInit 解构剥离后不得散进
-      // Options（原生 fetch 不认识该字段；透传等于把指令当参数发出去）
-      await fetchJSON('test', {schema: {type: 'object'}});
-
-      const init = fetchMock.mock.calls[0]![1]!;
-      expect('schema' in init).toBe(false);
-    });
-
-    it('should forward signal to fetch', async () => {
-      fetchMock.mockResolvedValue(mockResponse({data: 'test'}));
-      const controller = new AbortController();
-
-      await fetchJSON('test', {signal: controller.signal});
-
-      // withTimeout 把用户 signal 与超时预算组合成 AbortSignal.any 复合
-      // 信号后传给 fetch，身份会变——验证改为中止联动：controller abort
-      // 时复合信号同步进入 aborted 态（取消语义直通到底）。
-      const init = fetchMock.mock.calls[0]![1]!;
-      expect(init.signal).toBeInstanceOf(AbortSignal);
-      expect((init.signal!).aborted).toBe(false);
-      controller.abort();
-      expect((init.signal!).aborted).toBe(true);
-    });
-
+  describe('error mapping & unauthorized firing', () => {
     it('should throw error when response is not ok', async () => {
       fetchMock.mockResolvedValue(
         mockResponse({errors: {email: ['has already been taken']}}, false)
       );
 
-      await expect(fetchJSON('test')).rejects.toThrow(
+      await expect(get('test')).rejects.toThrow(
         'email has already been taken'
       );
     });
@@ -164,7 +105,7 @@ describe('http utilities', () => {
         )
       );
 
-      await expect(fetchJSON('test')).rejects.toThrow(
+      await expect(get('test')).rejects.toThrow(
         /^email has already been taken; email is invalid; password is too short \(least is 8 characters\)$/
       );
     });
@@ -177,7 +118,7 @@ describe('http utilities', () => {
         )
       );
 
-      await expect(fetchJSON('test')).rejects.toThrow(/^unauthorized$/);
+      await expect(get('test')).rejects.toThrow(/^unauthorized$/);
     });
 
     it('should keep HTTPError identity with status and data after withMessage', async () => {
@@ -185,7 +126,7 @@ describe('http utilities', () => {
         mockResponse({errors: {email: ['has already been taken']}}, false)
       );
 
-      const error = (await fetchJSON('test').catch(
+      const error = (await get('test').catch(
         (e: unknown) => e
       )) as ff.HTTPError;
 
@@ -207,7 +148,7 @@ describe('http utilities', () => {
       response.text = vi.fn().mockResolvedValue('<html>oops</html>');
       fetchMock.mockResolvedValue(response);
 
-      const error = (await fetchJSON('test').catch(
+      const error = (await get('test').catch(
         (e: unknown) => e
       )) as ff.HTTPError;
 
@@ -223,7 +164,7 @@ describe('http utilities', () => {
         mockResponse({message: 'unauthorized'}, false, 401)
       );
 
-      const error = (await fetchJSON('test').catch(
+      const error = (await get('test').catch(
         (e: unknown) => e
       )) as ff.HTTPError;
 
@@ -242,7 +183,7 @@ describe('http utilities', () => {
         mockResponse({message: 'unauthorized'}, false, 401)
       );
 
-      const error = (await fetchJSON('test').catch(
+      const error = (await get('test').catch(
         (e: unknown) => e
       )) as ff.HTTPError;
 
@@ -257,7 +198,7 @@ describe('http utilities', () => {
       setTokenGetter(() => '');
       fetchMock.mockResolvedValue(mockResponse({}, false, 401));
 
-      await fetchJSON('test').catch(() => undefined);
+      await get('test').catch(() => undefined);
 
       // 空串凭据与未登录同义：不触发登出
       expect(handler).not.toHaveBeenCalled();
@@ -275,7 +216,7 @@ describe('http utilities', () => {
       fetchMock.mockResolvedValue(mockResponse({}, false, 401));
 
       await Promise.all(
-        [fetchJSON('a'), fetchJSON('b')].map((p) => p.catch(() => undefined))
+        [get('a'), get('b')].map((p) => p.catch(() => undefined))
       );
 
       expect(handler).toHaveBeenCalledTimes(2);
@@ -289,7 +230,7 @@ describe('http utilities', () => {
       fetchMock.mockResolvedValue(mockResponse({}, false, 401));
 
       // 回调异常被吞掉，401 错误照常抛给调用方
-      await expect(fetchJSON('test')).rejects.toBeInstanceOf(ff.HTTPError);
+      await expect(get('test')).rejects.toBeInstanceOf(ff.HTTPError);
     });
 
     it('should not invoke unauthorized handler on non-401 failures', async () => {
@@ -300,7 +241,7 @@ describe('http utilities', () => {
         mockResponse({errors: {email: ['has already been taken']}}, false)
       );
 
-      await expect(fetchJSON('test')).rejects.toBeInstanceOf(ff.HTTPError);
+      await expect(get('test')).rejects.toBeInstanceOf(ff.HTTPError);
 
       expect(handler).not.toHaveBeenCalled();
     });
@@ -311,7 +252,7 @@ describe('http utilities', () => {
       setTokenGetter(() => 'tok123');
       fetchMock.mockResolvedValue(mockResponse({data: 'test'}));
 
-      await fetchJSON('test');
+      await get('test');
 
       expect(handler).not.toHaveBeenCalled();
     });
@@ -327,6 +268,48 @@ describe('http utilities', () => {
         'https://api.realworld.io/api/articles',
         expect.objectContaining({method: 'get'})
       );
+    });
+
+    it('should make a request with correct headers', async () => {
+      fetchMock.mockResolvedValue(mockResponse({data: 'test'}));
+
+      const result = await get('test');
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        'https://api.realworld.io/api/test',
+        expect.anything()
+      );
+      expect(sentHeaders(fetchMock).get('content-type')).toBe(
+        'application/json'
+      );
+      expect(sentHeaders(fetchMock).get('accept')).toBe('application/json');
+      expect(result).toEqual({data: 'test'});
+    });
+
+    it('should merge custom headers', async () => {
+      fetchMock.mockResolvedValue(mockResponse({data: 'test'}));
+
+      // Authorization 由 withAuth 中间件统一接管（每次请求都会重设），
+      // 这里用普通自定义头验证逐个合并逻辑。
+      await get('test', undefined, {
+        headers: {'x-custom': '42'}
+      });
+
+      expect(sentHeaders(fetchMock).get('x-custom')).toBe('42');
+      expect(sentHeaders(fetchMock).get('content-type')).toBe(
+        'application/json'
+      );
+    });
+
+    it('strips the schema directive out of the options (never reaches fetch)', async () => {
+      fetchMock.mockResolvedValue(mockResponse({data: 'ok'}));
+
+      // schema 是校验指令不是请求参数：applyInit 不触碰它，不得散进
+      // Options（原生 fetch 不认识该字段；透传等于把指令当参数发出去）
+      await get('test', undefined, {schema: {type: 'object'}});
+
+      const init = fetchMock.mock.calls[0]![1]!;
+      expect('schema' in init).toBe(false);
     });
 
     it('should append query string when params provided', async () => {
@@ -346,7 +329,7 @@ describe('http utilities', () => {
 
       await get('articles', undefined, {signal: controller.signal});
 
-      // 同 fetchJSON：验证复合信号与 controller 的中止联动
+      // 超时/中止复合信号：controller abort 时复合信号同步中止
       const init = fetchMock.mock.calls[0]![1]!;
       expect(init.signal).toBeInstanceOf(AbortSignal);
       controller.abort();
@@ -388,7 +371,7 @@ describe('http utilities', () => {
 
       await del('articles/123', {signal: controller.signal});
 
-      // 同 fetchJSON：验证复合信号与 controller 的中止联动
+      // 超时/中止复合信号：controller abort 时复合信号同步中止
       const init = fetchMock.mock.calls[0]![1]!;
       expect(init.signal).toBeInstanceOf(AbortSignal);
       controller.abort();
@@ -655,28 +638,6 @@ describe('http utilities', () => {
       expect(issue.label).toBe('GET articles');
       expect(issue.path).toBe('/articles/0/title');
       expect(validation.data).toEqual({articles: [{title: 42}], articlesCount: 1});
-    });
-
-    it('label 只大写 method，URL 原样（fetchJSON 自带 init.method 的口径）', async () => {
-      // fetchJSON 的 method 来自调用方 init（get/del/post/put 出口的
-      // label 是常量拼接无此问题）：标签应保留 URL 原始大小写——路径段
-      // 大小写是服务器语义，toUpperCase() 整串会改写定位信息
-      fetchMock.mockResolvedValue(
-        mockResponse({articles: [{title: 42}], articlesCount: 1})
-      );
-
-      const error = await fetchJSON('Articles/Feed', {
-        method: 'post',
-        schema: pageSchema
-      }).then(
-        () => undefined,
-        (e: unknown) => e
-      );
-
-      expect(error).toBeInstanceOf(ff.ValidationError);
-      const validation = error as ff.ValidationError;
-      expect(validation.message).toContain('POST Articles/Feed');
-      expect(validation.message).not.toContain('POST ARTICLES/FEED');
     });
 
     it('should resolve untouched when the body matches the schema', async () => {

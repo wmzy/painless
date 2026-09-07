@@ -31,7 +31,7 @@ export const editorParamsSchema: StandardSchemaV1<unknown, EditorParams> = {
 };
 
 // 与 editorParamsSchema 同构 trim + 非空校验。
-export type ProfileParams = {
+type ProfileParams = {
   username: string;
 };
 

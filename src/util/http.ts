@@ -19,7 +19,7 @@ function errorText(data: unknown): string {
 
 // ---- 动态 token 注入 ------------------------------------------------------
 // 不能反向 import auth（循环依赖）：注册供应商，登录/登出只换变量，管道不重建。
-export type TokenGetter = () => string | undefined;
+type TokenGetter = () => string | undefined;
 
 let tokenGetter: TokenGetter = () => undefined;
 
@@ -29,7 +29,7 @@ export function setTokenGetter(getter: TokenGetter) {
 
 // ---- 401 未授权钩子 ------------------------------------------------------
 // 登录/注册自身的 401 在未登录态，不触发。
-export type UnauthorizedHandler = () => void;
+type UnauthorizedHandler = () => void;
 
 let unauthorizedHandler: UnauthorizedHandler = () => undefined;
 
@@ -51,36 +51,28 @@ export type RequestInitish = RequestInit & {
   schema?: unknown;
 };
 
-// ---- 管道工厂：主 client 与 toggle 兄弟 client 同源 -----------------------
+// ---- 管道：主 client 与 toggle 兄弟 client 由无重试基链派生 ---------------
 // 重试策略只能在链声明处给定（fetch-fun 同名中间件直接抛错，不能替换）。
-function createApiClient(retryMethods?: readonly string[]) {
-  return (
-    ff
-      .create({baseUrl: BASE_URL})
-      .pipe(ff.header, 'content-type', 'application/json')
-      .pipe(ff.header, 'accept', 'application/json')
-      // withTimeout 定位 inner:'builtin:retry'：每趟尝试全新预算。
-      .pipe(ff.use, ff.withTimeout(10_000))
-      // 默认白名单把 POST 挡在外（写重放=重复提交）；重试仅瞬态码，4xx 永不重放。
-      .pipe(
-        ff.use,
-        ff.withRetry(2, retryMethods ? {methods: retryMethods} : undefined)
-      )
-      .pipe(ff.totalTimeout, 30_000)
-      // 空凭据自动跳过 Authorization 报头（未登录保持匿名）。
-      .pipe(ff.use, ff.withAuth(() => tokenGetter() ?? '', 'Token'))
-      .pipe(ff.mapError, (e: unknown) => {
-        if (!(e instanceof ff.HTTPError)) return e;
-        if (e.status === 401 && tokenGetter()) fireUnauthorized();
-        return e.withMessage(errorText(e.data) || e.message);
-      })
-  );
-}
+const retryLess = ff
+  .create({baseUrl: BASE_URL})
+  .pipe(ff.header, 'content-type', 'application/json')
+  .pipe(ff.header, 'accept', 'application/json')
+  // timeout 选项：fetch 每趟尝试建全新信号预算（区别于整链 totalTimeout）。
+  .pipe(ff.timeout, 10_000)
+  .pipe(ff.totalTimeout, 30_000)
+  // 空凭据自动跳过 Authorization 报头（未登录保持匿名）。
+  .pipe(ff.use, ff.withAuth(() => tokenGetter() ?? '', 'Token'))
+  .pipe(ff.mapError, (e: unknown) => {
+    if (!(e instanceof ff.HTTPError)) return e;
+    if (e.status === 401 && tokenGetter()) fireUnauthorized();
+    return e.withMessage(errorText(e.data) || e.message);
+  });
 
-const client = createApiClient();
+// 默认白名单把 POST 挡在外（写重放=重复提交）；重试仅瞬态码，4xx 永不重放。
+const client = retryLess.pipe(ff.retry, 2);
 
 // 只服务效果幂等 toggle（favorite/follow）：重复施加收敛同一终态。
-const toggleClient = createApiClient(['POST', 'DELETE']);
+const toggleClient = retryLess.pipe(ff.retry, 2, {methods: ['POST', 'DELETE']});
 
 const requestLogging = () =>
   ff.withLogging((msg: string, data: unknown) => pushRequestLog(msg, data));
@@ -93,14 +85,18 @@ const toggleBase = import.meta.env.DEV
   ? toggleClient.pipe(ff.use, requestLogging())
   : toggleClient;
 
-function withInit(o: ff.Options, init?: RequestInitish) {
-  const {headers, ...rest} = init ?? {};
-  delete rest.schema;
-  let result = {...o, ...rest} as ff.Options;
-  for (const [name, value] of Object.entries(headers ?? {})) {
-    result = ff.header(result, name, value);
+// init 可选扩展经对应 pipe 合入（signal/headers）；schema 不进
+// options——校验指令只由 withSchema 消费。
+function applyInit<T extends ff.Options>(o: T, init?: RequestInitish): T {
+  let r = o;
+  if (init?.signal) r = ff.signal(r, init.signal);
+  const headers = init?.headers;
+  if (headers) {
+    for (const [name, value] of Object.entries(headers)) {
+      r = ff.header(r, name, value) as T;
+    }
   }
-  return result;
+  return r;
 }
 
 // ajv 经分支内动态 import 进入，DEV 折叠后零生产字节（decisions.md #7）。
@@ -123,33 +119,20 @@ function withSchema<T extends ff.Options>(
   label: string
 ): T {
   const schema = init?.schema;
-  if (!import.meta.env.DEV || !schema) return o;
-  return ff.validate(o, responseSchema(schema, label)) as unknown as T;
+  return import.meta.env.DEV && schema
+    ? (ff.validate(o, responseSchema(schema, label)) as unknown as T)
+    : o;
 }
 
 // 显式标注可命名类型（推断含内部 symbol）；article.openapi.ts 复用同一中间件链。
 export const api: ff.Options & ff.Pipe = baseClient;
-
-export function fetchJSON<T = unknown>(
-  url: string,
-  init?: RequestInitish
-): Promise<T> {
-  const o = withSchema(
-    ff.url(withInit(baseClient, init), url),
-    init,
-    // 只大写 method，URL 原样（路径段大小写是服务器语义）。
-    `${(init?.method ?? 'GET').toUpperCase()} ${url}`
-  );
-  // 双重断言：T 与 ResolveData 互不可证，经 unknown 中转。
-  return ff.fetchJSON<T>(o) as unknown as Promise<T>;
-}
 
 export function get<T = unknown>(
   url: string,
   params?: Record<string, string | number | undefined>,
   init?: Omit<RequestInitish, 'method'>
 ) {
-  let o = ff.url(withInit(baseClient, {...init, method: 'get'}), url);
+  let o = ff.url(ff.method(applyInit(baseClient, init), 'get'), url);
   if (params) {
     // 与 qss 语义一致：undefined 值跳过序列化
     const defined = Object.fromEntries(
@@ -163,7 +146,7 @@ export function get<T = unknown>(
 function delJSON<T>(o: ff.Options, url: string, init?: RequestInitish) {
   return ff.fetchJSON<T>(
     withSchema(
-      ff.url(ff.method(withInit(o, init), 'delete'), url),
+      ff.url(ff.method(applyInit(o, init), 'delete'), url),
       init,
       `DELETE ${url}`
     )
@@ -214,7 +197,7 @@ function sendJSON<T>(
   return ff.fetchJSON<T>(
     withSchema(
       ff.body(
-        ff.method(ff.url(withInit(client, init), url), m),
+        ff.method(ff.url(applyInit(client, init), url), m),
         JSON.stringify(data)
       ),
       init,

@@ -4,7 +4,7 @@ import type Ajv from 'ajv';
 
 import {forResponse} from './jsonSchema';
 
-export type ResponseIssue = {
+type ResponseIssue = {
   /** 定位标签，如 'GET articles' / 'mock articlePage' */
   label: string;
   /** 实例指针（JSON Pointer），如 '/articles/0/title' */
@@ -14,7 +14,7 @@ export type ResponseIssue = {
   schemaPath: string;
 };
 
-export type CheckResult =
+type CheckResult =
   | {value: unknown}
   | {issues: ResponseIssue[]};
 

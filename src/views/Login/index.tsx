@@ -26,7 +26,7 @@ import {required, email, compose, applyApiFieldErrors} from '@/util/validators';
 // requireLogin 守卫写入（见 views/index.tsx）。手写 Standard Schema
 //（同 src/types/search.ts 的做法），非字符串/空串一律丢弃（视为无
 // redirect），Login 落回首页。
-export type LoginSearch = {redirect?: string};
+type LoginSearch = {redirect?: string};
 
 export const loginSearchSchema: StandardSchemaV1<unknown, LoginSearch> = {
   '~standard': {

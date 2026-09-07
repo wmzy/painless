@@ -43,7 +43,7 @@ export type EntityCache<T, K extends unknown[]> = CacheProvider<T, K> & {
 };
 
 // 注册表是 clearAllCaches/DevTool 遍历的唯一事实来源。
-export type CacheRegistryEntry = {
+type CacheRegistryEntry = {
   name: string;
   cache: EntityCache<any, any[]>;
 };
@@ -162,7 +162,7 @@ export function getCache(
   return cache;
 }
 
-export type QueryResult<T> = {
+type QueryResult<T> = {
   /** initData 兜底；声明 initData 的场景收窄为非空 */
   data: T;
   /** 初载中：当前 args in-flight 且无本 args 结果；后台重拉不置 true */

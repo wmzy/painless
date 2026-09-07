@@ -272,7 +272,7 @@ export function StackWarmer() {
 // Router 的 subscribe（listen → 首次 refresh）执行，冷刷新时首个路由
 // data 请求就带着旧 token 发出，它的 401 也要有人接，注册晚了会退化成
 // 纯错误页（auth 模块加载侧因此只保留 token 供应商注册）。
-export function UnauthorizedRedirect() {
+function UnauthorizedRedirect() {
   const router = useRouter();
   useEffect(() => {
     bindUnauthorizedRedirect(router);
@@ -285,7 +285,7 @@ export function UnauthorizedRedirect() {
 // core ≥1.16 的 onDebug/getDebugInfo 只要实例——本 null 探针挂载时把
 // 树内实例登记出去，卸载即撤。DEV 门控：生产构建整枝折叠（routerHost
 // 模块随之被摇掉），与根级 DevTool 的懒加载门控同一手法。
-export function RouterHost() {
+function RouterHost() {
   const router = useRouter();
   useEffect(() => {
     publishRouter(router);

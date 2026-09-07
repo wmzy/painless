@@ -39,8 +39,6 @@ export type Article = {
   favorited: boolean;
 };
 
-export type ArticleList = Article[];
-
 export type ArticleQuery = Partial<{
   offset: number;
   limit: number;

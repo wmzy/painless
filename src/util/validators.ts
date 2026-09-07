@@ -11,7 +11,7 @@ import {fetchProfile} from '@/services/profile';
 import {parseApiError} from './apiError';
 
 // 与 react-f0rm Field 的 validate 回调同形。
-export type Validator = (v: string) => string | undefined;
+type Validator = (v: string) => string | undefined;
 
 export function required(msg = 'This field is required'): Validator {
   return (v) => (v ? undefined : msg);
@@ -41,7 +41,7 @@ export function compose(...validators: Validator[]): Validator {
 
 // ---- 异步校验器 -----------------------------------------------------------
 // meta.signal 在轮次被超越时 abort；被取消轮次即使返回也被 lock 丢弃（库保证）。
-export type AsyncValidator = (
+type AsyncValidator = (
   v: string,
   meta: {signal: AbortSignal}
 ) => Promise<string | undefined>;
