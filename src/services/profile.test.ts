@@ -4,7 +4,7 @@
 // 语义在 util/validators 的 usernameAvailable。
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 
-// 只 mock 传输出口：api/withSignal/withDevValidation 保持真实（同
+// 只 mock 传输出口：api/withSignal/withSchema 保持真实（同
 // article.test.ts），断言经 objectContaining 钉住 signal。
 vi.mock('@/util/http', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/util/http')>()),

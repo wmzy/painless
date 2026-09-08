@@ -11,7 +11,7 @@ import {
   delRetryable,
   setTokenGetter,
   setUnauthorizedHandler,
-  withDevValidation,
+  withSchema,
   withSignal
 } from '@/util/http';
 import {getRequestLogs, clearRequestLogs} from '@/util/requestLog';
@@ -582,11 +582,12 @@ describe('http utilities', () => {
     });
   });
 
-  // dev-only 响应校验（withDevValidation → fetch-fun validate factory →
-  // util/validate）：vitest 环境 import.meta.env.DEV 为 true，走真实管线
-  // （含 ajv 动态 import）。schema 与 services/article.ts 的用法同构
-  // （生成 schema + envelope 组合），并带 mock 造数口径注解（minItems）
-  // 验证剔除逻辑。label 由 factory 从合并链现场合成（`GET articles`）。
+  // dev-only 响应校验（withSchema → context 槽位 → 基链 validate
+  // factory → util/validate）：vitest 环境 import.meta.env.DEV 为 true，
+  // 走真实管线（含 ajv 动态 import）。schema 与 services/article.ts 的
+  // 用法同构（生成 schema + envelope 组合），并带 mock 造数口径注解
+  // （minItems）验证剔除逻辑。label 由 factory 从合并链现场合成
+  // （`GET articles`）。
   describe('response validation', () => {
     const pageSchema = {
       type: 'object',
@@ -616,7 +617,7 @@ describe('http utilities', () => {
       const error = await get(
         'articles',
         undefined,
-        withDevValidation(api, pageSchema)
+        withSchema(api, pageSchema)
       ).then(
         () => undefined,
         (e: unknown) => e
@@ -644,7 +645,7 @@ describe('http utilities', () => {
       fetchMock.mockResolvedValue(mockResponse(page));
 
       await expect(
-        get('articles', undefined, withDevValidation(api, pageSchema))
+        get('articles', undefined, withSchema(api, pageSchema))
       ).resolves.toEqual(page);
     });
 
@@ -658,7 +659,7 @@ describe('http utilities', () => {
       fetchMock.mockResolvedValue(mockResponse(lastPage));
 
       await expect(
-        get('articles', undefined, withDevValidation(api, pageSchema))
+        get('articles', undefined, withSchema(api, pageSchema))
       ).resolves.toEqual(lastPage);
     });
 
@@ -671,7 +672,7 @@ describe('http utilities', () => {
       const error = await post(
         'articles',
         {},
-        withDevValidation(api, pageSchema)
+        withSchema(api, pageSchema)
       ).then(
         () => undefined,
         (e: unknown) => e
@@ -682,6 +683,8 @@ describe('http utilities', () => {
     });
 
     it('should not validate when no schema is provided', async () => {
+      // 未带 schema 的端点（auth/删除等）：基链 validate factory 从 context
+      // 读不到 schema，返回恒等 passthrough——校验槽位零行为
       fetchMock.mockResolvedValue(mockResponse({whatever: 1}));
 
       await expect(get('articles')).resolves.toEqual({whatever: 1});

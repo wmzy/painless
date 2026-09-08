@@ -34,18 +34,17 @@ const schemas: Record<string, unknown> | undefined = import.meta.env.DEV
     }
   : undefined;
 
-// schema 静态烘焙进链（模块级一次，生产折叠后恒等于 api/toggleApi）；
-// signal 是每请求瞬态，调用点经 withSignal 挂载。validate factory 在
-// fetch 时从合并链读 url/method 合成 label——同一烘焙链可服务多个 URL
-//（findByTitle/saveArticle/favoriteArticle 共用 article 两条）。
+// schema 经 withSchema 写入 context 槽位（模块级烘焙一次，生产折叠后
+// 恒等于 api/toggleApi）；validate 中间件已由 http 基链统一挂载（DEV），
+// 调用点只声明数据。signal 是每请求瞬态，经 withSignal 挂载。
 const clients = {
-  list: http.withDevValidation(http.api, schemas?.list),
-  article: http.withDevValidation(http.api, schemas?.article),
-  comments: http.withDevValidation(http.api, schemas?.comments),
-  tags: http.withDevValidation(http.api, schemas?.tags),
-  comment: http.withDevValidation(http.api, schemas?.comment),
-  toggleArticle: http.withDevValidation(http.toggleApi, schemas?.article),
-  toggleProfile: http.withDevValidation(http.toggleApi, schemas?.profile)
+  list: http.withSchema(http.api, schemas?.list),
+  article: http.withSchema(http.api, schemas?.article),
+  comments: http.withSchema(http.api, schemas?.comments),
+  tags: http.withSchema(http.api, schemas?.tags),
+  comment: http.withSchema(http.api, schemas?.comment),
+  toggleArticle: http.withSchema(http.toggleApi, schemas?.article),
+  toggleProfile: http.withSchema(http.toggleApi, schemas?.profile)
 };
 
 export function query(

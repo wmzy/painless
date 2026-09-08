@@ -27,11 +27,11 @@ importers:
         specifier: ^4.4.0
         version: 4.4.0
       fetch-fun:
-        specifier: ^0.13.0
-        version: 0.13.0
+        specifier: ^0.14.0
+        version: 0.14.0
       haze-ui:
         specifier: ^1.26.0
-        version: 1.26.0(@tanstack/react-table@9.2.4(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react-f0rm@1.1.1(react@19.2.8)(zod@4.5.4))(react@19.2.8)
+        version: 1.26.0(@tanstack/react-table@9.2.4(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react-f0rm@1.2.0(react@19.2.8)(zod@4.5.4))(react@19.2.8)
       react:
         specifier: ^19.2.8
         version: 19.2.8
@@ -39,8 +39,8 @@ importers:
         specifier: ^19.2.8
         version: 19.2.8(react@19.2.8)
       react-f0rm:
-        specifier: ^1.1.1
-        version: 1.1.1(react@19.2.8)(zod@4.5.4)
+        specifier: ^1.2.0
+        version: 1.2.0(react@19.2.8)(zod@4.5.4)
       react-toolroom:
         specifier: ^1.1.1
         version: 1.1.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -1456,8 +1456,8 @@ packages:
     engines: {node: '>=6.0.0'}
     hasBin: true
 
-  bidi-js@1.0.3:
-    resolution: {integrity: sha512-RKshQI1R3YQ+n9YJz2QQ147P66ELpa1FQEg20Dk8oW9t2KgLbpDLLp9aGZ7y8WHSshDknG0bknqGw5/tyCs5tw==}
+  bidi-js@1.1.0:
+    resolution: {integrity: sha512-fX1Onk0tdVPC7obPWB5EbJ1z7NVhLq4m2xZLq2YXBkxzMXIGRpNMU88n0EPgWseKl12J7zXs7qrDxPK4sRs2fg==}
 
   bl@4.1.0:
     resolution: {integrity: sha512-1W07cM9gS6DcLperZfFSj+bWLtaPGSOHWhPiGzXmvVJbRLdG82sH/Kn8EtW1VqWVA54AKf2h5k5BbnIbwF3h6w==}
@@ -2003,8 +2003,8 @@ packages:
       picomatch:
         optional: true
 
-  fetch-fun@0.13.0:
-    resolution: {integrity: sha512-24d6DH9STAbGAV5YUC8hjU78ONMF1GdQi+mfAq0gUFfmjjiYBnGLlhMPzG4W/PtDvc2oDfWR2604rlxy3ADiUQ==}
+  fetch-fun@0.14.0:
+    resolution: {integrity: sha512-c49hsind4DhUP/cc6Rdbov1uo54Y/zddSx73Ry86c7xup3qbLDskZBtVwoFXBpyszvZ17ktMeUowDZuRohWPIw==}
     engines: {node: '>=20.3'}
 
   fflate@0.8.3:
@@ -2967,8 +2967,8 @@ packages:
     peerDependencies:
       react: ^19.2.8
 
-  react-f0rm@1.1.1:
-    resolution: {integrity: sha512-R8TPBK1KIO9YtU9r0Whvog5vM0mYTW37LOaOw9JHV0HeHrvJYVS8djYW6yiQDHIY15g5CGc2zoVdmkfpz2nINA==}
+  react-f0rm@1.2.0:
+    resolution: {integrity: sha512-neMnUoMNDfcc+a/Cmu8RhYLODziwIb9n5BCWpWMBpLNfJJRxevLk46RFZONu7nqON7ioJKf5OnQu1MrXY2SR/w==}
     peerDependencies:
       react: '>=16.8.0'
       valibot: '>=1.0.0'
@@ -3306,11 +3306,11 @@ packages:
     resolution: {integrity: sha512-yau8yJdTt989Mm0Bd/236QnzEiPf2xLLTqUZRUJOo/3CB078LSwzei343DgtJVmfJKJE3TMINY1u42SQsP6mXw==}
     engines: {node: '>=14.0.0'}
 
-  tldts-core@7.4.11:
-    resolution: {integrity: sha512-CW3WN2rIIE/Of21mulhgnGOwoDyEFNygyIBOONSdyAuSATgMMUCpLeUlB+E8sAwA5xRV9hYPl+kyZ9citHCaKg==}
+  tldts-core@7.4.12:
+    resolution: {integrity: sha512-nYNzS2WRf4QJmjzFFgAxLOBjyBxAGRbCy9PVBPaglcYyYajh40VBn+v5Ngr96ZMc7oM0+aCJdtQnNejvdBnXMQ==}
 
-  tldts@7.4.11:
-    resolution: {integrity: sha512-aBiNayCfTQxuIJBm06M+xR14cYaYlDlSXZbgsnKzKNxDKUVq7KFwTjwBSsb7m9Y5xO8WfPnBc63WaYFMTGlvqw==}
+  tldts@7.4.12:
+    resolution: {integrity: sha512-WylhSDKVeYnWXL3a+vKTaOxjnOeEGw938hImY8zoRWJjRRK/Jp1K+IihBzIONpUmW4e3WmXT6q5FW6vlESVZCA==}
     hasBin: true
 
   to-regex-range@5.0.1:
@@ -3674,7 +3674,7 @@ snapshots:
 
   '@asamuzakjp/dom-selector@8.3.2':
     dependencies:
-      bidi-js: 1.0.3
+      bidi-js: 1.1.0
       css-tree: 3.2.1
       is-potential-custom-element-name: 1.0.1
       lru-cache: 11.5.2
@@ -4846,7 +4846,7 @@ snapshots:
 
   baseline-browser-mapping@2.11.21: {}
 
-  bidi-js@1.0.3:
+  bidi-js@1.1.0:
     dependencies:
       require-from-string: 2.0.2
 
@@ -5521,7 +5521,7 @@ snapshots:
     optionalDependencies:
       picomatch: 4.0.7
 
-  fetch-fun@0.13.0: {}
+  fetch-fun@0.14.0: {}
 
   fflate@0.8.3: {}
 
@@ -5798,13 +5798,13 @@ snapshots:
       function-bind: 1.1.2
     optional: true
 
-  haze-ui@1.26.0(@tanstack/react-table@9.2.4(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react-f0rm@1.1.1(react@19.2.8)(zod@4.5.4))(react@19.2.8):
+  haze-ui@1.26.0(@tanstack/react-table@9.2.4(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react-f0rm@1.2.0(react@19.2.8)(zod@4.5.4))(react@19.2.8):
     dependencies:
       react: 19.2.8
       react-use-control: 1.6.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
     optionalDependencies:
       '@tanstack/react-table': 9.2.4(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      react-f0rm: 1.1.1(react@19.2.8)(zod@4.5.4)
+      react-f0rm: 1.2.0(react@19.2.8)(zod@4.5.4)
     transitivePeerDependencies:
       - react-dom
 
@@ -6600,7 +6600,7 @@ snapshots:
       react: 19.2.8
       scheduler: 0.27.0
 
-  react-f0rm@1.1.1(react@19.2.8)(zod@4.5.4):
+  react-f0rm@1.2.0(react@19.2.8)(zod@4.5.4):
     dependencies:
       '@for-fun/event-emitter': 1.1.0
       react: 19.2.8
@@ -7022,11 +7022,11 @@ snapshots:
 
   tinyrainbow@3.1.1: {}
 
-  tldts-core@7.4.11: {}
+  tldts-core@7.4.12: {}
 
-  tldts@7.4.11:
+  tldts@7.4.12:
     dependencies:
-      tldts-core: 7.4.11
+      tldts-core: 7.4.12
 
   to-regex-range@5.0.1:
     dependencies:
@@ -7058,7 +7058,7 @@ snapshots:
 
   tough-cookie@6.0.2:
     dependencies:
-      tldts: 7.4.11
+      tldts: 7.4.12
 
   tr46@6.0.0:
     dependencies:

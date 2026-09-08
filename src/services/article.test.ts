@@ -2,8 +2,8 @@ import {describe, it, expect, vi, beforeEach} from 'vitest';
 
 import * as article from '@/services/article';
 
-// 只 mock 传输出口：api/toggleApi/withSignal/withDevValidation 保持真实，
-// 服务层的链派生（schema 静态烘焙 + signal 每请求挂载）照实执行，
+// 只 mock 传输出口：api/toggleApi/withSignal/withSchema 保持真实，
+// 服务层的链派生（schema 声明 + signal 每请求挂载）照实执行，
 // 断言经 objectContaining 钉住落在 get 第三参上的 signal。
 vi.mock('@/util/http', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/util/http')>()),

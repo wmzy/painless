@@ -1476,6 +1476,20 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
   相对 #29 的 371 净 -2：退役 1 条 schema-strip 用例、合并 1 条方法
   语义用例）+ build + size **131.54 KB / 141 KB** 过（增长 +3.17 KB
   来自 haze-ui 1.26 升级，本次重构 DEV 折叠后零生产字节）。
+- **补记（同日）**：validate 挂载点上移共享基链（withDevValidation →
+  withSchema）。原方案逐端点烘焙校验中间件（schema 静态进链）；新方案
+  validate 与 withLogging 同法在 DEV 接进共享基链（`validated`，生产折叠
+  恒等 logged），调用点只经 `withSchema(o, schema)` 把 schema 写入
+  `Options.context` 业务槽（fetch-fun 文档钦点的 validate-factory 用法），
+  factory 在 fetch 时从完全合并链读回 schema、由 url/method 现场合成
+  label。收益：烘焙点从「每端点一条链」收敛为「基链一处」，toggle 与
+  openapi 通道自动获得校验；无 schema 端点（auth/删除）走恒等
+  passthrough schema——factory 按库契约必须返回 Standard Schema，恒等
+  schema 让校验槽位零行为（http.test「未带 schema」用例钉住）。行为
+  等价：validate 槽位由 data 中间件在最终 2xx 响应上消费一次、非 HTTP
+  错误不进重试白名单，挂接位置不参与中间件排序。withSchema 与同批退役
+  的 init 通道成员同名不复——语义已是「声明响应 schema」，不再是散装
+  指令槽位。
 
 ## 31. API 宿主切换 + spec 2.0 契约对齐（2026-09-08）
 

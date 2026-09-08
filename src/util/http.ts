@@ -72,13 +72,61 @@ const logged = import.meta.env.DEV
   ? retryLess.pipe(ff.use, requestLogging())
   : retryLess;
 
+// ---- DEV 响应校验：validate 与日志同法挂共享基链（DEV 才接线） -----------
+// schema 不再逐端点烘焙进链：调用点经 withSchema 把 schema 写入
+// Options.context 业务槽（fetch-fun 文档钦点的 validate-factory 用法），
+// factory 在 fetch 时收到完全合并的链——从 context 读 schema、从
+// url/method 现场合成 label（`GET <url>`），同一基链服务全部 URL。
+// 契约约束：factory 必须返回 Standard Schema，未带 schema 的端点（auth、
+// 删除等）返回恒等 schema，校验槽位零行为。validate 是独立 symbol 槽，
+// 由 data 中间件在最终 2xx 响应上消费一次（非 HTTP 错误不进重试白名单），
+// 挂接位置不参与中间件排序。ajv 经 validate 函数内的分支动态 import
+// 进入，DEV 折叠后零生产字节（decisions.md #7）。
+const passthroughSchema: ff.StandardSchema = {
+  '~standard': {
+    version: 1,
+    vendor: 'painless/passthrough',
+    validate: (value: unknown) => ({value})
+  }
+};
+
+function responseSchema(schema: unknown, label: string): ff.StandardSchema {
+  return {
+    '~standard': {
+      version: 1,
+      vendor: 'painless/json-schema',
+      validate: async (value: unknown) => {
+        const {check} = await import('./validate');
+        return check(schema, value, label);
+      }
+    }
+  };
+}
+
+// factory 参数保持烘焙链类型（F 泛型约束要求），运行时实收完全合并链
+// （url/method/context 皆在）——收窄一次后合成 label。
+const validation = (client: typeof logged): ff.StandardSchema => {
+  const {context: schema, url, method} = client as typeof client & {
+    context: unknown;
+    url: string;
+    method: string;
+  };
+  if (!schema) return passthroughSchema;
+  return responseSchema(schema, `${method.toUpperCase()} ${url}`);
+};
+
+// 生产折叠后 validated 恒等于 logged（与 logged 同款 DEV 接线）。
+const validated = import.meta.env.DEV
+  ? (ff.validate(logged, validation) as typeof logged)
+  : logged;
+
 // 默认白名单把 POST 挡在外（写重放=重复提交）；重试仅瞬态码，4xx 永不重放。
 // withRetry 是命名入口（builtin:retry）：withAuth 的 inner: 'builtin:retry'
 // 约束从此有锚点，auth 每次重试重取 token（与先前执行顺序一致）。
-const client = logged.pipe(ff.use, ff.withRetry(2));
+const client = validated.pipe(ff.use, ff.withRetry(2));
 
 // 只服务效果幂等 toggle（favorite/follow）：重复施加收敛同一终态。
-const toggleClient = logged.pipe(ff.use, ff.withRetry(2, {methods: ['POST', 'DELETE']}));
+const toggleClient = validated.pipe(ff.use, ff.withRetry(2, {methods: ['POST', 'DELETE']}));
 
 // ---- 链派生品牌 ----------------------------------------------------------
 // 请求函数只接受从 api/toggleApi 派生的链：phantom symbol 属性无法自然
@@ -96,40 +144,14 @@ export type ApiClient = ff.Options & ff.Pipe & {readonly [apiBrand]: never};
 export const api: ApiClient = client as unknown as ApiClient;
 export const toggleApi: ApiClient = toggleClient as unknown as ApiClient;
 
-// ---- DEV 响应校验：validate factory 在 fetch 时读合并链合成 label --------
-// schema 静态烘焙进链（服务层模块级派生一次，生产折叠原样返回 o）；
-// label（`GET <url>`）由 factory 从合并链取 url/method 现场合成——同一
-// 烘焙链服务多个 URL，调用点不再手写 label。validate 与 json reader 是
-// 独立 symbol 槽（validateData 后置消费），烘焙时机不影响取数顺序。
-// ajv 经 validate 函数内的分支动态 import 进入，DEV 折叠后零生产字节
-// （decisions.md #7）。
-function responseSchema(schema: unknown, label: string): ff.StandardSchema {
-  return {
-    '~standard': {
-      version: 1,
-      vendor: 'painless/json-schema',
-      validate: async (value: unknown) => {
-        const {check} = await import('./validate');
-        return check(schema, value, label);
-      }
-    }
-  };
-}
-
-export function withDevValidation<T extends ff.Options>(
-  o: T,
-  schema: unknown
-): T {
+// ---- 响应 schema 声明（Options.context 业务槽） ----------------------------
+// 调用点声明「本链响应须符合该 schema」（DEV 才生效）：schema 写入
+// fetch-fun Options.context，基链上的 validate factory 在 fetch 时从
+// 合并链读回并校验。与 withSignal 同构——每端点静态数据，模块级烘焙
+// 一次；生产折叠恒等返回 o（validate 槽位与 schema 引用一并摇出）。
+export function withSchema<T extends ff.Options>(o: T, schema: unknown): T {
   if (!import.meta.env.DEV || !schema) return o;
-  return ff.validate(
-    o,
-    (client: T) => {
-      // 合并链必有 url/method（请求出口保证），收窄一次合成 label——
-      // factory 参数保持精确 T，收窄不参与签名逆变判断。
-      const {url, method} = client as T & {url: string; method: string};
-      return responseSchema(schema, `${method.toUpperCase()} ${url}`);
-    }
-  ) as unknown as T;
+  return {...o, context: schema};
 }
 
 // ---- per-request signal 挂点 ---------------------------------------------
@@ -144,8 +166,8 @@ export function withSignal<T extends ff.Options>(
 
 // ---- 请求出口 ------------------------------------------------------------
 // 第三个参数默认 api（toggle 出口默认 toggleApi）；需要扩展配置的调用
-// 方一律从 api/toggleApi 派生（withDevValidation/withSignal/任意 ff
-// config 函数），RequestInit 不再有独立通道。
+// 方一律从 api/toggleApi 派生（withSchema/withSignal/任意 ff config
+// 函数），RequestInit 不再有独立通道。
 export function get<T = unknown>(
   url: string,
   params?: Record<string, string | number | undefined>,

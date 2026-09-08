@@ -31,7 +31,7 @@ import {createOpenapi, type JsonBody} from 'fetch-fun/openapi';
 
 import * as ff from 'fetch-fun';
 
-import {api, withDevValidation} from '@/util/http';
+import {api, withSchema} from '@/util/http';
 import {envelope} from '@/util/jsonSchema';
 // 虚拟模块（rollup-plugin-type-as-json-schema）：与手写版同一份生成
 // schema——「类型→schema→mock→运行时校验」全链单点契约。
@@ -87,9 +87,10 @@ function queryAndSignal<T extends ff.Options>(
   };
 }
 
-// dev-only 校验直接复用 http.ts 的 withDevValidation：label 由 validate
-// factory 从合并链的 url/method 现场合成（`GET /articles` 等），本通道
-// 直接组管道、不走 http 出口函数，链派生 helper 照常可用。
+// dev-only 校验声明复用 http.ts 的 withSchema：validate 中间件已由 api
+// 基链统一挂载（DEV），schema 经 context 槽位进入，label 由 factory 从
+// 合并链的 url/method 现场合成（`GET /articles` 等）。本通道直接组管道、
+// 不走 http 出口函数，链派生 helper 照常可用。
 
 // ---- 演示端点（与手写 services/article.ts 对照） --------------------------
 // 形态差异是演示的一部分：手写版解包返回实体（{article} → Article），
@@ -110,7 +111,7 @@ export function query(
       .pipe(typedMethod, 'get')
       .pipe(queryAndSignal(params, signal))
       .pipe(typedJson, 'get')
-      .pipe(withDevValidation, schemas?.list)
+      .pipe(withSchema, schemas?.list)
   );
 }
 
@@ -122,7 +123,7 @@ export function findBySlug(slug: string, signal?: AbortSignal) {
       .pipe(typedMethod, 'get')
       .pipe(queryAndSignal(undefined, signal))
       .pipe(typedJson, 'get')
-      .pipe(withDevValidation, schemas?.article)
+      .pipe(withSchema, schemas?.article)
   );
 }
 
@@ -134,7 +135,7 @@ export function fetchTags(signal?: AbortSignal) {
       .pipe(typedMethod, 'get')
       .pipe(queryAndSignal(undefined, signal))
       .pipe(typedJson, 'get')
-      .pipe(withDevValidation, schemas?.tags)
+      .pipe(withSchema, schemas?.tags)
   );
 }
 
@@ -150,7 +151,7 @@ export function createArticle(
       .pipe(typedJsonBody, 'post', {article})
       .pipe(typedJson, 'post')
       .pipe(queryAndSignal(undefined, signal))
-      .pipe(withDevValidation, schemas?.article)
+      .pipe(withSchema, schemas?.article)
   );
 }
 
@@ -162,7 +163,7 @@ export function favoriteArticle(slug: string, signal?: AbortSignal) {
       .pipe(typedMethod, 'post')
       .pipe(queryAndSignal(undefined, signal))
       .pipe(typedJson, 'post')
-      .pipe(withDevValidation, schemas?.article)
+      .pipe(withSchema, schemas?.article)
   );
 }
 
@@ -174,6 +175,6 @@ export function unfavoriteArticle(slug: string, signal?: AbortSignal) {
       .pipe(typedMethod, 'delete')
       .pipe(queryAndSignal(undefined, signal))
       .pipe(typedJson, 'delete')
-      .pipe(withDevValidation, schemas?.article)
+      .pipe(withSchema, schemas?.article)
   );
 }
