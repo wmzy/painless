@@ -27,8 +27,8 @@ importers:
         specifier: ^4.4.0
         version: 4.4.0
       fetch-fun:
-        specifier: ^0.14.0
-        version: 0.14.0
+        specifier: ^0.15.0
+        version: 0.15.0
       haze-ui:
         specifier: ^1.26.0
         version: 1.26.0(@tanstack/react-table@9.2.4(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react-f0rm@1.2.0(react@19.2.8)(zod@4.5.4))(react@19.2.8)
@@ -2003,8 +2003,8 @@ packages:
       picomatch:
         optional: true
 
-  fetch-fun@0.14.0:
-    resolution: {integrity: sha512-c49hsind4DhUP/cc6Rdbov1uo54Y/zddSx73Ry86c7xup3qbLDskZBtVwoFXBpyszvZ17ktMeUowDZuRohWPIw==}
+  fetch-fun@0.15.0:
+    resolution: {integrity: sha512-CDoGdJJVGBbuGYRSwd1ao//uTF56DasOA7zlTFcGbY6OAjmnlbgSfiGrszuBsxaH55BtzaxHf6HtBWAlJmqNAA==}
     engines: {node: '>=20.3'}
 
   fflate@0.8.3:
@@ -5521,7 +5521,7 @@ snapshots:
     optionalDependencies:
       picomatch: 4.0.7
 
-  fetch-fun@0.14.0: {}
+  fetch-fun@0.15.0: {}
 
   fflate@0.8.3: {}
 

@@ -684,7 +684,8 @@ describe('http utilities', () => {
 
     it('should not validate when no schema is provided', async () => {
       // 未带 schema 的端点（auth/删除等）：基链 validate factory 从 context
-      // 读不到 schema，返回恒等 passthrough——校验槽位零行为
+      // 读不到 schema，返回 undefined 跳过（fetch-fun ≥0.14.1）——
+      // 校验槽位零行为
       fetchMock.mockResolvedValue(mockResponse({whatever: 1}));
 
       await expect(get('articles')).resolves.toEqual({whatever: 1});

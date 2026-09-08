@@ -77,19 +77,12 @@ const logged = import.meta.env.DEV
 // Options.context 业务槽（fetch-fun 文档钦点的 validate-factory 用法），
 // factory 在 fetch 时收到完全合并的链——从 context 读 schema、从
 // url/method 现场合成 label（`GET <url>`），同一基链服务全部 URL。
-// 契约约束：factory 必须返回 Standard Schema，未带 schema 的端点（auth、
-// 删除等）返回恒等 schema，校验槽位零行为。validate 是独立 symbol 槽，
-// 由 data 中间件在最终 2xx 响应上消费一次（非 HTTP 错误不进重试白名单），
-// 挂接位置不参与中间件排序。ajv 经 validate 函数内的分支动态 import
-// 进入，DEV 折叠后零生产字节（decisions.md #7）。
-const passthroughSchema: ff.StandardSchema = {
-  '~standard': {
-    version: 1,
-    vendor: 'painless/passthrough',
-    validate: (value: unknown) => ({value})
-  }
-};
-
+// factory 返回 undefined 即跳过校验（fetch-fun ≥0.14.1）——未带 schema
+// 的端点（auth、删除等）校验槽位零行为；其他非 schema 返回值按库契约
+// TypeError。validate 是独立 symbol 槽，由 data 中间件在最终 2xx 响应
+// 上消费一次（非 HTTP 错误不进重试白名单），挂接位置不参与中间件排序。
+// ajv 经 validate 函数内的分支动态 import 进入，DEV 折叠后零生产字节
+// （decisions.md #7）。
 function responseSchema(schema: unknown, label: string): ff.StandardSchema {
   return {
     '~standard': {
@@ -104,14 +97,15 @@ function responseSchema(schema: unknown, label: string): ff.StandardSchema {
 }
 
 // factory 参数保持烘焙链类型（F 泛型约束要求），运行时实收完全合并链
-// （url/method/context 皆在）——收窄一次后合成 label。
-const validation = (client: typeof logged): ff.StandardSchema => {
+// （url/method/context 皆在）——收窄一次后合成 label；无 schema 返回
+// undefined 跳过。
+const validation = (client: typeof logged): ff.StandardSchema | undefined => {
   const {context: schema, url, method} = client as typeof client & {
     context: unknown;
     url: string;
     method: string;
   };
-  if (!schema) return passthroughSchema;
+  if (!schema) return undefined;
   return responseSchema(schema, `${method.toUpperCase()} ${url}`);
 };
 
@@ -145,18 +139,22 @@ export const api: ApiClient = client as unknown as ApiClient;
 export const toggleApi: ApiClient = toggleClient as unknown as ApiClient;
 
 // ---- 响应 schema 声明（Options.context 业务槽） ----------------------------
-// 调用点声明「本链响应须符合该 schema」（DEV 才生效）：schema 写入
-// fetch-fun Options.context，基链上的 validate factory 在 fetch 时从
-// 合并链读回并校验。与 withSignal 同构——每端点静态数据，模块级烘焙
-// 一次；生产折叠恒等返回 o（validate 槽位与 schema 引用一并摇出）。
+// 调用点声明「本链响应须符合该 schema」（DEV 才生效）：schema 经
+// ff.context 写入 fetch-fun 业务槽（≥0.15.0 条件返回型：默认 unknown
+// 槽位折叠为 T & {context: C}，可无断言回赋 T），基链上的 validate
+// factory 在 fetch 时从合并链读回并校验。与 withSignal 同构——每端点
+// 静态数据，模块级烘焙一次；生产折叠恒等返回 o（validate 槽位与
+// schema 引用一并摇出）。
 export function withSchema<T extends ff.Options>(o: T, schema: unknown): T {
   if (!import.meta.env.DEV || !schema) return o;
-  return {...o, context: schema};
+  return ff.context(o, schema);
 }
 
 // ---- per-request signal 挂点 ---------------------------------------------
 // 信号是每请求瞬态（query 层尾附 AbortSignal，失败/卸载即中止）；
 // 显式存 undefined 保持调用点契约形状稳定，runner 透传无副作用。
+// ff.signal 要求非空 signal：本包装收 undefined 透传，调和签名需 ! 假
+// 断言；展开与之运行时逐字节相同（size A/B 同值），故保留展开。
 export function withSignal<T extends ff.Options>(
   o: T,
   signal?: AbortSignal

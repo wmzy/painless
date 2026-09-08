@@ -1490,6 +1490,17 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
   错误不进重试白名单，挂接位置不参与中间件排序。withSchema 与同批退役
   的 init 通道成员同名不复——语义已是「声明响应 schema」，不再是散装
   指令槽位。
+- **补记（次日，库侧上游化回接）**：两处 workaround 提为库能力后回接——
+  fetch-fun 0.14.1：`validate` factory 返回 `undefined`/`null` 跳过校验
+  （「可选校验端点」一等表达），模板侧恒等 passthrough schema 删除，factory
+  无 schema 直接返回 undefined（其他非 schema 值仍 TypeError，库既有
+  用例钉住）；0.15.0：`context` 条件返回型——默认 unknown 槽位折叠为
+  `T & {context: C}` 可回赋泛型 T，`withSchema` 无断言委托 `ff.context`
+  （手写展开退役，此前 TS2322 不可回赋），窄类型声明保留 Omit 替换语义。
+  两版各自带库侧测试（集成「undefined 跳过」+ 类型「泛型回赋/窄替换」），
+  441/441 绿后单推 main 由 semantic-release 发版。模板验证：typecheck +
+  lint + 373/373 + build + size 132.38 KB（净零）+ dist 无 ajv/passthrough
+  痕迹。
 
 ## 31. API 宿主切换 + spec 2.0 契约对齐（2026-09-08）
 
