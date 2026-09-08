@@ -1,9 +1,11 @@
 import {css} from '@linaria/core';
-import {useSearch, useSetSearch} from '@native-router/react';
+import {useSearch} from '@native-router/react';
 import {TagGroup, TagGroupItem, Title, AsyncSection} from 'haze-ui';
 
 import {useTagsQuery} from '@/services/dataloaders';
-import {homeSearchSchema, homeSearchWriteSchema} from '@/types/search';
+import {homeSearchSchema} from '@/types/search';
+
+import {useSetHomeSearch} from './useSetHomeSearch';
 
 const tagButton = css`
   padding: 0;
@@ -24,7 +26,7 @@ export default function Tags() {
   const {data: tags, loading, error, stale, refetch} = useTagsQuery([]);
 
   const {tag: activeTag} = useSearch(homeSearchSchema);
-  const setSearch = useSetSearch(homeSearchWriteSchema);
+  const setSearch = useSetHomeSearch();
 
   // 点 tag 写入 search（由 Home 的 route loader 重新查询），再点同一个则
   // 清空；undefined 值不是合法的 URL 输入，条件构造而非传 undefined。

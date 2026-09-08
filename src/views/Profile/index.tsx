@@ -50,7 +50,7 @@ export default function Profile() {
   // 必须给非 null 的种子（react-use-control 运行时分派：显式 null 会被
   // 当初始值本身，第二参被忽略——DevTool/PreviewLink 的 `undefined`/
   // 值种子形态）；tab/分页是页内浏览态而非可分享过滤面，不落 URL（与
-  // Home 的 search 语义刻意不同——见其 useSetSearch 注释）。
+  // Home 的 search 语义刻意不同——见 Home 的 useSetHomeSearch 注释）。
   const [tab, , tabCtrl] = useControl<ProfileTab>('author');
   // 分页状态挂 username × tab 维度：换维度时旧偏移不适用（两个维度
   // 的总量不同），换档案（同路由 :username 参数变化不卸载组件——

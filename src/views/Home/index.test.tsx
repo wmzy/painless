@@ -11,7 +11,7 @@
 // 视图换新」链路。
 // 分页链接化批：翻页控件改为 TypedLink 表形态（search 序列化进链接），
 // 断言从「setSearch 载荷」改为「navigate 目标 URL + href 预览」；tag 取消
-// 仍走 useSetSearch 写入口。
+// 仍走写入口（本地 useSetHomeSearch 替代，decisions.md #32）。
 import type {ReactNode} from 'react';
 import type {ArticlePage} from '@/types';
 import type {AppRoutes} from '@/views';
@@ -54,7 +54,8 @@ const state = vi.hoisted(() => ({
   // TagGroup/TagGroupItem、分页走 ButtonLink
   // 替身），计数即卡片渲染次数
   cardRenders: 0,
-  // go/toggleTag 的写入口（useSetSearch）：断言写入的 search 载荷
+  // tag 取消（Chip onClose）的写入口（useSetHomeSearch）：断言写入的
+  // search 载荷与 replace 选项
   setSearch: vi.fn(),
   // refresh mock 的重渲染广播：补丁缓存写穿后调 refresh(router)，真实
   // 链路是「loader 重跑 → withCache 新鲜命中 → useData 换新」，这里用
@@ -185,7 +186,6 @@ vi.mock('@native-router/react', async () => {
       return homeCache.peek!([state.parseSearch(state.search)])?.value ?? state.data;
     },
     useSearch: () => state.parseSearch(state.search),
-    useSetSearch: () => state.setSearch,
     // TypedLink 最小行为复刻：search 序列化进 query（undefined/null 丢弃，
     // 测试值无编码需求），href 预览与点击导航共用同一 target
     TypedLink: ({
@@ -243,6 +243,10 @@ vi.mock('@native-router/core', async (importOriginal) => ({
 }));
 vi.mock('@/components/PreviewLink', () => ({
   default: ({children}: {children?: ReactNode}) => children ?? null
+}));
+// tag 取消（Chip onClose）的写入口：本地替代 hook，断言口 state.setSearch
+vi.mock('./useSetHomeSearch', () => ({
+  useSetHomeSearch: () => state.setSearch
 }));
 // 第 4 批：卡片 favorite 走 service 层，mock 到 service
 vi.mock('@/services/article', () => ({
@@ -395,7 +399,7 @@ describe('Home 视图', () => {
     expect(screen.getByTestId('chip').textContent).toContain('react');
 
     fireEvent.click(screen.getByRole('button', {name: 'Remove tag'}));
-    // 取消筛选（useSetSearch 写入口）：整段 search 清空（写 schema 抹
+    // 取消筛选（useSetHomeSearch 写入口）：整段 search 清空（写 schema 抹
     // 缺省后为空），URL 端为 /；同 tag 点选一样走 replace——取消是
     // 过滤面的收尾，改写当前条目而非新增导航记录
     expect(state.setSearch).toHaveBeenCalledWith({}, {replace: true});

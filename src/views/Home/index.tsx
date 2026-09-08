@@ -1,12 +1,11 @@
 import type {AppRoutes} from '@/views';
 
 import {css} from '@linaria/core';
-import {TypedLink, useSearch, useSetSearch} from '@native-router/react';
+import {TypedLink, useSearch} from '@native-router/react';
 import {Title, Text, Flex, Chip, ButtonLink, useTitle} from 'haze-ui';
 
 import {
   homeSearchSchema,
-  homeSearchWriteSchema,
   DEFAULT_LIMIT,
   type HomeSearchInput
 } from '@/types/search';
@@ -15,6 +14,7 @@ import {useHomeData} from '@/services/dataloaders';
 import {useFavorite} from '@/views/_shared/useFavorite';
 
 import ArticlePreview from './ArticlePreview';
+import {useSetHomeSearch} from './useSetHomeSearch';
 
 import Tags from './Tags';
 
@@ -34,13 +34,14 @@ export default function Home() {
 
   // tag 筛选写入 search：search 变化会触发 route loader 重新查询（见
   // views/index.tsx 的 data），返回后整棵视图以新数据重渲染。写侧经
-  // homeSearchWriteSchema：输入按 URL 侧的字符串形态给出（coerce 交给
-  // schema），等于缺省的字段被抹去——URL 保持 offset 为 0 / limit 为
-  // 缺省时不出现，写入口与读入口共用同一契约。分页已迁移 TypedLink
-  //（见下），本写入口只服务「取消 tag 筛选」——同属过滤面，写点带
-  // {replace: true} 改写当前历史条目（back 不回放筛选态），与分页的
-  // push 语义刻意并存
-  const setSearch = useSetSearch(homeSearchWriteSchema);
+  // useSetHomeSearch（本地替代，decisions.md #32）：库版 useSetSearch
+  // 在绝对 base 下双拼 baseUrl（/painless/painless/），此处用同一批
+  // core 原语以绝对 '/?' 重放写管道——输入按 URL 侧的字符串形态给出
+  // （coerce 交给 homeSearchWriteSchema），等于缺省的字段被抹去，写入口
+  // 与读入口共用同一契约。分页已迁移 TypedLink（见下），本写入口只服务
+  // 「取消 tag 筛选」——同属过滤面，写点带 {replace: true} 改写当前
+  // 历史条目（back 不回放筛选态），与分页的 push 语义刻意并存
+  const setSearch = useSetHomeSearch();
 
   const page = Math.floor(offset / limit) + 1;
   const totalPages = Math.max(1, Math.ceil(articlesCount / limit));

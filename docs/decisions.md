@@ -1507,3 +1507,31 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
   列表逐一吻合 → 详情页打开 → 注册 201 → 发评论 201 且上屏 → 收藏 200
   计数 +1），全程 0 CORS 拦截；prod bundle 中 `api.realworld.io` 引用为
   0。线上需重跑 `pnpm deploy` 生效。
+
+## 32. useSetSearch 双拼 baseUrl：本地 useSetHomeSearch 替代（2026-09-08）
+
+- **背景**：线上（wmzy.github.io/painless）点 tag 后 URL 变
+  `/painless/painless/?tag=api`，路由失配渲染 notFound。根因在库：
+  `useSetSearch`（react 1.16）用 `history.location.pathname`（raw
+  pathname，含 baseUrl 前缀）拼 search 后再喂 `toLocation`（core
+  1.17，`parsePath(baseUrl + to)`）——baseUrl 被拼两次。dev 相对 base
+  （''）下无感，绝对 base（Pages 的 /painless/）下必现；e2e 与单测
+  都跑 dev 形态拦不住。上游 1.16/1.17 无修复（npm 最新即所装版本）。
+- **决定**：
+  - **本地 hook `useSetHomeSearch`**（src/views/Home/useSetHomeSearch.ts，
+    Home tag 取消 + Tags tag 点选两处消费）：用同一批 core 导出原语
+    （parseSearchSync/writeSchema 管线 + navigate/toLocation/
+    reusableEntry/resolveEntry/commitReplace）重放库的写管道，导航目标
+    改绝对 '/?' 拼装（app 的 baseUrl 已剥尾斜杠存 '/painless'，
+    '/painless' + '/?tag=api' 单段前缀）。react 包内部的
+    stringifySearch（非公开导出）六行同形复刻。
+  - **回归单测**（useSetHomeSearch.test.tsx 4 条）：钉「push 目标无
+    双前缀 / 空载荷为 '/' / 缺省抹除 / replace 经 commitReplace 且
+    location 单段前缀」——toLocation 与 parseSearchSync 走真实现，
+    fake router 只给 baseUrl。
+  - **部署形态验证**：VITE_BASE=/painless/ 构建 + vite preview 同 env
+    挂载，浏览器实测 tag 点击 `/painless/` → `/painless/?tag=api`
+    （aria-pressed 生效、无 notFound），再点取消回 `/painless/`，文章
+    链接与点击穿透正常。
+- **验证**：typecheck + lint:ci（0 error）+ 单测 **373/373**（31 文件，
+  +4 回归）+ e2e **35/35** + build。

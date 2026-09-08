@@ -4,7 +4,9 @@
 // config.mts 早已注册 rollup-plugin-type-as-json-schema 且 faker.test/
 // dataloaders 在用；haze-ui 1.21 dist 纯 ESM + vitest inline 后也可真渲染。
 // 本文件 mock '@/services/dataloaders' 的 useTagsQuery（受控 loading/error/
-// data/stale/refetch）与 '@native-router/react' 的 useSearch/useSetSearch，
+// data/stale/refetch）、'@native-router/react' 的 useSearch 与本地
+// './useSetHomeSearch'（tag 点击的写入口——库版 useSetSearch 在绝对 base
+// 下双拼 baseUrl，decisions.md #32），
 // haze-ui 全真渲染（AsyncSection/TagGroup/Title 产物即库本体），断言锁
 // 行为层：tag 点击写 search、active 态 aria-pressed、loading 占位
 //（role=status）、error 告警（role=alert）+ Retry 回调，不耦合 DOM 细节。
@@ -23,7 +25,7 @@ const state = vi.hoisted(() => {
   return {
     // useSearch 的读值（active tag 的唯一来源）
     tag: undefined as string | undefined,
-    // useSetSearch 的写入口（tag 点击的断言口）
+    // useSetHomeSearch 的写入口（tag 点击的断言口）
     setSearch: vi.fn(),
     // refetch 断言口（与 result 内同名成员同一实例，setResult 重建时复用）
     refetch,
@@ -43,8 +45,11 @@ vi.mock('@/services/dataloaders', () => ({
 }));
 
 vi.mock('@native-router/react', () => ({
-  useSearch: () => ({tag: state.tag, offset: 0, limit: 10}),
-  useSetSearch: () => state.setSearch
+  useSearch: () => ({tag: state.tag, offset: 0, limit: 10})
+}));
+
+vi.mock('./useSetHomeSearch', () => ({
+  useSetHomeSearch: () => state.setSearch
 }));
 
 import Tags from './Tags';
@@ -69,7 +74,7 @@ beforeEach(() => {
 });
 
 describe('Tags 侧栏（真实 haze-ui 渲染）', () => {
-  it('正常态：标题 + tag 按钮，点击写入 search（useSetSearch 入口）', () => {
+  it('正常态：标题 + tag 按钮，点击写入 search（useSetHomeSearch 入口）', () => {
     setResult({data: ['react', 'vue']});
     renderView(<Tags />);
 
