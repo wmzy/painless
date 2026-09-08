@@ -379,15 +379,14 @@ describe('Article favorite / follow（写穿缓存 + refresh）', () => {
 
 describe('发评论后刷新评论列表', () => {
   const commentA: Comment = {
-    id: 'c1',
+    id: 1,
     body: 'first comment',
-    slug: 'some-title-1',
     // PastDate（date-time 字符串）：对齐 Article 同款字段与真实 API 契约
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
     author: {username: 'bob', bio: null, image: 'https://example.com/b.png', following: false}
   };
-  const commentB: Comment = {...commentA, id: 'c2', body: 'second comment'};
+  const commentB: Comment = {...commentA, id: 2, body: 'second comment'};
 
   it('提交成功：表单清空、CommentList 绕过缓存重拉并出现新评论', async () => {
     fetchCommentsMock
@@ -507,9 +506,8 @@ describe('发评论后刷新评论列表', () => {
 
 describe('评论加载失败：Retry 入口（CommentList 错误态）', () => {
   const comment: Comment = {
-    id: 'c1',
+    id: 1,
     body: 'comment after retry',
-    slug: 'some-title-1',
     // PastDate（date-time 字符串）：对齐上文 commentA 的同款字段契约
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
@@ -606,16 +604,15 @@ describe('Article 作者权（Edit/Delete 入口）', () => {
 
 describe('删除评论（CommentList）', () => {
   const ownComment: Comment = {
-    id: 'c1',
+    id: 1,
     body: 'my comment',
-    slug: 'some-title-1',
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
     author: {username: 'me', bio: null, image: null, following: false}
   };
   const otherComment: Comment = {
     ...ownComment,
-    id: 'c2',
+    id: 2,
     body: 'someone else',
     author: {username: 'bob', bio: null, image: null, following: false}
   };
@@ -640,7 +637,7 @@ describe('删除评论（CommentList）', () => {
     fireEvent.click(screen.getByRole('button', {name: 'Delete comment'}));
     fireEvent.click(await screen.findByRole('button', {name: 'Delete'}));
 
-    expect(deleteCommentMock).toHaveBeenCalledWith('some-title-1', 'c1');
+    expect(deleteCommentMock).toHaveBeenCalledWith('some-title-1', 1);
     // 前缀失效（[commentsCache, slug]）→ 列表经 provider delete 事件
     // 被动重拉：被删评论消失、他人评论仍在
     await waitFor(() => expect(fetchCommentsMock).toHaveBeenCalledTimes(2));

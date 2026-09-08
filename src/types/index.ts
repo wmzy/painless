@@ -17,13 +17,28 @@ export type Author = {
 };
 
 export type Comment = {
-  // 曾写成 number 与契约漂移（decisions.md #6）：RealWorld 返回 date-time 字符串。
+  // id 是后端整数（spec 2.0 integer）；createdAt/updatedAt 是 date-time
+  // 字符串（曾写成 number 与契约漂移，decisions.md #6）。
   createdAt: PastDate;
-  id: string;
+  id: Uint;
   body: string;
-  slug: Slug;
   author: Author;
   updatedAt: PastDate;
+};
+
+// 列表投影条目：spec 2.0 的列表响应（GET /articles、?author=、?favorited=）
+// 不含 body（仅 detail 返回）。与 Article 字段重复是刻意的——schema 生成
+// 插件不支持交叉类型/Omit，两型各自完整声明。
+export type ArticleSummary = {
+  tagList: Word[];
+  author: Author;
+  description: string;
+  title: Sentence;
+  slug: Slug;
+  createdAt: PastDate;
+  updatedAt: PastDate;
+  favoritesCount: Uint;
+  favorited: boolean;
 };
 
 export type Article = {
@@ -53,7 +68,7 @@ export type ArticlePage = {
    * @maxItems 10
    * @unique true
    */
-  articles: Article[];
+  articles: ArticleSummary[];
   articlesCount: Uint;
 };
 

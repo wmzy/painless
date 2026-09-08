@@ -32,7 +32,7 @@ function mockResponse(
     ok,
     status,
     statusText: ok ? 'OK' : 'Unprocessable Entity',
-    url: 'https://api.realworld.io/api/test',
+    url: 'https://api.realworld.show/api/test',
     type: 'basic' as const,
     headers: new Headers(headers),
     text: vi.fn().mockResolvedValue(JSON.stringify(body))
@@ -269,7 +269,7 @@ describe('http utilities', () => {
       await get('articles');
 
       expect(fetchMock).toHaveBeenCalledWith(
-        'https://api.realworld.io/api/articles',
+        'https://api.realworld.show/api/articles',
         expect.objectContaining({method: 'get'})
       );
     });
@@ -280,7 +280,7 @@ describe('http utilities', () => {
       const result = await get('test');
 
       expect(fetchMock).toHaveBeenCalledWith(
-        'https://api.realworld.io/api/test',
+        'https://api.realworld.show/api/test',
         expect.anything()
       );
       expect(sentHeaders(fetchMock).get('content-type')).toBe(
@@ -336,7 +336,7 @@ describe('http utilities', () => {
       await get('articles', undefined, api.pipe(ff.method, 'post'));
 
       expect(fetchMock).toHaveBeenCalledWith(
-        'https://api.realworld.io/api/articles',
+        'https://api.realworld.show/api/articles',
         expect.objectContaining({method: 'get'})
       );
     });
@@ -349,7 +349,7 @@ describe('http utilities', () => {
       await del('articles/123');
 
       expect(fetchMock).toHaveBeenCalledWith(
-        'https://api.realworld.io/api/articles/123',
+        'https://api.realworld.show/api/articles/123',
         expect.objectContaining({method: 'delete'})
       );
     });
@@ -376,7 +376,7 @@ describe('http utilities', () => {
       await post('articles', data);
 
       expect(fetchMock).toHaveBeenCalledWith(
-        'https://api.realworld.io/api/articles',
+        'https://api.realworld.show/api/articles',
         expect.objectContaining({
           method: 'post',
           body: JSON.stringify(data)
@@ -393,7 +393,7 @@ describe('http utilities', () => {
       await put('articles/123', data);
 
       expect(fetchMock).toHaveBeenCalledWith(
-        'https://api.realworld.io/api/articles/123',
+        'https://api.realworld.show/api/articles/123',
         expect.objectContaining({
           method: 'put',
           body: JSON.stringify(data)

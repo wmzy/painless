@@ -1,6 +1,6 @@
 // 不走 useQuery preset：原子 hooks 组装 offset/limit 分页 + 无限聚合。
 // 刻意不接缓存：翻页状态按 injectable 聚合，卸载整体释放，重进重拉首页。
-import type {Article, ArticlePage} from '@/types';
+import type {ArticlePage, ArticleSummary} from '@/types';
 
 import {
   useError,
@@ -61,7 +61,7 @@ export function useFeed(limit = FEED_LIMIT) {
   };
 
   return {
-    articles: pages.flatMap((page): Article[] => page.articles),
+    articles: pages.flatMap((page): ArticleSummary[] => page.articles),
     total: pages.at(-1)?.articlesCount ?? 0,
     // 区分「首载中」与「已渲染空 feed」（后者走终态）。
     ready: pages.length > 0,

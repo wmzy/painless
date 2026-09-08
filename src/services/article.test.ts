@@ -261,10 +261,10 @@ describe('article service', () => {
       vi.mocked(http.del).mockResolvedValue({});
 
       await expect(
-        article.deleteComment('a b/c', 'id-1')
+        article.deleteComment('a b/c', 1)
       ).resolves.toBeUndefined();
 
-      expect(http.del).toHaveBeenCalledWith('articles/a%20b%2Fc/comments/id-1', expect.objectContaining({signal: undefined}));
+      expect(http.del).toHaveBeenCalledWith('articles/a%20b%2Fc/comments/1', expect.objectContaining({signal: undefined}));
     });
 
     it('should forward abort signal on deletions', async () => {

@@ -94,7 +94,7 @@ type Article = typeof article1;
 // settings 是当前用户的权威副本（PUT /user 写入，profiles 端点读回）
 type ApiState = {
   published: boolean;
-  deletedComments?: string[];
+  deletedComments?: number[];
   deletedArticle?: string;
   settings?: typeof user;
 };
@@ -106,7 +106,14 @@ const json = (route: Route, status: number, body: unknown) =>
     body: JSON.stringify(body)
   });
 
-// 网络层 mock：app 的 API base 是 https://api.realworld.io/api/，
+// 列表投影（spec 2.0）：列表响应不含 body（detail 才有）——所有列表
+// 路由统一剥离，与真实后端同形；dev 校验的 additionalProperties:false
+// 下带 body 会整页失配（mock empty 分支回填 faker 的既有症状）
+const summarize = (a: Article) =>
+  Object.fromEntries(Object.entries(a).filter(([k]) => k !== 'body'));
+const summaries = (as: Article[]) => as.map(summarize);
+
+// 网络层 mock：app 的 API base 是 https://api.realworld.show/api/，
 // page.route 按 URL 分发（glob 对 query string 的匹配不可靠，统一
 // 解析 pathname）。未预期的端点回 404，让 mock 缺口在断言处显式暴露
 // 而不是静默挂起。
@@ -161,12 +168,15 @@ async function mockApi(page: Page, state: ApiState) {
       // bob 的文章）；Home 无 author/favorited 参数照常全量
       const byAuthor = searchParams.get('author');
       const byFavorited = searchParams.get('favorited');
-      const articles = all
+      // 列表投影不含 body（spec 2.0，detail 才有）——与真实后端同形，
+      // dev 校验的 additionalProperties:false 下带 body 会整页失配
+      const filtered = all
         .filter((a) => a.slug !== state.deletedArticle)
         .filter((a) => !byAuthor || a.author.username === byAuthor)
         .filter(
           (a) => !byFavorited || (byFavorited === author.username && a.slug === article2.slug)
         );
+      const articles = summaries(filtered);
       return json(route, 200, {articles, articlesCount: articles.length});
     }
     if (req.method() === 'POST' && api === '/articles') {
@@ -186,21 +196,19 @@ async function mockApi(page: Page, state: ApiState) {
       return json(route, 200, {
         comments: [
           {
-            id: 'c1',
+            id: 1,
             // date-time 字符串对齐真实 API 形态（曾是毫秒数 number，
             // Comment 契约改为 PastDate 后失配）
             createdAt: '2026-01-01T00:00:00.000Z',
             updatedAt: '2026-01-01T00:00:00.000Z',
             body: 'Fixture comment for the article page.',
-            slug: comments[1],
             author
           },
           {
-            id: 'c2',
+            id: 2,
             createdAt: '2026-01-01T00:00:00.000Z',
             updatedAt: '2026-01-01T00:00:00.000Z',
             body: 'My own comment from the fixture user.',
-            slug: comments[1],
             author: {
               username: user.username,
               bio: user.bio,
@@ -213,7 +221,7 @@ async function mockApi(page: Page, state: ApiState) {
     }
     const commentDel = /^\/articles\/([^/]+)\/comments\/([^/]+)$/.exec(api);
     if (req.method() === 'DELETE' && commentDel) {
-      state.deletedComments!.push(commentDel[2]!);
+      state.deletedComments!.push(Number(commentDel[2]));
       return json(route, 200, {});
     }
 
@@ -760,19 +768,18 @@ test('comments refetch on reconnect (offline → online)', async ({
   page,
   context
 }) => {
-  const comment = (id: string, body: string) => ({
+  const comment = (id: number, body: string) => ({
     id,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
     body,
-    slug: article1.slug,
     author
   });
   const commentPayloads = [
-    [comment('c1', 'First comment before reconnect.')],
+    [comment(1, 'First comment before reconnect.')],
     [
-      comment('c1', 'First comment before reconnect.'),
-      comment('c2', 'Second comment after reconnect.')
+      comment(1, 'First comment before reconnect.'),
+      comment(2, 'Second comment after reconnect.')
     ]
   ];
   let commentsGets = 0;
@@ -825,7 +832,7 @@ test('401 on authenticated request auto-logs-out', async ({page}) => {
   await page.route('**/api/articles?*', async (route) => {
     feedAuth.push(await route.request().headerValue('authorization'));
     return json(route, 200, {
-      articles: [article1, article2],
+      articles: summaries([article1, article2]),
       articlesCount: 2
     });
   });
@@ -943,7 +950,7 @@ test('about infinite feed: scroll to bottom loads the next page, then stops', as
     const limit = Number(searchParams.get('limit') ?? 10);
     feedOffsets.push(searchParams.get('offset') ?? '0');
     return json(route, 200, {
-      articles: feedArticles.slice(offset, offset + limit),
+      articles: summaries(feedArticles.slice(offset, offset + limit)),
       articlesCount: feedArticles.length
     });
   });
@@ -1079,7 +1086,7 @@ test('searchDeps: Home 同 search 重复导航零请求，翻页照常重取', a
     const offset = Number(searchParams.get('offset') ?? 0);
     const limit = Number(searchParams.get('limit') ?? 10);
     return json(route, 200, {
-      articles: feedArticles.slice(offset, offset + limit),
+      articles: summaries(feedArticles.slice(offset, offset + limit)),
       articlesCount: feedArticles.length
     });
   });
@@ -1193,11 +1200,10 @@ test('PreviewLink race: fast click after hover keeps comments healthy', async ({
     return json(route, 200, {
       comments: [
         {
-          id: 'c1',
+          id: 1,
           createdAt: '2026-01-01T00:00:00.000Z',
           updatedAt: '2026-01-01T00:00:00.000Z',
           body: 'Fixture comment for the article page.',
-          slug: article1.slug,
           author
         }
       ]
@@ -1600,7 +1606,7 @@ test('view transition pop × ScrollRestoration: 出站页够高时 back 后滚�
   });
   await page.route('**/api/articles?*', (route) =>
     json(route, 200, {
-      articles: feedArticles,
+      articles: summaries(feedArticles),
       articlesCount: feedArticles.length
     })
   );
@@ -1617,11 +1623,10 @@ test('view transition pop × ScrollRestoration: 出站页够高时 back 后滚�
   await page.route('**/api/articles/*/comments*', (route) =>
     json(route, 200, {
       comments: Array.from({length: 60}, (_, i) => ({
-        id: `vt-c${i}`,
+        id: i,
         createdAt: '2026-01-01T00:00:00.000Z',
         updatedAt: '2026-01-01T00:00:00.000Z',
         body: `Scroll fixture comment #${i}.`,
-        slug: 'e2e-vt-10',
         author
       }))
     })
@@ -1711,7 +1716,7 @@ test('view transition pop × ScrollRestoration: 出站页矮时 back 后滚动�
   });
   await page.route('**/api/articles?*', (route) =>
     json(route, 200, {
-      articles: feedArticles,
+      articles: summaries(feedArticles),
       articlesCount: feedArticles.length
     })
   );

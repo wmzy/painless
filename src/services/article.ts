@@ -6,6 +6,7 @@ import type {
   Comment,
   ProfileFeedQuery
 } from '@/types/index';
+import type {Uint} from '@/types/base';
 
 import {fillPath} from 'fetch-fun';
 
@@ -200,7 +201,7 @@ export function deleteArticle(
 
 export function deleteComment(
   slug: string,
-  id: string,
+  id: Uint,
   signal?: AbortSignal
 ): Promise<void> {
   return http

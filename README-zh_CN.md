@@ -444,7 +444,7 @@ const toggleFavorite = (a: Article) => {
 
 ### 基于 `fetch-fun` 的类型化 HTTP 客户端
 
-`src/util/http.ts` 构建可管道组合的客户端：base URL（可用 `VITE_API_URL` 覆盖，默认 `https://api.realworld.io/api/`）、JSON 头、认证注入、仅幂等 GET/HEAD 的重试 + 每次尝试 10s 超时，以及把非 2xx 响应映射为 `ApiError` 的错误映射——保留 `status` 与字段结构的 `errors` 对象，`message` 摊平为可读文案（优先取 `message`，否则把 `errors` 拼接成文本）。401 会触发已注册的未授权处理器（auth 服务用它实现 token 过期自动登出）：
+`src/util/http.ts` 构建可管道组合的客户端：base URL（可用 `VITE_API_URL` 覆盖，默认 `https://api.realworld.show/api/`）、JSON 头、认证注入、仅幂等 GET/HEAD 的重试 + 每次尝试 10s 超时，以及把非 2xx 响应映射为 `ApiError` 的错误映射——保留 `status` 与字段结构的 `errors` 对象，`message` 摊平为可读文案（优先取 `message`，否则把 `errors` 拼接成文本）。401 会触发已注册的未授权处理器（auth 服务用它实现 token 过期自动登出）：
 
 ```ts
 // src/util/http.ts（节选）

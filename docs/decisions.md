@@ -1476,3 +1476,34 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
   相对 #29 的 371 净 -2：退役 1 条 schema-strip 用例、合并 1 条方法
   语义用例）+ build + size **131.54 KB / 141 KB** 过（增长 +3.17 KB
   来自 haze-ui 1.26 升级，本次重构 DEV 折叠后零生产字节）。
+
+## 31. API 宿主切换 + spec 2.0 契约对齐（2026-09-08）
+
+- **背景**：线上站点（wmzy.github.io/painless）全面跨域报错——`https://api.realworld.io/api/`
+  已下线（Cloudflare 530，错误页无 CORS 头，浏览器呈现为 preflight 无
+  ACAO）。官方新演示后端 `https://api.realworld.show/api`（realworld-apps/realworld
+  issue #1647，spec 2.0.0）上线且 CORS 按 Origin 回显（含错误响应）。
+  切换后 DEV 运行时校验暴露既有契约漂移：spec 2.0 的列表响应（GET
+  /articles、?author=、?favorited=）不含 `body`（仅 detail 有），comment
+  无 `slug` 且 `id` 是整数——旧契约（spec 1.x）下校验失败后 mock
+  `empty` 分支回填 faker 数据，首页卡片全是假 slug、点击必 404。
+- **决定**：
+  - **默认 base 改 api.realworld.show**：http.ts `BASE_URL` 默认值单行
+    切换；`VITE_API_URL` 覆盖通道不变。openapi/realworld.yml 已随上游
+    指向 .show，无需动。
+  - **`ArticleSummary` 类型**：列表投影条目 = Article 去 `body`；
+    `ArticlePage.articles: ArticleSummary[]`（home/profileFeed 同享），
+    detail 仍 `Article`（含 body）。两型字段重复是刻意的——schema 生成
+    插件不支持交叉类型/Omit，各自完整声明。`ArticlePreview` 的 props 收
+    窄为 `ArticleSummary`，feed.ts 聚合返回同步收窄。
+  - **`Comment` 契约对齐 spec 2.0**：`id: Uint`（后端整数，原 `string`
+    是漂移）、删 `slug`（后端已不返回；删除定位本就用路由 title +
+    id）。`deleteComment(slug, id: Uint)` 同步收窄。
+  - **e2e/单测 fixture 同步**：评论 fixture id 全改数字、去 slug；
+    openapi 列表 fixture 去 body（生成 schema 带
+    additionalProperties:false，旧 fixture 反而失配）。
+- **验证**：typecheck + lint:ci（0 error）+ 单测 **369/369**（30 文件）+
+  build + 真机核验：incognito 浏览器全链路（首页渲染真实 slug 与后端
+  列表逐一吻合 → 详情页打开 → 注册 201 → 发评论 201 且上屏 → 收藏 200
+  计数 +1），全程 0 CORS 拦截；prod bundle 中 `api.realworld.io` 引用为
+  0。线上需重跑 `pnpm deploy` 生效。

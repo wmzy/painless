@@ -13,7 +13,7 @@ function mockResponse(body: unknown, status = 200): Response {
     ok: status < 400,
     status,
     statusText: 'OK',
-    url: 'https://api.realworld.io/api/test',
+    url: 'https://api.realworld.show/api/test',
     type: 'basic' as const,
     headers: new Headers(),
     text: vi.fn().mockResolvedValue(JSON.stringify(body))
@@ -40,7 +40,6 @@ describe('article.openapi（spec 类型通道 × DEV 校验）', () => {
           slug: 'some-title-1',
           title: 'Some title',
           description: 'desc',
-          body: 'line1\nline2',
           tagList: ['dragons'],
           createdAt: '2026-01-01T00:00:00.000Z',
           updatedAt: '2026-01-01T00:00:00.000Z',
@@ -56,7 +55,7 @@ describe('article.openapi（spec 类型通道 × DEV 校验）', () => {
     await expect(openapi.query({limit: 10})).resolves.toEqual(page);
     // query 参数经管道序列化进 URL
     expect(fetchMock.mock.calls[0]![0]).toBe(
-      'https://api.realworld.io/api/articles?limit=10'
+      'https://api.realworld.show/api/articles?limit=10'
     );
   });
 
@@ -70,7 +69,6 @@ describe('article.openapi（spec 类型通道 × DEV 校验）', () => {
             slug: 's',
             title: 't',
             description: 'd',
-            body: 'b',
             tagList: [],
             createdAt: '2026-01-01T00:00:00.000Z',
             updatedAt: '2026-01-01T00:00:00.000Z',
@@ -117,7 +115,7 @@ describe('article.openapi（spec 类型通道 × DEV 校验）', () => {
     });
     // 路径参数经 fillPath 逐值 encodeURIComponent（空格 → %20）
     expect(fetchMock.mock.calls[0]![0]).toBe(
-      'https://api.realworld.io/api/articles/some%20title'
+      'https://api.realworld.show/api/articles/some%20title'
     );
   });
 });

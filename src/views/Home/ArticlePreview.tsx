@@ -1,4 +1,4 @@
-import type {Article} from '@/types';
+import type {ArticleSummary} from '@/types';
 
 import {memo} from 'react-toolroom';
 import {Card, Title, Text} from 'haze-ui';
@@ -8,7 +8,7 @@ import PreviewLink from '@/components/PreviewLink';
 import {AuthorLine, TagList} from '@/views/_shared/AuthorLine';
 
 type Props = {
-  article: Article;
+  article: ArticleSummary;
   // 收藏翻转意图（slug + 目标态）：on* 前缀——react-toolroom memo 对
   // on* props 自动稳定化，Home 每次渲染新建的闭包在子组件眼里是同一身份
   onFavorite: (slug: string, on: boolean) => void;

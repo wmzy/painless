@@ -220,9 +220,8 @@ describe('schema → faker → validate', () => {
     const {check} = await import('@/util/validate');
 
     const comment = {
-      id: 'c1',
+      id: 1,
       body: 'contract fixture',
-      slug: 'some-title-1',
       createdAt: '2026-01-01T00:00:00.000Z',
       updatedAt: '2026-01-01T00:00:00.000Z',
       author: {username: 'bob', bio: null, image: 'https://example.com/b.png', following: false}

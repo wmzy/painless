@@ -4,7 +4,7 @@ import {parseApiError} from './apiError';
 import {pushRequestLog} from './requestLog';
 
 const BASE_URL: string =
-  import.meta.env.VITE_API_URL || 'https://api.realworld.io/api/';
+  import.meta.env.VITE_API_URL || 'https://api.realworld.show/api/';
 
 function errorText(data: unknown): string {
   const {message, fieldErrors} = parseApiError(data);
