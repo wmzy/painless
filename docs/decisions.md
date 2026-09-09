@@ -1560,3 +1560,36 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
     链接与点击穿透正常。
 - **验证**：typecheck + lint:ci（0 error）+ 单测 **373/373**（31 文件，
   +4 回归）+ e2e **35/35** + build。
+
+## 33. 依赖升级：react-f0rm 1.3.0 + tools-config 0.5.0（2026-09-10）
+
+- **背景**：手动升级 react-f0rm 1.2→1.3、tools-config 0.4→0.5、@types/node 补丁。
+  两库 tarball 级 diff：react-f0rm 1.3 主入口 API 纯增量——setValue 支持
+  updater、新增 setStatus/useStatus/useTransform/isFieldDirtyByPath/
+  isSubmitted（FormState）/SetErrorOptions、字段规则 validate/asyncAlways/
+  validateOnMount/valueAsNumber/valueAsDate、required 语义扩到空数组、
+  minLength/maxLength 扩到数组；revalidateFormOnChange 保留（新增
+  runFormValidate 为独立导出）。可观察行为变化集中在声明式规则路径与
+  <Field> 不受控 DOM 同步（focusRef）；本工程消费面（Form/useForm/
+  useIsSubmitting/useCanSubmit/isDirty/reset/setInitialValues/setServerErrors）
+  零变更、自定义 validators 不走内置规则、<Field> 路径未使用——无可观察
+  影响。tools-config 0.5 仅 base tsconfig 声明 noEmit: true；eslint
+  type-checked 入口（projectService 定位）与其余配置零 diff。
+- **决定**：
+  - **代码零适配**：升级批不需要任何 src 变更。
+  - **tsconfig 去重**：本地 noEmit: true 移除（0.5 base 已声明，tsc
+    只做类型检查、产物由 vite 产出），注释同步 allowImportingTsExtensions
+    的 noEmit 前置条件由 base 满足。
+  - **体积棘轮不动**：实测 136195 B = 133.00 KB（39 文件，raw 395.61
+    KB），较基线 131335 B（128.26 KB）净 +4.75 KB——升级批唯一运行时
+    依赖是 react-f0rm（tools-config/@types/node 均 dev-only，不进产物）。
+    同口径 esbuild A/B（当前导入集，react external，event-emitter
+    打包）1.2→1.3 used 集 +701 B（9496→10197 B gzip9）。增量在 10%
+    棘轮余量内（余 8.00 KB），BASELINE_BYTES 与阈值不动，脚本头注释
+    同步本批实测。
+  - **README 体积表同步**：forms 行重测（1.3.0、当前导入集）：used
+    ~10.0 kB / full ~12.9 kB（旧 7.6/9.7 为 1.1.1 + 当时导入集）；
+    对手项 react-router 最新 1.170.34（仅补丁、未重测），测量说明句
+    同步。AGENTS.md react-f0rm 版本标注 1.1.x → 1.3.x。
+- **验证**：typecheck + lint:ci（0 error）+ 单测 373/373（31 文件）+ build
+  + 体积预算通过（133.00/141.00 KB）。

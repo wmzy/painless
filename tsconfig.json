@@ -4,10 +4,9 @@
     "lib": ["dom", "esnext"],
     // vite 配置以显式 .mts 扩展名导入项目内插件（vite-plugin-haze-css.mts）：
     // 无扩展名/.ts 形态会被 vite 配置打包器按 CJS 探测告警。
-    // allowImportingTsExtensions 要求 noEmit 或 emitDeclarationOnly——
-    // tools-config 0.4 起基础配置不再声明后者，本工程 tsc 只做类型检查、
-    // 产物由 vite 产出，故此处声明 noEmit。
-    "noEmit": true,
+    // allowImportingTsExtensions 要求 noEmit——tools-config 0.5 起基础
+    // 配置声明 noEmit: true（tsc 只做类型检查、产物由 vite 产出），
+    // 本工程不再本地重复声明。
     "allowImportingTsExtensions": true,
     "paths": {
       "@/*": ["./src/*"]

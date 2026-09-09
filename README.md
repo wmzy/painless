@@ -93,16 +93,16 @@ If you know TanStack Query/Router/Form, the problems they solve are solved here 
 
 ### Bundle Size, Same Yardstick
 
-All numbers measured the same way: esbuild `--bundle --minify` (peer deps external, regular deps included), zlib gzip level 9. "used" = the import set painless actually pulls (for TanStack, the hooks an app of this shape needs); "full" = the whole entry. The "Here" column was re-measured on 2026-09-05 at the versions installed today; the counterpart column is the 2026-08-31 measurement — npm latest for all four counterparts is unchanged, so those figures stand.
+All numbers measured the same way: esbuild `--bundle --minify` (peer deps external, regular deps included), zlib gzip level 9. "used" = the import set painless actually pulls (for TanStack, the hooks an app of this shape needs); "full" = the whole entry. The "Here" column was re-measured on 2026-09-05 at the versions installed then (the react-f0rm row re-measured 2026-09-10 at 1.3.0, see below); the counterpart column is the 2026-08-31 measurement — three counterparts unchanged since, react-router gained a patch release only (un-remeasured).
 
 | Role | Here (min+gzip) | Counterpart (min+gzip) |
 | --- | --- | --- |
 | Async state | react-toolroom/async **~7.0 kB** (full: 8.1) | @tanstack/react-query **~10.9 kB** (full: 13.9) |
-| Forms | react-f0rm **~7.6 kB** (full: 9.7) | @tanstack/react-form **~17.6 kB** |
+| Forms | react-f0rm **~10.0 kB** (full: 12.9) | @tanstack/react-form **~17.6 kB** |
 | HTTP client | fetch-fun **~4.5 kB** (full: 6.1) | ky **~9.3 kB** |
 | Routing | @native-router core+react **~18.0 kB** (core 5.6 + react 12.4) | @tanstack/react-router **~34.8 kB** |
 
-Versions measured (Here): react-toolroom 1.1.0, react-f0rm 1.1.1, fetch-fun 0.12.1, @native-router/core 1.16.1 + react 1.15.0 (installed, 2026-09-05) — previously 0.18.2 / 0.7.0 / 0.10.0 / 1.10.0+1.9.0 at ~6.0 / 6.3 / 5.5 / 11.0 kB; the growth is the documented runtime additions (keyed result semantics, per-entry cache defaults, navigation observability, typed-link prefetch) — vs @tanstack/react-query 5.102.8, @tanstack/react-form 1.33.5, @tanstack/react-router 1.170.32, ky 2.1.0 (npm latest, unchanged since 2026-08-31).
+Versions measured (Here): react-toolroom 1.1.0, react-f0rm 1.3.0, fetch-fun 0.12.1, @native-router/core 1.16.1 + react 1.15.0 (installed, 2026-09-10; the react-f0rm row was re-measured after the 1.3.0 upgrade with painless's current import set — `Form`/`useForm`/`useIsSubmitting`/`useCanSubmit`/`isDirty`/`setInitialValues`/`setServerErrors`) — previously 0.18.2 / 0.7.0 / 0.10.0 / 1.10.0+1.9.0 at ~6.0 / 6.3 / 5.5 / 11.0 kB; the growth is the documented runtime additions (keyed result semantics, per-entry cache defaults, navigation observability, typed-link prefetch) — vs @tanstack/react-query 5.102.8, @tanstack/react-form 1.33.5, @tanstack/react-router 1.170.34, ky 2.1.0 (npm latest, 2026-09-10; the router row is the 2026-08-31 measurement of 1.170.32 — only a patch release landed since, un-remeasured).
 
 ### What TanStack Has That This Stack Deliberately Doesn't
 

@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 // 口径名：dist JS+CSS gzip 总和（zlib level 9，含懒加载 chunk）。
 // 基线：131335 B = 128.26 KB（38 个文件，2026-09-06，Node 24 内置 zlib；
-// 上限阈值锚定的批次基线）。最近实测：131335 B = 128.26 KB（38 个文件，
-// raw 381.51 KB，2026-09-06，RealWorld 规范视图批次（decisions.md 第
-// 28 条）——新增 /profile/:username + /settings 两个懒加载视图（Profile
-// 1.46 KB、Settings 0.85 KB，各自独立 chunk）+ Article 删除面（Confirm
-// Dialog 共享 chunk 进入 Article）+ Layout 导航扩展 + profile 双缓存与
-// mutations 投影层接线。相对第 27 批（124.46 KB 实测、阈值 126 KB 过，
-// 余量 1.54 KB）净 +3.8 KB：四个新增可观测页面/交互的正当成本，非依赖
-// 膨胀（零新依赖，同 lockfile）；数字与 decisions.md 第 28 条同批实测。
+// 上限阈值锚定的批次基线）。最近实测：136195 B = 133.00 KB（39 个文件，
+// raw 395.61 KB，2026-09-10，依赖升级批（decisions.md 第 33 条）——
+// react-f0rm 1.2→1.3 + tools-config 0.4→0.5 + @types/node 补丁。相对
+// 基线净 +4.75 KB：升级批中唯一运行时依赖为 react-f0rm 1.2→1.3
+// （tools-config/@types/node 均为 dev-only，不进产物），增量即其运行时
+// 新增（setStatus/useStatus、useTransform、isSubmitted、字段级
+// validate/asyncAlways/validateOnMount 路径与 required 空数组语义），
+// 零新增依赖；38→39 文件。增量在棘轮余量内，BASELINE_BYTES 与阈值不动。
 // 阈值：141 KB = 144384 B（基线 +10% 余量，取整到 KB）。
 //
 // 口径必须可复现（项目教训：bundle 增量报告曾出现无任何口径能复现的数字）：
