@@ -19,54 +19,36 @@ import {useSetHomeSearch} from './useSetHomeSearch';
 import Tags from './Tags';
 
 export default function Home() {
-  // 页标题统一口径「<页名> · Painless」，后缀对齐 index.html 的默认
-  // <title>；离开恢复默认（机制：haze-ui 的 useTitle——写入/恢复双
-  // effect + 进入前快照，与原本地实现同构，上游测试已钉）
+  // 标题统一口径「<页名> · Painless」（对齐 index.html 默认），离开恢复。
   useTitle('Home · Painless');
-  // useHomeData（createDataLoader 第二元素）：类型与来源校验都在工厂内
-  // 收拢——路由声明了 homeLoader，进组件前数据必已 resolve，不再写
-  // useData<ArticlePage>()! / ?? 空值兜底（DEV 下失配即 throw，见
-  // src/util/dataLoader.ts）
+  // useHomeData：类型与来源校验在工厂内收拢——路由声明了 homeLoader，
+  // 进组件前数据必已 resolve，无需 useData<ArticlePage>()! 兜底。
   const {articles, articlesCount} = useHomeData();
-  // 路由级 search schema（见 views/index.tsx）解析：coerce 与缺省都在
-  // schema 里完成，组件拿到的 tag/offset/limit 直接可用
+  // coerce 与缺省都在 schema 里完成，tag/offset/limit 直接可用。
   const {tag: activeTag, offset, limit} = useSearch(homeSearchSchema);
 
-  // tag 筛选写入 search：search 变化会触发 route loader 重新查询（见
-  // views/index.tsx 的 data），返回后整棵视图以新数据重渲染。写侧经
-  // useSetHomeSearch（本地替代，decisions.md #32）：库版 useSetSearch
-  // 在绝对 base 下双拼 baseUrl（/painless/painless/），此处用同一批
-  // core 原语以绝对 '/?' 重放写管道——输入按 URL 侧的字符串形态给出
-  // （coerce 交给 homeSearchWriteSchema），等于缺省的字段被抹去，写入口
-  // 与读入口共用同一契约。分页已迁移 TypedLink（见下），本写入口只服务
-  // 「取消 tag 筛选」——同属过滤面，写点带 {replace: true} 改写当前
-  // 历史条目（back 不回放筛选态），与分页的 push 语义刻意并存
+  // 写侧经 useSetHomeSearch（decisions.md #32：库版在绝对 base 下双拼
+  // baseUrl），读写共用 homeSearchWriteSchema 契约。本写入口只服务「取消
+  // tag 筛选」——过滤面用 {replace: true}，back 不回放筛选态，与分页的
+  // push 刻意并存。
   const setSearch = useSetHomeSearch();
 
   const page = Math.floor(offset / limit) + 1;
   const totalPages = Math.max(1, Math.ceil(articlesCount / limit));
 
-  // 分页目标页的 search 载荷：URL 输入侧的字符串形态（coerce 交给读侧
-  // schema），等于缺省的字段省略——与 homeSearchWriteSchema 的「抹去
-  // 缺省」同一约定，TypedLink 把它序列化进 href 预览与点击导航两者。
-  // 返回类型即链接契约：homeSearchSchema 的 Input 位（HomeSearchInput），
-  // TypedLink 的 search prop 按同一类型判别。limit 的例外：非缺省时
-  // 显式携带——手工 URL 的 ?limit=5 若在翻页载荷里丢失，落页解析回
-  // 缺省 10，页码/步进/缓存 key 全部静默换轨；等于缺省仍省略（URL
-  // 干净原则不变）
+  // 翻页载荷即链接契约（HomeSearchInput，TypedLink 序列化进 href 与点击
+  // 导航两者），等于缺省的字段省略。limit 例外：非缺省时显式携带——
+  // 手工 URL 的 ?limit=5 若在翻页载荷丢失，落页解析回缺省 10，页码/
+  // 步进/缓存 key 全部静默换轨。
   const pageSearch = (target: number): HomeSearchInput => ({
     ...(activeTag != null ? {tag: activeTag} : {}),
     ...(target > 0 ? {offset: String(target)} : {}),
     ...(limit !== DEFAULT_LIMIT ? {limit: String(limit)} : {})
   });
 
-  // 卡片级乐观收藏：toggleFavorite 已收敛进 useFavorite（views/_shared/
-  // useFavorite.ts）——requireAuth 跳登录（带 redirect）、toast 失败提示
-  // 与 scope 串行都在 hook 内；乐观 +1 → 服务调用 → apply → 失败回滚的
-  // cache.mutation 组合管道见 services/mutations.ts（favoriteOnHome 组合
-  // article 层 + home 投影层）。onFavorite 身份每渲染新建，经
-  // ArticlePreview 的 react-toolroom memo 稳定化，卡片重渲染只由 article
-  // 引用变化驱动
+  // 乐观收藏收敛在 useFavorite（跳登录/toast/scope 串行）+ mutations.ts
+  // 的 cache.mutation 组合管道；onFavorite 身份由 ArticlePreview 的
+  // react-toolroom memo 稳定化。
   const onFavorite = useFavorite(favoriteOnHome);
 
   return (

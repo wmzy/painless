@@ -9,8 +9,7 @@ import {AuthorLine, TagList} from '@/views/_shared/AuthorLine';
 
 type Props = {
   article: ArticleSummary;
-  // 收藏翻转意图（slug + 目标态）：on* 前缀——react-toolroom memo 对
-  // on* props 自动稳定化，Home 每次渲染新建的闭包在子组件眼里是同一身份
+  // on* 前缀：react-toolroom memo 自动稳定化，父层新建闭包在子组件眼里身份不变
   onFavorite: (slug: string, on: boolean) => void;
 };
 
@@ -25,9 +24,8 @@ function ArticlePreview({article, onFavorite}: Props) {
         />
       </AuthorLine>
       <Title level={2}>
-        {/* 卡片滚入视口即预取 data+chunk，比 hover 更早，点击近乎零等待
-            （prefetch='viewport' 已是 PreviewLink 缺省，to/params 对
-            AppPaths 编译期判别——运行时字符串拼接不复存在） */}
+        {/* prefetch='viewport' 是 PreviewLink 缺省：滚入视口即预取 data+chunk；
+            to/params 对 AppPaths 编译期判别 */}
         <PreviewLink to='/article/:title' params={{title: article.slug}}>
           {article.title}
         </PreviewLink>
@@ -38,12 +36,8 @@ function ArticlePreview({article, onFavorite}: Props) {
   );
 }
 
-// react-toolroom memo（core 入口）：React.memo 的免 useCallback 版——
-// on* 事件 props（onFavorite/onToggle）经稳定转发器呈现同一身份、调用时
-// 转发到最新闭包，其余 props 浅比较。README「Design Philosophy」的
-// 「React.memo + scalar props」在模板里的兑现点：收藏翻转（cache.mutation
-// 写穿 + bindRefresh 整页 refresh）时 patchArticleIn 只替换目标项（见
-// services/mutations.ts——其余项原引用返回），未变卡片的 article prop
-// 引用相等 + on* 稳定化 → 整页 refresh 的重渲染成本收敛到受影响的那
-// 一张卡。
+// react-toolroom memo：React.memo 的免 useCallback 版——on* 经稳定转发
+// 器呈现同一身份、调用时转发到最新闭包。收藏翻转的写穿 + 整页 refresh
+// 只替换目标项（mutations.ts 其余项原引用返回），未变卡片的 article
+// 引用相等 → 重渲染成本收敛到受影响的那一张卡。
 export default memo(ArticlePreview);

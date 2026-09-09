@@ -27,23 +27,17 @@ import HomeSkeleton from './Home/Skeleton';
 import NotFound from './NotFound';
 import ProfileNotFound from './Profile/NotFound';
 
-// 应用级 router context（@native-router ≥1.10）：一个同步值随 router
-// 实例注入，data loader 与 beforeLoad 守卫经 ctx.context 取用。auth
-// 模块仍是登录态的事实源，context 只包 getter——守卫不再直接 import
-// auth 模块状态：测试守卫换一份 context 即可驱动（每实例独立，无需
-// 重置模块单例），微前端同页多 router 也不串数据。值是创建时的快照，
-// 不是响应式源——登录态变化由 auth 的 change 事件驱动 UI，守卫每次
-// 导航重新求值，天然拿到最新用户。
+// 应用级 router context（@native-router ≥1.10）：守卫/loader 经
+// ctx.context 取用户。只包 getter：auth 仍是事实源；测试守卫换一份
+// context 即可驱动（无需重置模块单例），同页多 router 不串数据。
+// 值是创建时快照、非响应式——守卫每次导航重新求值，天然拿到最新用户。
 export type RouterContext = {getUser: () => User | null};
 const routerContext: RouterContext = {getUser: getCurrentUser};
 
-// 路由守卫：@native-router ≥1.2 的 beforeLoad。返回路径即由路由器在
-// resolve 期重定向（导航提交前生效，URL 不落守卫路由）；返回 undefined
-// 放行。preload/PrefetchLink 预取也走同一守卫，预取受守卫路由只会解析
-// 到重定向目标的视图，无副作用。当前用户经 ctx.context（Router 的
-// context prop）取——Route 第三泛型（同 search 泛型的套路）让守卫的
-// ctx.context 类型化，无需手写注解。NonNullable 收掉可选成员的
-// undefined：const 本体恒为已定义函数，直接调用（测试）不报警。
+// beforeLoad 守卫：返回路径即 resolve 期重定向（URL 不落守卫路由）；
+// undefined 放行。preload/PrefetchLink 走同一守卫，无副作用。用户经
+// ctx.context 取（Route 第三泛型类型化）。NonNullable 收掉可选成员：
+// const 本体恒为已定义函数，测试直接调用不报警。
 export const requireLogin: NonNullable<
   Route<string, any, RouterContext>['beforeLoad']
 > = ({context, location}) => {
@@ -55,9 +49,8 @@ export const requireLogin: NonNullable<
     return `/login?redirect=${encodeURIComponent(location.pathname + location.search)}`;
 };
 
-// createRoutes（satisfies 语义）：表按 Route 检查，同时每个 path 保留
-// 字面量类型——`as Route` 会把 path 拓宽成 string，TypedLink 的路径联合
-// （AppPaths）就提不出来了
+// satisfies 语义：表按 Route 检查，path 保留字面量类型——`as Route` 会
+// 拓宽成 string，AppPaths 联合就提不出来。
 const routes = createRoutes({
   component: () => import('./Layout'),
   // searchDeps 快路径（@native-router ≥1.12）的链覆盖要求：匹配链
@@ -185,14 +178,10 @@ const routes = createRoutes({
 // 路径拼写错误在编译期暴露（动态段路由同时要求 params 完整）
 export type AppPaths = RoutePaths<typeof routes>;
 
-// StackWarmer 守卫缓解的窗口判定：直接从上方路由表推导——layout 层
-// children 里带 beforeLoad 守卫的子路由 path（当前 /editor、/editor/:slug
-// 与 /settings），新增守卫路由自动入选，没有手写镜像可漏同步。动态段
-// 截到首个参数段之前（/editor/:slug → /editor）：只守卫动态路由时其
-// 静态前缀也该覆盖；匹配按段边界前缀（pathname === p || 以 `p/` 开头
-// ），宁可多跳过（预热只是优化，跳过无正确性损失），'/editorfoo' 类
-// 前缀撞车由段边界排除。仍刻意不复用路由匹配器——缓解是保守判定，
-// 前缀误伤面足够小。导出供测试直接钉推导契约（同 requireLogin）
+// StackWarmer 的窗口判定：从路由表推导（children 里带 beforeLoad 的
+// 子路由 path），新增守卫路由自动入选。动态段截到首个参数段前
+// （/editor/:slug → /editor），匹配按段边界前缀——宁可多跳过（预热只是
+// 优化），'/editorfoo' 撞车由段边界排除。导出供测试钉推导契约。
 const guardedPrefixes = (routes.children ?? [])
   .filter((r) => 'beforeLoad' in r)
   .map((r) => {
@@ -205,39 +194,22 @@ const guardedPrefixes = (routes.children ?? [])
 export const isGuardedPath = (pathname: string) =>
   guardedPrefixes.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 
-// 路由表自身的类型：TypedLink 表形态（TypedLink<AppRoutes>）的判别源
-// ——给组件整个表而非路径联合，to 按模式收窄的同时 search 也按各层
-// search schema 的 input 侧（URL 输入形状）判别并序列化进 query（见
-// Home 分页）。只导出类型：视图侧经 import type 引用，编译后零运行时
-// 依赖，路由表（component: () => import(...) 惰性加载视图）与视图间
-// 不产生真实的模块环
+// TypedLink<AppRoutes> 的判别源：to 按模式收窄，search 按各层 schema
+// 的 input 侧判别。只导出类型：import type 引用零运行时依赖，路由表
+// （惰性加载视图）与视图间不产生真实模块环。
 export type AppRoutes = typeof routes;
 
-// 刷新后的 viewStack 预热（@native-router ≥1.10 initHistoryStack）。
-// 会话栈以有界尾窗序列化进 history.state（maxStackDepth 默认 100），
-// 刷新后 create 恢复 locationStack 但快照全空——不预热则窗内
-// back/forward 每次都退化为惰性重解析（守卫 + loader 重跑）。挂载时
-// 一次性重解析窗内全部可达条目，之后窗内往返直接落快照、零请求。
-// 与冷启动首解析的合流：本组件的 effect 先于 Router 的 subscribe
-//（listen → 首次 refresh）执行，当前条目会被预热与冷启动各解析一次，
-// loader 侧 withCache 的 in-flight 共享（见 util/loaderCache.ts）把两
-// 者并成同一请求；其余条目是预热的本职成本，各至多一次请求。
-// 分层关系（外层命中即短路内层）：bfcache > viewStack > queryCache
-// ——bfcache 管跨文档往返（整页快照，pageshow persisted 的新鲜度补偿
-// 见 Layout），viewStack 管同文档往返（本层），queryCache 管跨视图
-// 窗外条目（超出 maxStackDepth 被裁剪、或浏览器自行逐出的历史）不在
-// 预热范围，落点仍走单次惰性重解析，语义不变。
-// 已知边界与缓解：预热经 resolve 直接取快照、不经 beforeLoad 守卫
-//（库的既定语义，守卫重定向会破坏窗口形状）。缓解：未登录
-//（router.context 的 getUser() 为空，未注入按未登录 fail-safe）且历史
-// 窗口含守卫路由（/editor、/editor/:slug、/settings，见 isGuardedPath
-// 的表推导）时
-// 整窗跳过预热——POP 落回惰性重解析路径，守卫照常重跑；代价是这类
-// 窗口内的普通条目也退回重解析（预热只是优化，跳过无正确性损失）。
-// 会话内守卫语义由登出链路的 invalidate 清场承担（见 Layout）；残余
-// 边界：跨 tab 登出（本 tab 收不到登出事件）后 POP 仍可能落登录期
-// 预热快照，loader 数据本身公开、提交侧有 401 兜底（处置链见
-// services/auth.ts 的 bindUnauthorizedRedirect）。
+// 刷新后的 viewStack 预热（initHistoryStack）：会话栈序列化进
+// history.state，刷新恢复 locationStack 但快照全空——不预热则窗内
+// back/forward 每次都惰性重解析。挂载时一次性重解析窗内全部可达条目。
+// effect 先于 Router 首次 refresh：当前条目被预热与冷启动各解析一次，
+// withCache 的 in-flight 共享并成同一请求。分层（外层命中即短路内层）：
+// bfcache > viewStack > queryCache。
+// 已知边界：预热经 resolve 直取快照、不经 beforeLoad 守卫（库语义，
+// 守卫重定向会破坏窗口形状）。缓解：未登录且窗口含守卫路由时整窗
+// 跳过预热，POP 落回惰性重解析、守卫照常重跑。残余边界：跨 tab 登出
+// 后 POP 仍可能落登录期快照——loader 数据公开、提交侧有 401 兜底
+//（bindUnauthorizedRedirect）。
 export function StackWarmer() {
   const router = useRouter();
   useEffect(() => {
@@ -266,12 +238,9 @@ export function StackWarmer() {
   return null;
 }
 
-// 401 处置注册：auth 的 bindUnauthorizedRedirect 需要 router 实例
-//（登出后 invalidate/navigate 的处置链语义见 services/auth.ts），注册点
-// 挂在本组件——Router 树内。时序同 StackWarmer：本组件的 effect 先于
-// Router 的 subscribe（listen → 首次 refresh）执行，冷刷新时首个路由
-// data 请求就带着旧 token 发出，它的 401 也要有人接，注册晚了会退化成
-// 纯错误页（auth 模块加载侧因此只保留 token 供应商注册）。
+// 401 处置注册挂在 Router 树内（bindUnauthorizedRedirect 需 router
+// 实例）。时序同 StackWarmer：effect 先于 Router 首次 refresh，冷刷新
+// 首个 data 请求的 401 也有人接——注册晚了退化成纯错误页。
 function UnauthorizedRedirect() {
   const router = useRouter();
   useEffect(() => {
@@ -280,11 +249,9 @@ function UnauthorizedRedirect() {
   return null;
 }
 
-// DevTool 路由面板的实例通道（util/routerHost.ts）：角标/面板由根级
-// DevTool 渲染，在 Router 树之外，useRouter() 的 context 到不了那里；
-// core ≥1.16 的 onDebug/getDebugInfo 只要实例——本 null 探针挂载时把
-// 树内实例登记出去，卸载即撤。DEV 门控：生产构建整枝折叠（routerHost
-// 模块随之被摇掉），与根级 DevTool 的懒加载门控同一手法。
+// DevTool 面板渲染在 Router 树外，useRouter() 到不了；本探针挂载时把
+// 树内实例登记给 core 的 onDebug/getDebugInfo，卸载即撤。DEV 门控：
+// 生产折叠（routerHost 模块随之摇掉）。
 function RouterHost() {
   const router = useRouter();
   useEffect(() => {
@@ -294,13 +261,10 @@ function RouterHost() {
   return null;
 }
 
-// 路由 baseUrl 与 vite base 同一事实源：绝对 base（Pages 部署的
-// /painless/）→ 剥尾斜杠作前缀（core 的 match 按 baseUrl 长度剥
-// pathname 前缀，toLocation 反向补前缀）；相对 base（'./'，dev 与可
-// 移植静态部署——BASE_URL 为 '/' 或 './'）→ 空串，pathname 原样匹配。
-// 不接时部署在子路径的 SPA 对 /painless/ 全路径失配 → notFound（线上
-// demo 首页渲染 "Page not found" 的根因，e2e 跑 dev server 根路径拦
-// 不住）。BASE_URL 在生产构建被 vite 内联为字面量。
+// 路由 baseUrl 与 vite base 同一事实源：绝对 base（/painless/）→ 剥尾
+// 斜杠作前缀；相对 base（dev/可移植部署）→ 空串原样匹配。不接时子路径
+// 部署的 SPA 全路径失配 → notFound（线上 demo 首页渲染 Page not found
+// 的根因，e2e 跑 dev 根路径拦不住）。BASE_URL 生产构建被 vite 内联。
 const routerBaseUrl = import.meta.env.BASE_URL.startsWith('/')
   ? import.meta.env.BASE_URL.slice(0, -1)
   : '';

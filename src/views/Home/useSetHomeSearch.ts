@@ -1,9 +1,7 @@
-// useSetSearch(homeSearchWriteSchema) 的本地替代：库实现用
-// history.location.pathname（含 baseUrl）+ toLocation 再拼 baseUrl 前缀，
-// 绝对 base（GitHub Pages /painless/）下 tag 写入导航出双段路径
-// /painless/painless/…（dev 相对 base '' 无感，decisions.md #32）。
-// 这里用同一批 core 导出原语重放写管道（input → string → writeSchema
-// validate → string），导航目标改绝对 '/?' 拼装，避开双前缀。
+// useSetSearch 的本地替代（decisions.md #32）：库实现取 raw pathname
+//（含 baseUrl）再拼一次 baseUrl，绝对 base（Pages /painless/）下 tag
+// 写入导航出双段路径。这里用同一批 core 原语重放写管道，导航目标改
+// 绝对 '/?' 拼装，避开双前缀。
 import {
   commitReplace,
   navigate,
@@ -16,8 +14,7 @@ import {useRouter} from '@native-router/react';
 
 import {homeSearchWriteSchema, type HomeSearchInput} from '@/types/search';
 
-// react 包内部 stringifySearch（components/link-behavior.js，非公开导出）
-// 的同形复刻：过滤 null/undefined、数组多键、键值 encodeURIComponent。
+// react 包内部 stringifySearch（非公开导出）的同形复刻。
 function stringifySearch(value: Record<string, unknown>): string {
   return Object.entries(value)
     .filter(([, v]) => v != null)

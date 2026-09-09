@@ -20,29 +20,22 @@ const staleAside = css`
 `;
 
 export default function Tags() {
-  // useTagsQuery（场景 hook，声明见 dataloaders.ts）：fetch/cache/initData/
-  // mock 全部在场景声明点闭合，调用点只给 args——DevTool 面板的 tagList
-  // 条目行为不变
+  // 场景 hook（声明见 dataloaders.ts）：调用点只给 args——DevTool 面板的
+  // tagList 条目行为不变。
   const {data: tags, loading, error, stale, refetch} = useTagsQuery([]);
 
   const {tag: activeTag} = useSearch(homeSearchSchema);
   const setSearch = useSetHomeSearch();
 
-  // 点 tag 写入 search（由 Home 的 route loader 重新查询），再点同一个则
-  // 清空；undefined 值不是合法的 URL 输入，条件构造而非传 undefined。
-  // 第二参 {replace: true}：tag 筛选是过滤面而非导航面——replace 改写
-  // 当前历史条目，back 不逐条回放筛选态（连点三个 tag 不堆三条
-  // history）；与分页 TypedLink 的 push（可回退翻页）是刻意并存的两种
-  // 导航语义
+  // 再点同一个则清空；{replace: true}：tag 筛选是过滤面而非导航面——back
+  // 不逐条回放筛选态（连点三个 tag 不堆三条 history），与分页 TypedLink
+  // 的 push 是刻意并存的两种语义。
   const toggleTag = (t: string) => {
     void setSearch(activeTag === t ? {} : {tag: t}, {replace: true});
   };
 
-  // 三分支收敛给 haze-ui AsyncSection（1.21）：loading 占位 / error
-  // 错误框 + Retry / 正常态直渲染 children。Retry 调 refetch：删单例
-  // 条目后绕过缓存重拉，期间 loading 复归（初载语义），AsyncSection
-  // 的 loading 优先级让重拉窗口回到占位。stale 半透明挂在常驻的
-  // aside 上——loading/error 期 stale 恒 false，语义与分支版一致。
+  // AsyncSection 三分支；Retry 调 refetch（绕过缓存重拉，loading 复归）。
+  // stale 半透明挂在常驻 aside 上——loading/error 期 stale 恒 false。
   return (
     <aside className={stale ? staleAside : undefined}>
       <AsyncSection

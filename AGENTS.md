@@ -142,6 +142,7 @@ function FormField() {
 
 - Prettier config from `tools-config/prettier` (single quotes, jsx single quotes, es5 trailing commas)
 - 2-space indentation, LF line endings
+- **Comments explain why, not what:** delete comments that restate readable code (a comment narrating an obvious branch or a filter that reads itself). A comment earns its place only when the code can't say it — why/invariant/edge case/security rationale/`decisions.md` cross-ref. Multi-line blocks compress to that essence; a mechanism documented at its source (e.g. `withSchema` in `http.ts`, `useSetHomeSearch`'s root cause in `decisions.md` #32) is referenced at call sites, not re-explained. Section banners (`// ---- x ----`) and settled migration notes ("since x.y …") belong in AGENTS.md/`decisions.md`, not code.
 - ESLint extends `tools-config/eslint` with TypeScript strict+stylistic type-checked rules, react, react-hooks, import-x, and prettier
 - TypeScript extends `tools-config/typescript` (strict, `noUncheckedIndexedAccess`, bundler module resolution)
 - `eslint-plugin-compat` for browser compatibility checks (`.browserslistrc`)
