@@ -1,6 +1,14 @@
+import {css} from '@linaria/core';
 import {Card, Title, Text, useTitle} from 'haze-ui';
 
 import Feed from './Feed';
+
+// 说明卡收敛行宽；下方无限滚动 feed 演示区保持通栏（内部滚动容器）
+const cardCls = css`
+  max-width: 720px;
+  margin-inline: auto;
+  margin-bottom: var(--haze-space-6);
+`;
 
 // 原有内容（About Native Router 的说明卡）保持不动；下方追加无限滚动
 // feed 演示区块（Feed 子组件：数据场景见 services/feed.ts，交互与呈现
@@ -10,7 +18,7 @@ export default function About() {
   useTitle('About · Painless');
   return (
     <>
-      <Card>
+      <Card className={cardCls}>
         <Title>About Native Router</Title>
         <Text>
           Native Router is another router lib which works like the native browser.

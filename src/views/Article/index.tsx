@@ -1,6 +1,7 @@
 import type {AppRoutes} from '@/views';
 
 import {useEffect, useState} from 'react';
+import {css} from '@linaria/core';
 import {Form, useForm, reset, useIsSubmitting} from 'react-f0rm';
 import {useMutation} from 'react-toolroom/async';
 import {TypedLink, useRouter} from '@native-router/react';
@@ -13,7 +14,7 @@ import {
   ConfirmDialog,
   Divider,
   FormItem,
-  Text,
+  MarkdownRenderer,
   TextareaCore,
   Title,
   useTitle
@@ -25,11 +26,40 @@ import {favoriteOnArticle, followOnArticle} from '@/services/mutations';
 import {useArticleData} from '@/services/dataloaders';
 import {articleCache, commentsCache, homeCache, profileFeedCache} from '@/util/useQuery';
 import {useToastError} from '@/util/toastError';
+import {sanitizeMarkdown} from '@/util/markdown';
 import FavoriteButton from '@/components/FavoriteButton';
+import SubmitButton from '@/components/SubmitButton';
 import {useFavorite, useRequireAuth} from '@/views/_shared/useFavorite';
 import {AuthorLine} from '@/views/_shared/AuthorLine';
 
 import CommentList from './CommentList';
+
+// 文章页排版：卡片收敛到长文行宽（17px 正文 ≈ 75 字符/行），标题用
+// 全站最大的衬线字阶——文章页是内容的重心页
+const articleCard = css`
+  max-width: 860px;
+  margin-inline: auto;
+`;
+
+const articleTitle = css`
+  font-size: 42px;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  margin-bottom: var(--haze-space-5);
+`;
+
+const articleBody = css`
+  padding-block: var(--haze-space-2) var(--haze-space-4);
+`;
+
+// 评论提交行：按钮右对齐（短表单行动区，非通栏主行动），与下方
+// 评论列表之间留出呼吸位
+const commentActions = css`
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--haze-space-3);
+  margin-bottom: var(--haze-space-4);
+`;
 
 function errText(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -154,8 +184,8 @@ export default function ArticleView() {
   };
 
   return (
-    <Card>
-      <Title>{article.title}</Title>
+    <Card className={articleCard}>
+      <Title className={articleTitle}>{article.title}</Title>
       <AuthorLine author={article.author}>
         {/* 作者权入口：Edit 直达编辑路由（params 即 slug，编译期判别），
             Delete 先弹确认框（删除不可恢复）——非作者不渲染 */}
@@ -192,10 +222,13 @@ export default function ArticleView() {
       </AuthorLine>
       {error && <Alert variant='danger'>{error}</Alert>}
       <Divider />
-      <div>
-        {article.body.split('\n').map((p, i) => (
-          <Text key={i}>{p}</Text>
-        ))}
+      {/* 正文经 MarkdownRenderer 渲染（haze-ui 正则子集解析：标题/强调/
+          列表/引用/代码块），此前按行拆成 Text 会把 "##" 等语法字面量
+          显示出来。渲染前过 sanitizeMarkdown（util/markdown.ts）：API
+          正文是用户生成内容，非代码区的原始 HTML 标签剥除后再注入，
+          围栏代码块由渲染器自行转义。 */}
+      <div className={articleBody}>
+        <MarkdownRenderer content={sanitizeMarkdown(article.body)} />
       </div>
       <Divider />
       <Title level={3}>Comments</Title>
@@ -210,9 +243,11 @@ export default function ArticleView() {
           input={TextareaCore}
           placeholder='Write a comment...'
         />
-        <button type='submit' disabled={commentSubmitting}>
-          {commentSubmitting ? 'Posting...' : 'Post Comment'}
-        </button>
+        <div className={commentActions}>
+          <SubmitButton fullWidth={false} disabled={commentSubmitting}>
+            {commentSubmitting ? 'Posting...' : 'Post Comment'}
+          </SubmitButton>
+        </div>
       </Form>
       <CommentList title={article.slug} />
       {/* 删除确认：与 Editor 未保存拦截同款 ConfirmDialog（条件挂载 +

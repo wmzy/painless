@@ -22,7 +22,7 @@ const cards = css`
 function CardSkeleton() {
   return (
     <Card>
-      <Flex align='center' gap='sm'>
+      <Flex align='center' gap={8}>
         <Skeleton variant='circular' width={40} height={40} />
         <Skeleton variant='text' width={120} />
       </Flex>
@@ -31,7 +31,7 @@ function CardSkeleton() {
         <Skeleton variant='text' width='95%' />
         <Skeleton variant='text' width='80%' />
       </div>
-      <Flex gap='xs' wrap>
+      <Flex gap={4} wrap>
         <Skeleton variant='rectangular' width={52} height={20} />
         <Skeleton variant='rectangular' width={72} height={20} />
       </Flex>

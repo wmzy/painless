@@ -23,7 +23,7 @@ type AuthorLineProps = {
 
 export function AuthorLine({author, size, children}: AuthorLineProps) {
   return (
-    <Flex align='center' gap='sm'>
+    <Flex align='center' gap={8}>
       <Avatar src={author.image ?? undefined} alt={author.username} size={size} />
       <Text>{author.username}</Text>
       {children}
@@ -35,7 +35,7 @@ export function AuthorLine({author, size, children}: AuthorLineProps) {
 // 只读展示，readonly 数组照收
 export function TagList({tags}: {tags: readonly string[]}) {
   return (
-    <Flex gap='xs' wrap>
+    <Flex gap={4} wrap>
       {tags.map((tag) => (
         <Badge key={tag}>{tag}</Badge>
       ))}

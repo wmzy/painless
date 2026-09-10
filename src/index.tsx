@@ -5,6 +5,9 @@ import {createRoot} from 'react-dom/client';
 // 需手工清单。此导入同时是 token 供应商注册的时序锚点（见下），不随按
 // 需收集迁移——须保持先于任何路由 data 请求。
 import 'haze-ui/css/tokens.css';
+// 全局设计语言：在 tokens.css 之后导入，以双类自连接选择器覆写
+// --haze-* 变量与组件皮肤（机制见文件头，decisions.md #34）。
+import '@/theme.css';
 // 视图过渡样式：全局伪元素动画（::view-transition-*），与组件按需 CSS
 // 机制无关，直接副作用导入。无 VT 支持的浏览器下载后空转（选择器不匹
 // 配任何元素，零选择成本之外无运行时开销）。

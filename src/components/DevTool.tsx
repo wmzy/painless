@@ -97,9 +97,11 @@ function InjectPanel() {
 // aria-haspopup/aria-expanded，键盘 Enter/Space 开合由库内建。
 const corner = css`
   position: fixed;
-  top: 0;
-  left: 0;
+  bottom: var(--haze-space-4);
+  left: var(--haze-space-4);
   z-index: 1000;
+  /* 左下角避开 sticky 导航与内容列（左上角会压住品牌字标）；面板展开
+   * 方向由 Popover 的视口碰撞自动翻转（collisionPadding 已给） */
   & > :global(.haze-Popover__container) {
     width: 30px;
     height: 30px;

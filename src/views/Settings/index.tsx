@@ -1,4 +1,5 @@
 import {useState} from 'react';
+import {css} from '@linaria/core';
 import {Form, useForm, useIsSubmitting} from 'react-f0rm';
 import {useRouter} from '@native-router/react';
 import {navigate, invalidate} from '@native-router/core';
@@ -15,6 +16,19 @@ import {
 
 import {getCurrentUser, logoutAndNavigate, updateUser} from '@/services/auth';
 import {required, email, compose, applyApiFieldErrors} from '@/util/validators';
+import SubmitButton from '@/components/SubmitButton';
+
+// 同 Login：窄卡居中 + 字段纵向节奏
+const cardCls = css`
+  max-width: 560px;
+  margin-inline: auto;
+`;
+
+const formStack = css`
+  display: flex;
+  flex-direction: column;
+  gap: var(--haze-space-4);
+`;
 
 // 表单值形状：validate 回调与 handleSubmit 的 values 都由此约束。
 // bio/image 表单侧用空串呈现（User 的 null 归一为 ''，提交时转回 null），
@@ -85,13 +99,13 @@ export default function Settings() {
   };
 
   return (
-    <Card>
+    <Card className={cardCls}>
       <Title>Your Settings</Title>
       {error && <Alert variant='danger'>{error}</Alert>}
       {/* 同其余表单：FormItem input 声明式桥接（接线 + aria 链路全由
           FormItem 负责），首条错误渲染为字段下方 <span role='alert'>；
           onSubmit 被 await，isSubmitting 覆盖整个异步提交 */}
-      <Form form={form} onSubmit={handleSubmit} aria-label='Settings form'>
+      <Form form={form} onSubmit={handleSubmit} aria-label='Settings form' className={formStack}>
         <FormItem
           form={form}
           name='image'
@@ -128,9 +142,9 @@ export default function Settings() {
           input={InputCore}
           placeholder='New Password'
         />
-        <button type='submit' disabled={isSubmitting}>
+        <SubmitButton disabled={isSubmitting}>
           {isSubmitting ? 'Updating...' : 'Update Settings'}
-        </button>
+        </SubmitButton>
       </Form>
       {/* 登出链与 Layout 导航栏收敛为 logoutAndNavigate（services/auth）：
           登出清场 → invalidate 丢旧账号快照 → 回首页 */}

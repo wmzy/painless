@@ -1,8 +1,9 @@
 import type {AppPaths} from '@/views';
 
 import {TypedLink} from '@native-router/react';
-import {Card, Title, Text, useTitle} from 'haze-ui';
+import {useTitle} from 'haze-ui';
 
+import ErrorPage, {actionLink} from '@/components/ErrorPage';
 
 // Router 的 notFound prop（@native-router/react ≥1.14）：解析以 core 的
 // NotFoundError 拒绝（未匹配路径，或守卫/loader 抛 NotFoundError）时，
@@ -15,10 +16,16 @@ import {Card, Title, Text, useTitle} from 'haze-ui';
 export default function NotFound() {
   useTitle('Page Not Found · Painless');
   return (
-    <Card>
-      <Title>Page not found</Title>
-      <Text>The page does not exist or has been moved.</Text>
-      <TypedLink<AppPaths> to='/'>Back to home</TypedLink>
-    </Card>
+    <ErrorPage
+      kicker='404'
+      title='Page not found'
+      actions={
+        <TypedLink<AppPaths> to='/' className={actionLink}>
+          Back to home
+        </TypedLink>
+      }
+    >
+      The page does not exist or has been moved.
+    </ErrorPage>
   );
 }

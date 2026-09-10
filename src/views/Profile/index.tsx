@@ -2,6 +2,7 @@ import type {AppRoutes} from '@/views';
 import type {ProfileFeedQuery} from '@/types';
 
 import {useEffect, useState} from 'react';
+import {css} from '@linaria/core';
 import {TypedLink} from '@native-router/react';
 import {useMutation} from 'react-toolroom/async';
 import {useControl} from 'react-use-control';
@@ -28,6 +29,16 @@ import {useToastError} from '@/util/toastError';
 import {DEFAULT_LIMIT} from '@/types/search';
 import ArticlePreview from '@/views/Home/ArticlePreview';
 import {useFavorite, useRequireAuth} from '@/views/_shared/useFavorite';
+
+// 单列内容页收敛到文章页同宽（860）——banner 与 tab feed 对齐成一个
+// 编辑栏，与首页双栏（feed+aside）是刻意两种宽度体系
+const column = css`
+  max-width: 860px;
+  margin-inline: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--haze-space-5);
+`;
 
 // 两个 tab 的查询维度：'author' = 我的文章（?author=username），
 // 'favorited' = 收藏的文章（?favorited=username）
@@ -118,7 +129,7 @@ export default function Profile() {
               ))}
               {/* 分页走本地 offset 状态（按钮而非链接——页内浏览态，
                   无 URL 状态可回退；边界态用原生 disabled 移出交互） */}
-              <Flex align='center' justify='center' gap='sm'>
+              <Flex align='center' justify='center' gap={8}>
                 <Button
                   variant='outline'
                   disabled={offset <= 0}
@@ -147,14 +158,18 @@ export default function Profile() {
   );
 
   return (
-    <>
+    <div className={column}>
       <Card>
-        <Flex align='center' gap='md'>
-          <Avatar src={profile.image ?? undefined} alt={profile.username} size='lg' />
-          <div>
-            <Title>{profile.username}</Title>
-            {profile.bio ? <Text>{profile.bio}</Text> : null}
-          </div>
+        <Flex align='center' justify='space-between' gap={16}>
+          {/* 身份簇：头像 + 姓名/简介（左侧分组），右侧行动按钮——
+              此前三者同排，follow/设置按钮贴着名字而不是推到卡边 */}
+          <Flex align='center' gap={16}>
+            <Avatar src={profile.image ?? undefined} alt={profile.username} size='lg' />
+            <div>
+              <Title>{profile.username}</Title>
+              {profile.bio ? <Text>{profile.bio}</Text> : null}
+            </div>
+          </Flex>
           {/* 自己的档案放设置入口（RealWorld 惯例），他人档案 follow toggle */}
           {isOwn ? (
             <TypedLink<AppRoutes, typeof ButtonLink>
@@ -184,6 +199,6 @@ export default function Profile() {
         <TabPanel value='author'>{tab === 'author' && feedSection}</TabPanel>
         <TabPanel value='favorited'>{tab === 'favorited' && feedSection}</TabPanel>
       </Tabs>
-    </>
+    </div>
   );
 }

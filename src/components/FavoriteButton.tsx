@@ -1,5 +1,5 @@
 import {css} from '@linaria/core';
-import {Button, Badge} from 'haze-ui';
+import {Button} from 'haze-ui';
 
 type Props = {
   favorited: boolean;
@@ -12,9 +12,20 @@ const pushRight = css`
   margin-left: auto;
 `;
 
+// 心形状态色：favorited 时朱红实心观感（编辑部红——主色墨蓝之外唯一
+// 的强调色），未收藏继承按钮墨色；计数同色跟随。aria-pressed 语义与
+// 乐观管道不变。
+const heart = css`
+  color: oklch(57% 0.19 27);
+`;
+
+const heartOff = css`
+  opacity: 0.55;
+`;
+
 // 收藏按钮（Home 卡片 / Article 视图两处同构 JSX 的收敛）：状态化外观
-//（solid/outline 换肤 + 计数 Badge 变色）与 aria-pressed 语义在此唯一样
-// 式点；点击意图由调用方经 onToggle 注入（useFavorite 管道，见
+//（心形换色 + 计数跟随）与 aria-pressed 语义在此唯一样式点；点击意图
+// 由调用方经 onToggle 注入（useFavorite 管道，见
 // views/_shared/useFavorite.ts）。props 刻意标量化——favorited/
 // favoritesCount 是 number/boolean，浅比较即语义比较。
 export default function FavoriteButton({
@@ -24,16 +35,14 @@ export default function FavoriteButton({
 }: Props) {
   return (
     <Button
-      variant={favorited ? 'solid' : 'outline'}
+      variant='outline'
       size='sm'
       aria-pressed={favorited}
       className={pushRight}
       onClick={onToggle}
     >
-      ❤{' '}
-      <Badge variant={favorited ? 'success' : 'default'}>
-        {favoritesCount}
-      </Badge>
+      <span className={favorited ? heart : heartOff}>❤</span>{' '}
+      <span className={favorited ? heart : undefined}>{favoritesCount}</span>
     </Button>
   );
 }

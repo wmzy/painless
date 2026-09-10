@@ -18,6 +18,53 @@ import {useSetHomeSearch} from './useSetHomeSearch';
 
 import Tags from './Tags';
 
+// Hero：居中、大字号衬线标题 + 斜体副题，底部分隔线与卡片区划开
+const hero = css`
+  text-align: center;
+  padding: var(--haze-space-2) 0 var(--haze-space-8);
+  margin-bottom: var(--haze-space-8);
+  border-bottom: 1px solid var(--haze-color-border);
+`;
+
+const heroTitle = css`
+  font-size: 48px;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  margin-bottom: var(--haze-space-3);
+`;
+
+const heroSub = css`
+  font-family: var(--haze-font-serif);
+  font-style: italic;
+  font-size: 17px;
+  color: var(--haze-color-text-secondary);
+`;
+
+// 编辑部式点缀：句点用朱红强调色——主色墨蓝之外唯一色彩节奏
+const accentDot = css`
+  color: oklch(57% 0.19 27);
+`;
+
+// 双栏：feed 弹性占满、aside 定宽（Tags 组件内）；窄屏堆叠单列
+const columns = css`
+  align-items: flex-start;
+  gap: var(--haze-space-8);
+
+  @media (max-width: 760px) {
+    flex-direction: column;
+  }
+`;
+
+// feed 列：flex:1 + min-width:0（防长词撑破弹性盒），卡片纵向 gap
+// ——此前卡片之间零间距直接堆叠
+const feed = css`
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--haze-space-5);
+`;
+
 export default function Home() {
   // 标题统一口径「<页名> · Painless」（对齐 index.html 默认），离开恢复。
   useTitle('Home · Painless');
@@ -52,16 +99,22 @@ export default function Home() {
   const onFavorite = useFavorite(favoriteOnHome);
 
   return (
-    <div
-      className={css`
-        text-align: center;
-      `}
-    >
-      <Title>Welcome to Painless.</Title>
-      <Flex>
-        <div>
+    <div>
+      {/* Hero：编辑部版式——居中大衬线标题 + 衬线斜体副题，底部分隔线
+          与卡片区划开。副题是 RealWorld 模板惯例文案 */}
+      <header className={hero}>
+        <Title className={heroTitle}>
+          Welcome to Painless<span className={accentDot}>.</span>
+        </Title>
+        <Text className={heroSub}>A place to share your knowledge.</Text>
+      </header>
+      <Flex className={columns}>
+        {/* feed 列 flex:1 占据剩余宽度（此前无 grow：卡片按内容宽度
+            334px，而标签侧栏吃满 690px——主次倒挂）；aside 定宽在
+            Tags 组件内声明 */}
+        <div className={feed}>
           {activeTag != null && (
-            <Flex align='center' justify='center' gap='xs'>
+            <Flex align='center' justify='center' gap={4}>
               <Chip
                 color='primary'
                 onClose={() => void setSearch({}, {replace: true})}
@@ -96,7 +149,7 @@ export default function Home() {
               aria-disabled='true' 样式成 Button 的 :disabled（半透明 +
               not-allowed + pointer-events 断鼠标），tabIndex={-1} 移出
               焦点序。 */}
-          <Flex align='center' justify='center' gap='sm'>
+          <Flex align='center' justify='center' gap={8}>
             <TypedLink<AppRoutes, typeof ButtonLink>
               as={ButtonLink}
               to='/'

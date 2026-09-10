@@ -1593,3 +1593,57 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
     同步。AGENTS.md react-f0rm 版本标注 1.1.x → 1.3.x。
 - **验证**：typecheck + lint:ci（0 error）+ 单测 373/373（31 文件）+ build
   + 体积预算通过（133.00/141.00 KB）。
+
+## 34. 视觉重设计：Editorial Ink 编辑部风格 + 提交按钮皮肤收敛（2026-09-10）
+
+- **背景**：全站沿用 haze-ui 默认 token（蓝紫主色、纯白底、系统字体、6px
+  圆角），实测问题：首页 feed 列 334px vs 标签侧栏 690px（主次倒挂）、
+  文章标题链接浏览器默认蓝 rgb(0,0,238)、文章正文把 markdown 当纯文本渲染
+  （"## " 字面量显示）、五个表单的提交按钮是原生裸按钮（#efefef 底、
+  21px 高）、表单卡片通栏 1024px（输入框 1010px 宽）、字段零间距、404
+  无导航 chrome 且内容贴左上角、页面无 footer 戛然而止。
+- **决定**：
+  - **方向**：编辑部/墨纸风（暖纸白底 + 墨色文字 + 衬线标题 + 深墨蓝
+    主色 + 朱红收藏强调，克制圆角、柔和暖调阴影）。
+  - **覆写机制**：新建 src/theme.css（index.tsx 在 tokens.css 之后导入），
+    以「双类自连接」选择器（.haze-colors__lightTheme.haze-colors__lightTheme
+    等）覆写 --haze-* 变量，组件级微调用「作用域类 + 组件类」锚定——两个
+    都是顺序无关特异性方案（组件 css 由 vite 插件按模块图注入，顺序随
+    导入拓扑漂移）。
+  - **零 webfont**：标题衬线用系统衬线栈（Iowan/Palatino/Georgia/Noto
+    Serif/Liberation Serif），不发包字体——lightweight 是模板身份，字体
+    字节（可变衬线 woff2 ≈ 100KB+）违背设计原则，且体积棘轮余量只有
+    8KB。权衡：Linux 桌面回退 Liberation Serif，观感略逊 macOS/Windows，
+    换零字节。
+  - **正文 markdown 渲染**：article.body 从 split('\n') 纯文本改为
+    haze-ui MarkdownRenderer；其正则解析只转义代码块，正文注入
+    dangerouslySetInnerHTML 对 API 用户生成内容构成 XSS 面——新建
+    src/util/markdown.ts sanitizeMarkdown：围栏代码块整体保留（渲染器
+    自行转义），非代码区原始 HTML 标签一律剥离，配套单测钉死安全契约。
+  - **提交按钮**：haze-ui Button 硬编码 type='button'（类型上剥离 type），
+    五个表单的裸提交按钮统一收敛为 src/components/SubmitButton.tsx
+    （token 驱动主色皮肤、fullWidth 语义）；其 primarySkin 同时是
+    ErrorPage 主行动链接的皮肤（单一观感定义）。
+  - **错误页收敛**：Router notFound / 路由级 errorComponent / 全局
+    errorHandler 三处渲染在 Layout 之外——共用 src/components/ErrorPage.tsx
+    居中满屏外壳（kicker 大字衬线 + 标题 + 说明 + 操作行），不再裸 Card
+    贴角。
+  - **结构性修正**：Home 双栏 feed flex:1 + aside 定宽 260（实测 732/260
+    取代 334/690）；表单卡片收敛 480/560/720/860（登录/设置/编辑器/文章）；
+    字段纵向 gap 16px；导航 sticky + 毛玻璃 + 右簇（主题开关/账号动作）；
+    页脚；卡片 hover 抬升；日期入卡（Intl 零依赖）；Core 家族补
+    box-sizing: border-box（textarea 实测溢出表单 26px）。
+  - **体积棘轮不动**：实测 141359 B = 138.05 KB（43 文件，raw 412.58
+    KB），较上批 136195 B 净 +5.04 KB——全部为设计系统 css（theme.css
+    ≈3 KB gz 进 index css）+ MarkdownRenderer 拉入 + 新组件少量逻辑。
+    在 10% 棘轮余量内（余 2.95 KB），BASELINE_BYTES 与阈值不动，脚本头
+    注释同步本批实测。
+  - **测试适配**：Home 夹具补 createdAt（合同必填字段，日期渲染暴露的
+    夹具缺口）；Tags stale 断言从「className 为空」改为「类数量 1→2」
+    （布局类恒在，stale 增挂半透明类）；Layout footer 整句一个文本节点
+    （品牌词不与导航品牌文本查询相撞）。
+- **验证**：typecheck + lint:ci（0 error）+ 单测 378/378（32 文件）+
+  build + 体积预算通过（138.05/141.00 KB）+ 浏览器实测几何回归（列宽
+  732/260、卡片白底暖边、标题链接 0 个默认蓝、markdown h2 渲染、
+  submit 主色 480×37、暗色主题 paper 底、404 居中、hover transform
+  translateY(-2px)、textarea 与按钮右缘对齐）。

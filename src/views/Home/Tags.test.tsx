@@ -145,12 +145,13 @@ describe('Tags 侧栏（真实 haze-ui 渲染）', () => {
   it('stale：aside 挂半透明类，非 stale 时不挂', () => {
     setResult({data: ['react']});
     const fresh = renderView(<Tags />);
-    expect(screen.getByRole('complementary').className).toBe('');
+    // 布局类恒在（定宽/sticky），stale 时额外多挂一个半透明类——
+    // 断言类数量而非类名（linaria 生成名是实现细节）
+    expect(screen.getByRole('complementary').className.split(' ')).toHaveLength(1);
     fresh.unmount();
 
     setResult({data: ['react'], stale: true});
     renderView(<Tags />);
-    // 只断言「挂了类」不断言类名（linaria 生成名是实现细节）
-    expect(screen.getByRole('complementary').className).not.toBe('');
+    expect(screen.getByRole('complementary').className.split(' ')).toHaveLength(2);
   });
 });

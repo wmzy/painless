@@ -1,0 +1,317 @@
+/* Painless 全局设计语言 ——「Editorial Ink」编辑部风格。
+ *
+ * 机制：haze-ui 的外观全部由 --haze-* 变量驱动（tokens.css 把色板/
+ * 排版/间距三组变量挂在 .haze-colors__{light,dark}Theme /
+ * .haze-typography__typography / .haze-spacing__spacing 三个作用域类
+ * 上，index.tsx 根部一次挂齐）。本文件在 tokens.css 之后导入，用
+ * 「双类自连接」选择器（.haze-colors__lightTheme.haze-colors__lightTheme）
+ * 提高特异性，使覆写不依赖 bundle 内 CSS 顺序——组件 css 由 vite 插件
+ * 按模块图注入，顺序随导入拓扑漂移，同特异性覆写会被组件 css 反杀。
+ * 组件级微调用「作用域类 + 组件类」锚定（.haze-typography__typography
+ * .haze-Typography__titleBase），同样顺序无关。
+ *
+ * 方向：暖纸白底 + 墨色文字 + 衬线标题（零字节系统衬线栈，取舍见
+ * decisions.md #34），主色深墨蓝，克制圆角、柔和暖调阴影。
+ * 零新依赖、零 webfont 字节——lightweight 是本模板的身份，字体不发包。
+ */
+
+/* —— 全局基线 —— */
+
+body {
+  margin: 0;
+}
+
+/* 链接继承文字色（消灭浏览器默认蓝）；带皮肤的链接（NavLink/ButtonLink
+ * 的类选择器）特异性更高，不受影响。无装饰是刻意的：本应用每个链接
+ * 都有各自的可点性表达（导航高亮、按钮皮肤、卡片 hover 下划线）。
+ */
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+hr {
+  border: none;
+  border-top: 1px solid var(--haze-color-border);
+  margin: var(--haze-space-4) 0;
+}
+
+/* —— 排版作用域：衬线标题 + 精调字阶 —— */
+
+.haze-typography__typography.haze-typography__typography {
+  --haze-font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont,
+    'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  /* 零字节衬线栈：Iowan/Palatino（Mac）→ Georgia（Win）→ Noto/Liberation
+   * Serif（Linux）。比 Times 锐、比 sans 有个性，跨平台都落在「编辑部」
+   * 气质上（decisions.md #34）。 */
+  --haze-font-serif: 'Iowan Old Style', 'Palatino Linotype', Palatino,
+    Georgia, 'Noto Serif', 'Liberation Serif', 'Times New Roman', serif;
+  --haze-text-3xl: 34px;
+  --haze-text-2xl: 26px;
+  --haze-leading-tight: 1.2;
+  --haze-leading-normal: 1.6;
+  --haze-leading-relaxed: 1.8;
+}
+
+/* Title h1–h5 统一衬线；600 在衬线大字号下比 700 更克制、更编辑感 */
+.haze-typography__typography .haze-Typography__titleBase {
+  font-family: var(--haze-font-serif);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+/* 文本选区与焦点环（变量在根 div 上解析，selector 挂作用域类即可） */
+.haze-colors__lightTheme ::selection {
+  background: oklch(45.5% 0.115 255 / 0.16);
+}
+.haze-colors__darkTheme ::selection {
+  background: oklch(71% 0.115 255 / 0.3);
+}
+a:focus-visible {
+  outline: 2px solid var(--haze-color-primary);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* —— 色板覆写：暖纸白 / 墨色 / 深墨蓝 —— */
+
+.haze-colors__lightTheme.haze-colors__lightTheme {
+  --haze-gray-1: oklch(99.1% 0.004 85); /* 纸（页面底） */
+  --haze-gray-2: oklch(97.4% 0.004 85);
+  --haze-gray-3: oklch(94.8% 0.007 85);
+  --haze-gray-4: oklch(90.3% 0.009 80); /* 边线 */
+  --haze-gray-5: oklch(85.6% 0.012 80);
+  --haze-gray-6: oklch(80% 0.014 80);
+  --haze-gray-7: oklch(72.4% 0.016 80);
+  --haze-gray-8: oklch(64.3% 0.017 80);
+  --haze-gray-9: oklch(54.5% 0.02 80);
+  --haze-gray-10: oklch(47.5% 0.02 80);
+  --haze-gray-11: oklch(38.4% 0.02 75);
+  --haze-gray-12: oklch(25.8% 0.022 70); /* 墨 */
+  /* 主色：从蓝紫（260.8/.241）改深墨蓝——更沉、更编辑感，.115 的
+   * 彩度让 hover/active 派生（oklch(from …)）仍保有色彩存在感 */
+  --haze-blue-9: oklch(45.5% 0.115 255);
+  --haze-blue-10: oklch(41% 0.105 255);
+}
+
+.haze-colors__darkTheme.haze-colors__darkTheme {
+  --haze-gray-1: oklch(20.5% 0.008 80);
+  --haze-gray-2: oklch(23.8% 0.008 80);
+  --haze-gray-3: oklch(27.5% 0.009 80);
+  --haze-gray-4: oklch(32.5% 0.011 80);
+  --haze-gray-5: oklch(37.5% 0.012 80);
+  --haze-gray-6: oklch(43% 0.013 80);
+  --haze-gray-7: oklch(49.5% 0.014 80);
+  --haze-gray-8: oklch(57% 0.015 80);
+  --haze-gray-9: oklch(64% 0.016 80);
+  --haze-gray-10: oklch(70% 0.015 80);
+  --haze-gray-11: oklch(80% 0.012 80);
+  --haze-gray-12: oklch(93% 0.01 80);
+  --haze-blue-9: oklch(71% 0.115 255);
+  --haze-blue-10: oklch(64% 0.11 255);
+}
+
+/* —— 间距作用域：更方、更软的编辑部尺度 —— */
+
+.haze-spacing__spacing.haze-spacing__spacing {
+  --haze-radius-sm: 3px;
+  --haze-radius-md: 5px;
+  --haze-radius-lg: 6px;
+  --haze-radius-xl: 10px;
+  --haze-radius-2xl: 12px;
+  --haze-shadow-sm: 0 1px 2px oklch(20% 0.02 80 / 0.05);
+  --haze-shadow-md: 0 1px 2px oklch(20% 0.02 80 / 0.04),
+    0 4px 12px oklch(20% 0.02 80 / 0.06);
+  --haze-shadow-lg: 0 2px 4px oklch(20% 0.02 80 / 0.05),
+    0 12px 32px oklch(20% 0.02 80 / 0.09);
+  --haze-shadow-xl: 0 4px 8px oklch(20% 0.02 80 / 0.06),
+    0 24px 48px oklch(20% 0.02 80 / 0.12);
+}
+
+/* —— 应用外壳：根 div 撑满视口并上纸色（主题变量只有根内能解析，
+ * body 留 UA 白，暗色下滚过顶的橡皮筋区露白可接受） —— */
+
+.haze-colors__lightTheme.haze-typography__typography {
+  min-height: 100dvh;
+  background: var(--haze-color-bg);
+  /* 非组件裸文本（footer、错误页等）的基线：作用域类只声明变量，
+   * 不应用字体/颜色——不在此挂上，裸元素继承 UA 的 Times/黑 */
+  font-family: var(--haze-font-sans);
+  color: var(--haze-color-text);
+}
+.haze-colors__darkTheme.haze-typography__typography {
+  min-height: 100dvh;
+  background: var(--haze-color-bg);
+  font-family: var(--haze-font-sans);
+  color: var(--haze-color-text);
+}
+
+/* —— 导航栏：sticky + 毛玻璃 + 品牌衬线 —— */
+
+.haze-colors__lightTheme .haze-NavigationBar__nav {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: color-mix(in srgb, var(--haze-color-bg) 84%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  padding: var(--haze-space-3) var(--haze-space-6);
+}
+.haze-colors__darkTheme .haze-NavigationBar__nav {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: color-mix(in srgb, var(--haze-color-bg) 84%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  padding: var(--haze-space-3) var(--haze-space-6);
+}
+.haze-typography__typography .haze-NavigationBar__nav {
+  font-size: var(--haze-text-sm);
+}
+/* 导航项间距放宽（links 容器缺省 12px，视觉上偏挤） */
+.haze-typography__typography .haze-NavigationBar__links {
+  gap: var(--haze-space-4);
+}
+/* 品牌（Title level 3 在导航内）：衬线、更大、更重；品牌链的 hover
+ * 胶囊底色取消——品牌不是导航项 */
+.haze-typography__typography .haze-NavigationBar__nav .haze-Typography__3 {
+  font-family: var(--haze-font-serif);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.haze-NavigationBar__nav a:first-child:hover {
+  background: transparent;
+}
+
+/* —— 卡片：纸上的白卡（暗色下微抬表面），柔和投影 + 发丝边 —— */
+
+.haze-colors__lightTheme .haze-Card__elevated {
+  background: oklch(100% 0 0);
+  border: 1px solid var(--haze-color-border);
+  box-shadow: var(--haze-shadow-md);
+}
+.haze-colors__darkTheme .haze-Card__elevated {
+  background: var(--haze-gray-2);
+  border: 1px solid var(--haze-gray-4);
+  box-shadow: var(--haze-shadow-md);
+}
+
+/* —— 表单字段：纸面输入框在卡片上留一点暖色，hover 边线向主色靠 —— */
+
+/* 边界盒归一：Core 家族 width:100% 未声明 border-box，padding+边框
+ * 会把字段顶出表单容器（textarea 实测溢出 26px、按钮对齐表单边而字段
+ * 越界） */
+.haze-typography__typography .haze-InputCore__base,
+.haze-typography__typography .haze-TextareaCore__base,
+.haze-typography__typography .haze-TagInputCore__container {
+  box-sizing: border-box;
+}
+
+.haze-colors__lightTheme .haze-InputCore__base,
+.haze-colors__lightTheme .haze-TextareaCore__base,
+.haze-colors__lightTheme .haze-TagInputCore__container {
+  background: var(--haze-color-bg);
+}
+
+/* —— Tag 侧栏：空心描边筹码，hover 向主色，选中实心主色 —— */
+
+.haze-typography__typography .haze-TagGroupItem__tag {
+  background: transparent;
+  border: 1px solid var(--haze-color-border);
+  color: var(--haze-color-text-secondary);
+  transition: border-color var(--haze-duration-fast),
+    color var(--haze-duration-fast), background var(--haze-duration-fast);
+}
+.haze-typography__typography button:hover .haze-TagGroupItem__tag {
+  border-color: var(--haze-color-primary);
+  color: var(--haze-color-primary);
+}
+.haze-typography__typography button[aria-pressed='true'] .haze-TagGroupItem__tag {
+  background: var(--haze-color-primary);
+  border-color: var(--haze-color-primary);
+  color: var(--haze-color-text-inverse);
+}
+
+/* —— 文章正文（haze-ui MarkdownRenderer）：编辑部长文排版 —— */
+
+.haze-typography__typography .haze-MarkdownRenderer__wrapper {
+  font-size: 17px;
+  line-height: 1.8;
+}
+.haze-typography__typography .haze-MarkdownRenderer__wrapper h1,
+.haze-typography__typography .haze-MarkdownRenderer__wrapper h2,
+.haze-typography__typography .haze-MarkdownRenderer__wrapper h3,
+.haze-typography__typography .haze-MarkdownRenderer__wrapper h4,
+.haze-typography__typography .haze-MarkdownRenderer__wrapper h5,
+.haze-typography__typography .haze-MarkdownRenderer__wrapper h6 {
+  font-family: var(--haze-font-serif);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin-top: 1.6em;
+  margin-bottom: 0.6em;
+  /* 相对正文 17px 的字阶梯（渲染器缺省 h2=20px 与正文对比偏弱） */
+  line-height: 1.3;
+}
+.haze-typography__typography .haze-MarkdownRenderer__wrapper h1 {
+  font-size: 1.6em;
+}
+.haze-typography__typography .haze-MarkdownRenderer__wrapper h2 {
+  font-size: 1.35em;
+}
+.haze-typography__typography .haze-MarkdownRenderer__wrapper h3 {
+  font-size: 1.15em;
+}
+.haze-typography__typography .haze-MarkdownRenderer__wrapper p {
+  margin: 0 0 1.1em;
+}
+.haze-typography__typography .haze-MarkdownRenderer__wrapper pre {
+  background: var(--haze-color-bg-subtle);
+  border: 1px solid var(--haze-color-border);
+  border-radius: var(--haze-radius-md);
+  padding: var(--haze-space-4);
+  overflow-x: auto;
+  font-size: 14px;
+  line-height: 1.6;
+  margin: 1.2em 0;
+}
+.haze-typography__typography .haze-MarkdownRenderer__wrapper pre code {
+  background: transparent;
+  padding: 0;
+}
+.haze-typography__typography .haze-MarkdownRenderer__wrapper code {
+  font-family: var(--haze-font-mono);
+  font-size: 0.9em;
+  background: var(--haze-color-bg-muted);
+  border-radius: 4px;
+  padding: 0.1em 0.4em;
+}
+.haze-typography__typography .haze-MarkdownRenderer__wrapper blockquote {
+  margin: 1.4em 0;
+  padding: 0.2em 1.4em;
+  border-left: 3px solid var(--haze-color-primary);
+  color: var(--haze-color-text-secondary);
+  font-family: var(--haze-font-serif);
+  font-style: italic;
+}
+.haze-typography__typography .haze-MarkdownRenderer__wrapper ul,
+.haze-typography__typography .haze-MarkdownRenderer__wrapper ol {
+  padding-inline-start: var(--haze-space-6);
+  margin: 0 0 1.1em;
+}
+.haze-typography__typography .haze-MarkdownRenderer__wrapper li {
+  margin: 0.3em 0;
+}
+
+/* —— 评论列表：条目加垂直呼吸 —— */
+
+.haze-typography__typography .haze-ListItem__item {
+  padding: var(--haze-space-3) 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .haze-NavigationBar__nav {
+    transition: none;
+  }
+}

@@ -295,6 +295,7 @@ function makeArticles(n: number) {
     description: `desc-${i}`,
     tagList: ['react'],
     author: {username: `user-${i}`, image: `https://example.com/${i}.png`},
+    createdAt: '2026-01-01T00:00:00.000Z',
     favorited: false,
     favoritesCount: i * 3
   }));

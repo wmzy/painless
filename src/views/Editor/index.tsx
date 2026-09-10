@@ -1,4 +1,5 @@
 import {useState, useEffect} from 'react';
+import {css} from '@linaria/core';
 // react-f0rm ≥0.4：onSubmit / onValidSubmit 都在校验通过后触发且被
 // await（isSubmitting 覆盖整个异步提交，finally 复位），二者已无行为
 // 差异——统一用 onSubmit。
@@ -16,6 +17,20 @@ import * as articleService from '@/services/article';
 import {useEditorData} from '@/services/dataloaders';
 import {articleCache, homeCache, profileFeedCache} from '@/util/useQuery';
 import {required, applyApiFieldErrors} from '@/util/validators';
+import SubmitButton from '@/components/SubmitButton';
+
+// 写作页居中：720px 收住表单行宽（比认证页宽——编辑器字段承载长文），
+// 此前通栏 1024px 的标题输入同样没有信息收益
+const cardCls = css`
+  max-width: 720px;
+  margin-inline: auto;
+`;
+
+const formStack = css`
+  display: flex;
+  flex-direction: column;
+  gap: var(--haze-space-4);
+`;
 
 // 表单值形状：validate 回调与 handleSubmit 的 values 都由此约束
 type EditorValues = {
@@ -147,11 +162,11 @@ export default function Editor() {
   };
 
   return (
-    <Card>
+    <Card className={cardCls}>
       <Title>{article ? 'Edit Article' : 'New Article'}</Title>
       {error && <Alert variant='danger'>{error}</Alert>}
       {/* react-f0rm ≥0.4：onSubmit 被 await，isSubmitting 覆盖整个异步提交 */}
-      <Form form={form} onSubmit={handleSubmit} aria-label='Article editor form'>
+      <Form form={form} onSubmit={handleSubmit} aria-label='Article editor form' className={formStack}>
         {/* FormItem（haze-ui）input 声明式桥接 react-f0rm 字段与受控核心：
             id/aria-invalid/aria-describedby/onBlur/onChange/value 全部由
             FormItem 接线（写入即 setValueByPath），控件 props（placeholder
@@ -185,7 +200,7 @@ export default function Editor() {
             无需任何解包适配。TagInputCore 把 id/aria-* 转发到内部可聚焦
             input，字段 aria 链路与其它字段一致接通 */}
         <FormItem form={form} name='tagList' input={TagInputCore} placeholder='Add tags' />
-        <button type='submit' disabled={isSubmitting}>
+        <SubmitButton disabled={isSubmitting}>
           {isSubmitting
             ? article
               ? 'Updating...'
@@ -193,7 +208,7 @@ export default function Editor() {
             : article
               ? 'Update Article'
               : 'Publish Article'}
-        </button>
+        </SubmitButton>
       </Form>
       {/* 条件挂载 + open：ConfirmDialog 的 open 传布尔时是非受控语义
           （仅作初值），由 blocker.state（待决询问非 null）控制挂载/卸载；

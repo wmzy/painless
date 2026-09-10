@@ -1,6 +1,7 @@
 import type {AppPaths} from '@/views';
 
 import {useEffect, useState} from 'react';
+import {css} from '@linaria/core';
 import {View, useRouter, ScrollRestoration, TypedNavLink} from '@native-router/react';
 import {refresh} from '@native-router/core';
 import {NavigationBar, NavLink as HazeNavLink, Container, Title} from 'haze-ui';
@@ -13,6 +14,37 @@ import {
 } from '@/services/auth';
 
 import ThemeToggle from '@/components/ThemeToggle';
+
+// 应用外壳：纵向 flex 撑满视口——main（flex:1）把 footer 压到短页面
+// 底部，根 div 的纸色背景因此铺满整屏（见 theme.css 的根选择器）
+const shell = css`
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+`;
+
+// 主内容区：flex:1 占满剩余高度；块向 padding 是页面级呼吸位——此前
+// Container 只有 inline padding，内容贴着导航栏下沿开始
+const main = css`
+  flex: 1;
+  padding-block: var(--haze-space-8) var(--haze-space-12);
+`;
+
+// 导航右簇：主题开关 + 会话动作推右，与主导航分层
+const navEnd = css`
+  margin-inline-start: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--haze-space-3);
+`;
+
+const footerStyle = css`
+  border-top: 1px solid var(--haze-color-border);
+  padding: var(--haze-space-6) var(--haze-space-4);
+  text-align: center;
+  font-size: var(--haze-text-xs);
+  color: var(--haze-color-text-muted);
+`;
 
 export default function Layout() {
   const router = useRouter();
@@ -37,7 +69,7 @@ export default function Layout() {
   }, [router]);
 
   return (
-    <div>
+    <div className={shell}>
       {/* back/forward 恢复滚动位置；push 回到顶部（POP 始终恢复） */}
       <ScrollRestoration />
       <NavigationBar>
@@ -64,45 +96,56 @@ export default function Layout() {
         <TypedNavLink<AppPaths> as={HazeNavLink} to='/about'>
           About
         </TypedNavLink>
-        <ThemeToggle />
-        {user ? (
-          <>
-            {/* 用户名即本人档案入口（RealWorld 惯例）：动态段 params
-                必传，username 经 TypedLink 编译期判别 */}
-            <TypedNavLink<AppPaths>
-              as={HazeNavLink}
-              to='/profile/:username'
-              params={{username: user.username}}
-            >
-              {user.username}
-            </TypedNavLink>
-            <TypedNavLink<AppPaths> as={HazeNavLink} to='/editor'>
-              New Article
-            </TypedNavLink>
-            <TypedNavLink<AppPaths> as={HazeNavLink} to='/settings'>
-              Settings
-            </TypedNavLink>
-            {/* Logout 不是导航：保持 haze-ui NavLink 的按钮语义（href 缺省
-                落 '#' + preventDefault），onClick 里的登出链路原样——
-                三段链收敛进 logoutAndNavigate（见 services/auth.ts） */}
-            <HazeNavLink onClick={() => logoutAndNavigate(router)}>
-              Logout
-            </HazeNavLink>
-          </>
-        ) : (
-          <>
-            <TypedNavLink<AppPaths> as={HazeNavLink} to='/login'>
-              Login
-            </TypedNavLink>
-            <TypedNavLink<AppPaths> as={HazeNavLink} to='/register'>
-              Register
-            </TypedNavLink>
-          </>
-        )}
+        {/* 右簇：主题开关 + 账号动作——margin-inline-start:auto 推右，
+            与主导航在视觉上分层（浏览项 vs 会话项） */}
+        <div className={navEnd}>
+          {user ? (
+            <>
+              {/* 用户名即本人档案入口（RealWorld 惯例）：动态段 params
+                  必传，username 经 TypedLink 编译期判别 */}
+              <TypedNavLink<AppPaths>
+                as={HazeNavLink}
+                to='/profile/:username'
+                params={{username: user.username}}
+              >
+                {user.username}
+              </TypedNavLink>
+              <TypedNavLink<AppPaths> as={HazeNavLink} to='/editor'>
+                New Article
+              </TypedNavLink>
+              <TypedNavLink<AppPaths> as={HazeNavLink} to='/settings'>
+                Settings
+              </TypedNavLink>
+              {/* Logout 不是导航：保持 haze-ui NavLink 的按钮语义（href 缺省
+                  落 '#' + preventDefault），onClick 里的登出链路原样——
+                  三段链收敛进 logoutAndNavigate（见 services/auth.ts） */}
+              <HazeNavLink onClick={() => logoutAndNavigate(router)}>
+                Logout
+              </HazeNavLink>
+            </>
+          ) : (
+            <>
+              <TypedNavLink<AppPaths> as={HazeNavLink} to='/login'>
+                Login
+              </TypedNavLink>
+              <TypedNavLink<AppPaths> as={HazeNavLink} to='/register'>
+                Register
+              </TypedNavLink>
+            </>
+          )}
+          {/* 主题开关收尾：会话动作之后、视觉上不横插在导航与账号动作
+              之间 */}
+          <ThemeToggle />
+        </div>
       </NavigationBar>
-      <Container>
+      <Container className={main}>
         <View />
       </Container>
+      {/* 页脚：模板身份落款——整句一个文本节点（品牌词不再单独成
+          span，与导航品牌文本查询互不干扰），页面不再戛然而止 */}
+      <footer className={footerStyle}>
+        <span>Painless — a lightweight React SPA template · RealWorld demo</span>
+      </footer>
     </div>
   );
 }

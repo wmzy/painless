@@ -1,6 +1,7 @@
 import type {AppPaths} from '@/views';
 
 import {useState} from 'react';
+import {css} from '@linaria/core';
 import {Form, useForm, useCanSubmit} from 'react-f0rm';
 import {Card, Title, InputCore, Text, Alert, FormItem, useTitle} from 'haze-ui';
 // FormItem 声明式桥（haze-ui 1.15）：传控件引用即自动接好
@@ -17,6 +18,21 @@ import {navigate, invalidate} from '@native-router/core';
 
 import * as auth from '@/services/auth';
 import {required, email, compose, applyApiFieldErrors} from '@/util/validators';
+import SubmitButton from '@/components/SubmitButton';
+
+// 窄卡居中：认证表单是单一任务界面，通栏卡片（此前 1024px 宽、输入框
+// 1010px 宽）没有任何信息收益，480px 是舒适的单手扫视宽度
+const cardCls = css`
+  max-width: 480px;
+  margin-inline: auto;
+`;
+
+// 字段纵向节奏：FormItem 自身只有内部 gap，字段与字段之间此前零间距
+const formStack = css`
+  display: flex;
+  flex-direction: column;
+  gap: var(--haze-space-4);
+`;
 
 // /login 的 search 契约：?redirect=<encodeURIComponent(原目的页)>——由
 // requireLogin 守卫写入（views/index.tsx）。非字符串/空串一律丢弃，落
@@ -86,11 +102,11 @@ export default function Login() {
   };
 
   return (
-    <Card>
+    <Card className={cardCls}>
       <Title>Login</Title>
       {error && <Alert variant='danger'>{error}</Alert>}
       {/* onSubmit 被 await，isSubmitting 覆盖整个异步提交 */}
-      <Form form={form} onSubmit={handleSubmit} aria-label='Login form'>
+      <Form form={form} onSubmit={handleSubmit} aria-label='Login form' className={formStack}>
         {/* mode='onBlur'：默认提交才校验，email 失焦即校验；onBlur 由
             input 桥自动接线 */}
         <FormItem
@@ -115,9 +131,7 @@ export default function Login() {
         {/* 初始可点是刻意语义：首次校验由提交触发、errors 初始为空——
             若初始 disabled 提交永远不会发生。改字段即逐键复验，错误清即
             弹起。 */}
-        <button type='submit' disabled={!canSubmit}>
-          Login
-        </button>
+        <SubmitButton disabled={!canSubmit}>Login</SubmitButton>
       </Form>
       <Text>
         Don't have an account? <TypedLink<AppPaths> to='/register'>Register</TypedLink>

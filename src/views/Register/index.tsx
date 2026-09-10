@@ -1,6 +1,7 @@
 import type {AppPaths} from '@/views';
 
 import {useState} from 'react';
+import {css} from '@linaria/core';
 import {Form, useForm, useCanSubmit} from 'react-f0rm';
 import {Card, Title, InputCore, Text, Alert, FormItem, useTitle} from 'haze-ui';
 // FormItem（haze-ui 1.8 引入、1.11 起随 form 层并入主 barrel）：接管字段
@@ -23,6 +24,19 @@ import {
   usernameAvailable,
   applyApiFieldErrors
 } from '@/util/validators';
+import SubmitButton from '@/components/SubmitButton';
+
+// 同 Login：窄卡居中 + 字段纵向节奏（此前零间距、通栏 1024px 卡）
+const cardCls = css`
+  max-width: 480px;
+  margin-inline: auto;
+`;
+
+const formStack = css`
+  display: flex;
+  flex-direction: column;
+  gap: var(--haze-space-4);
+`;
 
 // —— 用户名异步查重：react-f0rm 异步 validate 协议 ——
 // debounce 窗口（validateDebounce）由 FormItem 透传给 react-f0rm 的
@@ -123,10 +137,10 @@ export default function Register() {
   };
 
   return (
-    <Card>
+    <Card className={cardCls}>
       <Title>Register</Title>
       {error && <Alert variant='danger'>{error}</Alert>}
-      <Form form={form} onSubmit={handleSubmit} aria-label='Register form'>
+      <Form form={form} onSubmit={handleSubmit} aria-label='Register form' className={formStack}>
         {/* 用户名：异步查重（react-f0rm 异步 validate 协议，查重端点
             services/profile 的 fetchProfile）。mode='onBlur' 同 email——
             失焦/提交才校验，避免每次击键一轮请求；validateDebounce 把
@@ -185,9 +199,7 @@ export default function Register() {
             按钮压下；提交失败后修改字段即逐键复验（默认档
             reValidateMode='onChange'，FormItem 的 onChange 即
             useField.onChange），错误清即弹起，422 回填的字段错误同理。 */}
-        <button type='submit' disabled={!canSubmit}>
-          Register
-        </button>
+        <SubmitButton disabled={!canSubmit}>Register</SubmitButton>
       </Form>
       <Text>
         Already have an account? <TypedLink<AppPaths> to='/login'>Login</TypedLink>

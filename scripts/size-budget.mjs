@@ -1,14 +1,13 @@
 #!/usr/bin/env node
 // 口径名：dist JS+CSS gzip 总和（zlib level 9，含懒加载 chunk）。
 // 基线：131335 B = 128.26 KB（38 个文件，2026-09-06，Node 24 内置 zlib；
-// 上限阈值锚定的批次基线）。最近实测：136195 B = 133.00 KB（39 个文件，
-// raw 395.61 KB，2026-09-10，依赖升级批（decisions.md 第 33 条）——
-// react-f0rm 1.2→1.3 + tools-config 0.4→0.5 + @types/node 补丁。相对
-// 基线净 +4.75 KB：升级批中唯一运行时依赖为 react-f0rm 1.2→1.3
-// （tools-config/@types/node 均为 dev-only，不进产物），增量即其运行时
-// 新增（setStatus/useStatus、useTransform、isSubmitted、字段级
-// validate/asyncAlways/validateOnMount 路径与 required 空数组语义），
-// 零新增依赖；38→39 文件。增量在棘轮余量内，BASELINE_BYTES 与阈值不动。
+// 上限阈值锚定的批次基线）。最近实测：141359 B = 138.05 KB（43 个文件，
+// raw 412.58 KB，2026-09-10，视觉重设计批（decisions.md 第 34 条）——
+// Editorial Ink 设计语言：theme.css 全局 token 覆写 + 组件皮肤
+//（index css 净增 ≈3 KB gz）、MarkdownRenderer 首次拉入运行时代码、
+// SubmitButton/ErrorPage 新组件。相对上批 136195 B 净 +5.04 KB：设计
+// 系统 css 是增长的正当本体，零新依赖、零 webfont 字节（系统衬线栈）。
+// 增量在棘轮余量内，BASELINE_BYTES 与阈值不动。
 // 阈值：141 KB = 144384 B（基线 +10% 余量，取整到 KB）。
 //
 // 口径必须可复现（项目教训：bundle 增量报告曾出现无任何口径能复现的数字）：
