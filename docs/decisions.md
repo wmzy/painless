@@ -1647,3 +1647,31 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
   732/260、卡片白底暖边、标题链接 0 个默认蓝、markdown h2 渲染、
   submit 主色 480×37、暗色主题 paper 底、404 居中、hover transform
   translateY(-2px)、textarea 与按钮右缘对齐）。
+
+### 34 增补：hover 预览浮层锚定化（同批，2026-09-10）
+
+- **改动**：Preview 从「视口右下角 0.2 倍缩印」改为锚定面板——钉在触发
+  标题链接正下方（10px 间距），下方放不下翻到锚点上方，水平贴锚点左缘
+  并向视口内夹（12px 留白）；面板 ≤560×400，内部跑「100vw 画布 +
+  scale(k)」等比缩印（k = 面板宽/窗口宽），高度收进 400 超出裁掉（预览
+  是「页首一瞥」）；scroll（capture，window 处捕到任何滚动容器）与
+  resize 驱动重定位；入场 140ms 淡入微升（prefers-reduced-motion 关闭）。
+- **三个非显然坑（实测）**：
+  - **嵌套 inert 触发 Chromium 渲染进程崩溃**：外层面板与内层画布都挂
+    inert 时 hover 即 renderer crash（detached frame，非 JS 异常）。
+    inert 只挂外层面板一层（e2e 的 [data-testid][inert] 契约也在外层）；
+    单测改钉 data-testid 断言外层。
+  - **portal 目标必须留在主题作用域内**：面板皮肤全用 --haze-* 变量，
+    直挂 document.body（作用域 div 之外）时变量全部解析失败——背景/边框/
+    阴影透明，内容与页面文字叠印（视觉模型审查抓到的缺陷）。host 取锚点
+    closest('.haze-typography__typography')（index.tsx 挂根的常驻作用域
+    类）；作用域 div 无 transform/filter，fixed 不被改锚（卡片 hover 的
+    transform 波及不到——面板是作用域 div 的子级而非卡片的子级）。
+  - **卡片列宽破坏 e2e 的 heading 中心 hover**：加宽后 h2 中心落在行尾
+    空区（334px 卡时代中心恰在标题文本上），Playwright 的
+    getByRole('heading').hover() 不再触发 mouseenter。e2e 交互全部改钉
+    link 角色（标题文本所在的可点面），`.first()` 去重不再需要——浮层
+    aria-hidden 不进 a11y 树，同名副本无歧义。35/35 e2e 全绿。
+- **验证**：typecheck + lint + 单测 378/378 + build + 预算 142089 B =
+  138.76 KB（+0.7 KB 为 Preview 重写）通过 + e2e 35/35 + 浏览器实测
+  （下方 10px / 翻转上方 10px / 窄视口夹紧 / 暗色皮肤变量解析）。

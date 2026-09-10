@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 // 口径名：dist JS+CSS gzip 总和（zlib level 9，含懒加载 chunk）。
 // 基线：131335 B = 128.26 KB（38 个文件，2026-09-06，Node 24 内置 zlib；
-// 上限阈值锚定的批次基线）。最近实测：141359 B = 138.05 KB（43 个文件，
-// raw 412.58 KB，2026-09-10，视觉重设计批（decisions.md 第 34 条）——
-// Editorial Ink 设计语言：theme.css 全局 token 覆写 + 组件皮肤
-//（index css 净增 ≈3 KB gz）、MarkdownRenderer 首次拉入运行时代码、
-// SubmitButton/ErrorPage 新组件。相对上批 136195 B 净 +5.04 KB：设计
-// 系统 css 是增长的正当本体，零新依赖、零 webfont 字节（系统衬线栈）。
-// 增量在棘轮余量内，BASELINE_BYTES 与阈值不动。
+// 上限阈值锚定的批次基线）。最近实测：142089 B = 138.76 KB（43 个文件，
+// raw 414.79 KB，2026-09-10，视觉重设计批（decisions.md 第 34 条，
+// 含同批 hover 预览锚定化增补）——Editorial Ink 设计语言：theme.css
+// 全局 token 覆写 + 组件皮肤（index css 净增 ≈3 KB gz）、MarkdownRenderer
+// 首次拉入运行时代码、SubmitButton/ErrorPage/Preview 锚定重写。相对
+// 上批 136195 B 净 +5.75 KB：设计系统 css 是增长的正当本体，零新依赖、
+// 零 webfont 字节（系统衬线栈）。增量在棘轮余量内，BASELINE_BYTES 与
+// 阈值不动。
 // 阈值：141 KB = 144384 B（基线 +10% 余量，取整到 KB）。
 //
 // 口径必须可复现（项目教训：bundle 增量报告曾出现无任何口径能复现的数字）：

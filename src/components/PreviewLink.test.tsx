@@ -91,14 +91,15 @@ describe('PreviewLink', () => {
     // 迁移 haze-ui Popover 批保留的 a11y 契约：预览渲染完整目标视图
     //（链接/按钮天然 tabbable），必须整体对 AT 隐身（aria-hidden）并
     // 移出 Tab 序（inert，React 19 落为 DOM 属性）——两层缺一，键盘/
-    // 读屏用户都会落进「看不见也听不见」的可聚焦内容
+    // 读屏用户都会落进「看不见也听不见」的可聚焦内容。断言钉在
+    // data-testid（外层面板：e2e 同一定位锚）
     render(
       <PreviewLink to='/article/:title' params={{title: 'how-to'}}>
         Hover me
       </PreviewLink>
     );
     fireEvent.mouseEnter(screen.getByText('Hover me'));
-    const layer = screen.getByText('loading').closest('div')!;
+    const layer = screen.getByTestId('preview-overlay');
     expect(layer.getAttribute('aria-hidden')).toBe('true');
     expect(layer.hasAttribute('inert')).toBe(true);
   });

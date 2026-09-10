@@ -881,7 +881,9 @@ test('401 on authenticated request auto-logs-out', async ({page}) => {
 // 弹层语义（5febc94 裸 div 迁移后不再借用旧本地 Popover 的
 // role=dialog 假语义），e2e 钉 data-testid='preview-overlay' 定位；
 // 浮层 pointer-events:none，点击仍落在卡片标题本体（浮层只读不可交互）。
-// 点击时同名的预览标题（h1）已在 DOM，需 .first() 锁定卡片 h2。
+// 交互定位用 link 角色（标题文本所在的可点面）：浮层副本因 aria-hidden
+// 不进 a11y 树，link 无重名歧义；heading 的中心在卡片列宽后落在行尾
+// 空区，hover/click 均不命中标题（决策见下方 hover 注释）。
 test('PreviewLink previews on hover and reuses prefetch on click', async ({
   page
 }) => {
@@ -900,9 +902,11 @@ test('PreviewLink previews on hover and reuses prefetch on click', async ({
   // viewport 预取：卡片滚入视口即拉详情，恰好一次
   await expect.poll(() => singleGets[article1.slug]).toBe(1);
 
-  // hover 卡片标题 → onMouseEnter 开预览浮层：呈现预解析的 Article
-  // 视图（正文可辨而非 loading 占位），且零新增请求
-  await page.getByRole('heading', {name: article1.title}).hover();
+  // hover 卡片标题链接 → onMouseEnter 开预览浮层：呈现预解析的 Article
+  // 视图（正文可辨而非 loading 占位），且零新增请求。定位用 link 角色
+  //（标题文本所在的可点面）而非 heading——卡片列宽后 heading 的中心
+  // 落在行尾空区，hover 不到标题文本
+  await page.getByRole('link', {name: article1.title}).hover();
   const overlay = page.locator('[data-testid="preview-overlay"]');
   await expect(
     overlay.getByText('Paragraphs of the first fixture article.')
@@ -911,7 +915,7 @@ test('PreviewLink previews on hover and reuses prefetch on click', async ({
 
   // 点击进详情：复用预取的同一 resolve entry（视图任务已 settle），
   // 同一 GET 仍共 1 次——预取与正式导航共享实体缓存/在飞任务
-  await page.getByRole('heading', {name: article1.title}).first().click();
+  await page.getByRole('link', {name: article1.title}).click();
   await expect(page).toHaveURL(new RegExp(`/article/${article1.slug}$`));
   await expect(
     page.getByText('Fixture comment for the article page.')
@@ -1030,15 +1034,15 @@ test('viewStack back: Home 后退零请求恢复', async ({page}) => {
 
   // 进首篇详情：先 hover 等预览浮层把目标视图完整解析（含 CommentList
   // 的 comments 订阅落定）再点击——直接点会踩「浮层卸载 abort 在飞
-  // comments 请求」的竞态（见下一条用例注释）；.first() 的取舍同预取
-  // 用例，浮层里已有同名标题
-  await page.getByRole('heading', {name: article1.title}).hover();
+  // comments 请求」的竞态（见下一条用例注释）；定位用 link 角色，浮层
+  // 副本 aria-hidden 不进 a11y 树、无重名歧义
+  await page.getByRole('link', {name: article1.title}).hover();
   await expect(
     page
       .locator('[data-testid="preview-overlay"]')
       .getByText('Fixture comment for the article page.')
   ).toBeVisible();
-  await page.getByRole('heading', {name: article1.title}).first().click();
+  await page.getByRole('link', {name: article1.title}).click();
   await expect(page).toHaveURL(new RegExp(`/article/${article1.slug}$`));
   await expect(
     page.getByText('Fixture comment for the article page.')
@@ -1148,13 +1152,13 @@ test('favorite 500: 乐观翻转回滚 + danger toast', async ({page}) => {
   // 染共享的 per-args 状态，真视图的 CommentList 渲染 Failed to load
   // comments（预取用例不踩此坑：它在点击前等过预取落定）。等浮层的评
   // 论文本出现即 comments 已 settle，点击后真视图直接吃缓存
-  await page.getByRole('heading', {name: article1.title}).hover();
+  await page.getByRole('link', {name: article1.title}).hover();
   await expect(
     page
       .locator('[data-testid="preview-overlay"]')
       .getByText('Fixture comment for the article page.')
   ).toBeVisible();
-  await page.getByRole('heading', {name: article1.title}).first().click();
+  await page.getByRole('link', {name: article1.title}).click();
   await expect(page).toHaveURL(new RegExp(`/article/${article1.slug}$`));
   await expect(
     page.getByText('Fixture comment for the article page.')
@@ -1213,11 +1217,11 @@ test('PreviewLink race: fast click after hover keeps comments healthy', async ({
   await page.goto('/');
   // hover 开浮层后只等浮层本体出现（不等评论文本——那意味着 settle），
   // 立刻点击
-  await page.getByRole('heading', {name: article1.title}).hover();
+  await page.getByRole('link', {name: article1.title}).hover();
   // 浮层本体出现即点击（testid 定位唯一，无 strict-mode 歧义——
   // 旧 [role=dialog] 时代与 ToastContainer 宿主撞选择器才需 first()）
   await expect(page.locator('[data-testid="preview-overlay"]')).toBeVisible();
-  await page.getByRole('heading', {name: article1.title}).first().click();
+  await page.getByRole('link', {name: article1.title}).click();
   await expect(page).toHaveURL(new RegExp(`/article/${article1.slug}$`));
 
   // 修复后的契约：真视图的 CommentList 新起请求并成功渲染，全程不出现
@@ -1360,7 +1364,7 @@ test('a11y: PreviewLink 预览浮层打开态通过 WCAG A/AA 扫描', async ({
 
   // hover 打开预览浮层（定位同上方 PreviewLink 行为用例：浮层
   // aria-hidden 不在无障碍树里，钉 data-testid 定位）
-  await page.getByRole('heading', {name: article1.title}).hover();
+  await page.getByRole('link', {name: article1.title}).hover();
   await expect(
     page
       .locator('[data-testid="preview-overlay"]')
@@ -1506,9 +1510,9 @@ test('view transition: push 导航开过渡且 types 含 push', async ({page}) =
   ).toBeVisible();
   const before = (await readVtCalls(page)).length;
 
-  // .first()：hover 会开出预览浮层，浮层里已有同名 h1，锁定卡片 h2
-  //（取舍同预取用例）
-  await page.getByRole('heading', {name: article1.title}).first().click();
+  // 点标题链接（link 角色锁定卡片链接本体；浮层副本 aria-hidden 不进
+  // a11y 树，无重名歧义）
+  await page.getByRole('link', {name: article1.title}).click();
   await expect(page).toHaveURL(new RegExp(`/article/${article1.slug}$`));
   // 导航功能正常：真视图渲染（评论区可见），非仅 URL 变化
   await expect(
@@ -1536,7 +1540,7 @@ test('view transition: back 导航开过渡且 types 含 pop', async ({page}) =>
   await expect(
     page.getByRole('heading', {name: article1.title})
   ).toBeVisible();
-  await page.getByRole('heading', {name: article1.title}).first().click();
+  await page.getByRole('link', {name: article1.title}).click();
   await expect(page).toHaveURL(new RegExp(`/article/${article1.slug}$`));
   await expect(
     page.getByText('Fixture comment for the article page.')
@@ -1646,8 +1650,8 @@ test('view transition pop × ScrollRestoration: 出站页够高时 back 后滚�
   const leftAt = await page.evaluate(() => window.scrollY);
   expect(leftAt).toBeGreaterThan(0);
 
-  // 点末卡 push 到文章页（.first() 的取舍同上：浮层里已有同名 h1）
-  await page.getByRole('heading', {name: 'VT Article 10'}).first().click();
+  // 点末卡标题链接 push 到文章页（link 角色，浮层副本无重名歧义）
+  await page.getByRole('link', {name: 'VT Article 10'}).click();
   await expect(page).toHaveURL(/\/article\/e2e-vt-10$/);
   await expect(page.getByText('Scroll fixture comment #0.')).toBeVisible();
 
@@ -1738,7 +1742,7 @@ test('view transition pop × ScrollRestoration: 出站页矮时 back 后滚动�
   const leftAt = await page.evaluate(() => window.scrollY);
   expect(leftAt).toBeGreaterThan(0);
 
-  await page.getByRole('heading', {name: 'VT Article 10'}).first().click();
+  await page.getByRole('link', {name: 'VT Article 10'}).click();
   await expect(page).toHaveURL(/\/article\/e2e-vt-10$/);
   await expect(
     page.getByText('Fixture comment for the article page.')

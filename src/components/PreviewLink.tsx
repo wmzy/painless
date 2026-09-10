@@ -1,5 +1,6 @@
 import type {AppPaths} from '@/views';
 
+import {useRef} from 'react';
 import {TypedLink, type TypedLinkProps} from '@native-router/react';
 import {useControl, type Control} from 'react-use-control';
 
@@ -29,9 +30,12 @@ export default function PreviewLink({
     visibleControl as Control<boolean>,
     false
   );
+  // 触发器 ref：Preview 用它取锚点几何（面板钉在链接下方/上方）
+  const triggerRef = useRef<HTMLSpanElement>(null);
   return (
     <TypedLink<AppPaths> {...props} prefetch={prefetch ?? 'viewport'}>
       <span
+        ref={triggerRef}
         onMouseEnter={() => setVisible(true)}
         onMouseLeave={() => setVisible(false)}
         onFocus={() => setVisible(true)}
@@ -40,7 +44,7 @@ export default function PreviewLink({
       >
         {children}
       </span>
-      <Preview visible={visible} />
+      <Preview visible={visible} anchorRef={triggerRef} />
     </TypedLink>
   );
 }
