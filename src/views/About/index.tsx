@@ -1,5 +1,7 @@
 import {css} from '@linaria/core';
-import {Card, Title, Text, useTitle} from 'haze-ui';
+import {Card, Title, Text} from 'haze-ui';
+
+import {useTitle} from '@/util/useTitle';
 
 import Feed from './Feed';
 

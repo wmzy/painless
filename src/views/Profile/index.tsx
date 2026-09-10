@@ -18,14 +18,14 @@ import {
   TabPanel,
   Tabs,
   Text,
-  Title,
-  useTitle
+  Title
 } from 'haze-ui';
 
 import {getCurrentUser, onAuthChange, type User} from '@/services/auth';
 import {useProfileData, useProfileFeedQuery} from '@/services/dataloaders';
 import {favoriteOnProfileFeed, followOnProfile} from '@/services/mutations';
 import {useToastError} from '@/util/toastError';
+import {useTitle} from '@/util/useTitle';
 import {DEFAULT_LIMIT} from '@/types/search';
 import ArticlePreview from '@/views/Home/ArticlePreview';
 import {useFavorite, useRequireAuth} from '@/views/_shared/useFavorite';

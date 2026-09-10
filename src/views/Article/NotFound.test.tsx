@@ -16,19 +16,13 @@ vi.mock('@native-router/react', () => ({
   )
 }));
 
-// 三件套最小 stub 隔离纯展示件；useTitle 走真实现（本视图消费，页
-// 标题契约由库本体承担）
-vi.mock('haze-ui', async () => {
-  const {useTitle} = await vi.importActual<typeof import('haze-ui')>(
-    'haze-ui'
-  );
-  return {
-    useTitle,
-    Card: ({children}: any) => <div>{children}</div>,
-    Title: ({children}: any) => <h1>{children}</h1>,
-    Text: ({children}: any) => <p>{children}</p>
-  };
-});
+// 三件套最小 stub 隔离纯展示件；页标题走真 @/util/useTitle（不在
+// haze-ui mock 内）
+vi.mock('haze-ui', async () => ({
+  Card: ({children}: any) => <div>{children}</div>,
+  Title: ({children}: any) => <h1>{children}</h1>,
+  Text: ({children}: any) => <p>{children}</p>
+}));
 
 // 模拟 http 层 ApiError 的形状（带 status），覆盖 duck-typing 判别分支
 function apiError(status: number, message: string): Error {

@@ -1,12 +1,23 @@
+import type {ReactNode} from 'react';
+
 import {describe, it, expect, vi} from 'vitest';
 import {render, screen, fireEvent} from '@testing-library/react';
 import {useControl} from 'react-use-control';
 
+import {useTitle} from '@/util/useTitle';
+
+const state = vi.hoisted(() => {
+  const s: {view: ReactNode | null; loading: boolean; error: unknown} = {
+    view: null,
+    loading: true,
+    error: null
+  };
+  return s;
+});
+
 vi.mock('@native-router/react', () => ({
   TypedLink: ({children, ...props}: any) => <a {...props}>{children}</a>,
-  // loading: true 使受控用例可观察：visible=true 时 Preview 渲染
-  // 'loading'（portal 到 body），对现有只断言链接本身的用例无影响
-  usePrefetch: () => ({view: null, loading: true, error: null})
+  usePrefetch: () => ({view: state.view, loading: state.loading, error: state.error})
 }));
 
 vi.mock('@native-router/core', () => ({}));
@@ -27,7 +38,20 @@ const runtimePath = `/article/${slug}`;
   <PreviewLink to={runtimePath}>never</PreviewLink>
 );
 
+// 预览浮层挂载的是完整目标视图（含其 useTitle 调用）：本探针代表
+// 任何会写 document.title 的视图，标题写入应被浮层作用域静默
+function TitleProbe() {
+  useTitle('Probe · Painless');
+  return <p>probe-body</p>;
+}
+
 describe('PreviewLink', () => {
+  beforeEach(() => {
+    state.view = null;
+    state.loading = true;
+    state.error = null;
+  });
+
   it('renders children text', () => {
     render(
       <PreviewLink to='/article/:title' params={{title: 'how-to'}}>
@@ -139,5 +163,25 @@ describe('PreviewLink', () => {
     fireEvent.click(screen.getByText('toggle-preview'));
     expect(screen.queryByText('loading')).toBeNull();
     expect(screen.getByTestId('host-visible').textContent).toBe('false');
+  });
+
+  it('hover renders the target view without rewriting document.title', () => {
+    document.title = 'Home · Painless';
+    state.loading = false;
+    state.view = <TitleProbe />;
+    render(
+      <PreviewLink to='/article/:title' params={{title: 'how-to'}}>
+        Hover me
+      </PreviewLink>
+    );
+
+    fireEvent.mouseEnter(screen.getByText('Hover me'));
+    // 浮层内是完整视图复制品（probe 调用 useTitle）：TitleWriteContext
+    // 关闭其页标题写，悬停期间与移出后标签页标题都保持入口值
+    expect(screen.getByText('probe-body')).toBeDefined();
+    expect(document.title).toBe('Home · Painless');
+
+    fireEvent.mouseLeave(screen.getByText('Hover me'));
+    expect(document.title).toBe('Home · Painless');
   });
 });

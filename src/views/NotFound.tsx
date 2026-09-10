@@ -1,8 +1,8 @@
 import type {AppPaths} from '@/views';
 
 import {TypedLink} from '@native-router/react';
-import {useTitle} from 'haze-ui';
 
+import {useTitle} from '@/util/useTitle';
 import ErrorPage, {actionLink} from '@/components/ErrorPage';
 
 // Router 的 notFound prop（@native-router/react ≥1.14）：解析以 core 的

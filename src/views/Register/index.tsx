@@ -3,7 +3,7 @@ import type {AppPaths} from '@/views';
 import {useState} from 'react';
 import {css} from '@linaria/core';
 import {Form, useForm, useCanSubmit} from 'react-f0rm';
-import {Card, Title, InputCore, Text, Alert, FormItem, useTitle} from 'haze-ui';
+import {Card, Title, InputCore, Text, Alert, FormItem} from 'haze-ui';
 // FormItem（haze-ui 1.8 引入、1.11 起随 form 层并入主 barrel）：接管字段
 // id/错误 span/aria 链路——首条错误渲染为 <span role='alert'>。1.15 起
 // input 声明式桥：传控件引用即自动接好 id/aria-invalid/aria-describedby/
@@ -16,6 +16,7 @@ import {navigate, invalidate} from '@native-router/core';
 
 
 import * as auth from '@/services/auth';
+import {useTitle} from '@/util/useTitle';
 import {
   required,
   email,

@@ -16,8 +16,7 @@ import {
   FormItem,
   MarkdownRenderer,
   TextareaCore,
-  Title,
-  useTitle
+  Title
 } from 'haze-ui';
 
 import {getCurrentUser, onAuthChange, type User} from '@/services/auth';
@@ -26,6 +25,7 @@ import {favoriteOnArticle, followOnArticle} from '@/services/mutations';
 import {useArticleData} from '@/services/dataloaders';
 import {articleCache, commentsCache, homeCache, profileFeedCache} from '@/util/useQuery';
 import {useToastError} from '@/util/toastError';
+import {useTitle} from '@/util/useTitle';
 import {sanitizeMarkdown} from '@/util/markdown';
 import FavoriteButton from '@/components/FavoriteButton';
 import SubmitButton from '@/components/SubmitButton';

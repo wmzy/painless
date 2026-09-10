@@ -1,8 +1,8 @@
 import type {AppPaths} from '@/views';
 
 import {TypedLink} from '@native-router/react';
-import {useTitle} from 'haze-ui';
 
+import {useTitle} from '@/util/useTitle';
 import ErrorPage, {actionLink} from '@/components/ErrorPage';
 
 // /article/:title 的路由级 errorComponent：data（findByTitle）失败时由

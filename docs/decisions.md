@@ -1675,3 +1675,23 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
 - **验证**：typecheck + lint + 单测 378/378 + build + 预算 142089 B =
   138.76 KB（+0.7 KB 为 Preview 重写）通过 + e2e 35/35 + 浏览器实测
   （下方 10px / 翻转上方 10px / 窄视口夹紧 / 暗色皮肤变量解析）。
+
+### 34 增补 2：预览浮层页标题静默（2026-09-11）
+
+- **问题**：Preview 浮层挂载的是 usePrefetch 解析出的完整目标视图
+  （Article 视图本体）——其 useTitle 照常执行，悬停首页文章卡片即把
+  标签页标题改成 `<文章标题> · Painless`，移出才恢复。预览是装饰性
+  复制品，页标题是导航层状态，两者耦合是缺陷而非特性。
+- **改动**：复活 src/util/useTitle.ts（此前经 haze-ui 1.21 收敛删除的
+  本地实现）为项目统一页标题入口：与 haze-ui 版同构（快照/两段 effect，
+  #11 的选型理由不变），多一个 TitleWriteContext 闸门——默认 true，
+  Preview 浮层以 provider value={false} 包住视图复制品，其标题写静默
+  （context 经 React 树透传，portal 不截断；嵌套 provider 也只在
+  浮层，正常页不感知）。12 个视图 + 2 个 NotFound 组件的 useTitle
+  导入从 haze-ui 收敛回 @/util/useTitle（haze-ui 版的「库本体承担页
+  标题契约」随浮层用例出现失效——库 hook 无禁用位，抑制只能放项目层）。
+- **测试**：PreviewLink.test.tsx 增回归用例——悬停渲染真实 useTitle
+  探针视图，document.title 悬停期间与移出后均保持入口值（修复前该
+  用例即失败）；视图测试的 haze-ui mock 摘除 useTitle 真实现转接
+  （页标题契约改由真 @/util/useTitle 承担，不在 mock 内）。
+- **验证**：lint:ci + 单测 379/379（32 文件）通过。

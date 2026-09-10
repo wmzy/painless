@@ -2,7 +2,7 @@ import type {AppRoutes} from '@/views';
 
 import {css} from '@linaria/core';
 import {TypedLink, useSearch} from '@native-router/react';
-import {Title, Text, Flex, Chip, ButtonLink, useTitle} from 'haze-ui';
+import {Title, Text, Flex, Chip, ButtonLink} from 'haze-ui';
 
 import {
   homeSearchSchema,
@@ -11,6 +11,7 @@ import {
 } from '@/types/search';
 import {favoriteOnHome} from '@/services/mutations';
 import {useHomeData} from '@/services/dataloaders';
+import {useTitle} from '@/util/useTitle';
 import {useFavorite} from '@/views/_shared/useFavorite';
 
 import ArticlePreview from './ArticlePreview';

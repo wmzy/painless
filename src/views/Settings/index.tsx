@@ -10,12 +10,12 @@ import {
   FormItem,
   InputCore,
   TextareaCore,
-  Title,
-  useTitle
+  Title
 } from 'haze-ui';
 
 import {getCurrentUser, logoutAndNavigate, updateUser} from '@/services/auth';
 import {required, email, compose, applyApiFieldErrors} from '@/util/validators';
+import {useTitle} from '@/util/useTitle';
 import SubmitButton from '@/components/SubmitButton';
 
 // 同 Login：窄卡居中 + 字段纵向节奏

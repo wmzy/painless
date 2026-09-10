@@ -1,5 +1,7 @@
 import {css} from '@linaria/core';
-import {Card, Title, Text, useTitle} from 'haze-ui';
+import {Card, Title, Text} from 'haze-ui';
+
+import {useTitle} from '@/util/useTitle';
 
 // 短文页卡片收敛行宽（与文章页同一编辑部尺度）
 const cardCls = css`

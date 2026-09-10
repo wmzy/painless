@@ -89,21 +89,20 @@ const state = vi.hoisted(() => ({
 
 // 整体替换为最小 stub（覆盖本视图用到的导出）——保留 stub 是视图隔离
 //（不测库的纯展示渲染）而非模块兼容（1.21 dist 纯 ESM 直连无碍）；
-// useTitle 走真实现，页标题契约由库本体承担；AsyncSection 同走真实现
+// 页标题走真 @/util/useTitle（不在本 mock 内）；AsyncSection 走真实现
 //（Tags 侧栏摘 stub 后进入本视图树，占位/错误分支由库本体渲染——本文件
 // 不断言其分支，那是 Tags.test.tsx 的职责，真实现只为避免第二套口径）
 vi.mock('haze-ui', async () => {
   const React = await import('react');
-  const {useTitle, AsyncSection} = await vi.importActual<
-    typeof import('haze-ui')
-  >('haze-ui');
+  const {AsyncSection} = await vi.importActual<typeof import('haze-ui')>(
+    'haze-ui'
+  );
   const box = (Tag: string) => {
     const C = ({children, ...rest}: {children?: ReactNode} & Record<string, unknown>) =>
       React.createElement(Tag, rest, children);
     return C;
   };
   return {
-    useTitle,
     AsyncSection,
     Title: box('h1'),
     Text: box('span'),

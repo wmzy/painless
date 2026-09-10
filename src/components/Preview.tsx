@@ -3,6 +3,8 @@ import {useLayoutEffect, useState, type RefObject} from 'react';
 import {usePrefetch} from '@native-router/react';
 import {createPortal} from 'react-dom';
 
+import {TitleWriteContext} from '@/util/useTitle';
+
 // 锚点间距 / 视口留白 / 面板最大尺寸（px）
 const GAP = 10;
 const MARGIN = 12;
@@ -147,7 +149,9 @@ export default function Preview({visible, anchorRef}: Props) {
         className={isStatus ? `${viewport} ${status}` : viewport}
         style={{transform: `scale(${pos.width / window.innerWidth})`}}
       >
-        {body}
+        {/* 完整视图复制品的页标题写静默：悬停不该改标签页标题
+            （context 经 React 树透传，portal 不截断） */}
+        <TitleWriteContext.Provider value={false}>{body}</TitleWriteContext.Provider>
       </div>
     </div>,
     pos.host

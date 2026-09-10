@@ -3,7 +3,7 @@ import type {AppPaths} from '@/views';
 import {useState} from 'react';
 import {css} from '@linaria/core';
 import {Form, useForm, useCanSubmit} from 'react-f0rm';
-import {Card, Title, InputCore, Text, Alert, FormItem, useTitle} from 'haze-ui';
+import {Card, Title, InputCore, Text, Alert, FormItem} from 'haze-ui';
 // FormItem 声明式桥（haze-ui 1.15）：传控件引用即自动接好
 // id/aria-invalid/aria-describedby/onBlur/onChange/value（接线属性恒定
 // 优先、不可覆盖），其余 props 经泛型全类型校验透传。
@@ -17,6 +17,7 @@ import {navigate, invalidate} from '@native-router/core';
 
 
 import * as auth from '@/services/auth';
+import {useTitle} from '@/util/useTitle';
 import {required, email, compose, applyApiFieldErrors} from '@/util/validators';
 import SubmitButton from '@/components/SubmitButton';
 

@@ -1,7 +1,9 @@
 import type {AppPaths} from '@/views';
 
 import {TypedLink} from '@native-router/react';
-import {Card, Title, Text, useTitle} from 'haze-ui';
+import {Card, Title, Text} from 'haze-ui';
+
+import {useTitle} from '@/util/useTitle';
 
 
 // /profile/:username 的路由级 errorComponent（与 Article/NotFound 同构）：
