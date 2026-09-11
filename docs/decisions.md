@@ -1584,6 +1584,25 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
 - **验证**：typecheck + lint:ci（0 error）+ 单测 **373/373**（31 文件，
   +4 回归）+ e2e **35/35** + build。
 
+### 32 增补：回迁库版 useSetSearch（2026-09-12）
+
+- **背景**：上游修复已发版——@native-router/react **1.16.1**（commit
+  3c0669d）：`setSearch` 目标改 app 空间组装（`pathname.slice(baseUrl
+  .length)` 剥前缀后拼 search），「toLocation 补前缀」恰好一次，绝对
+  base 下无双段路径。上游自带回归测试（baseUrl '/painless'，`/?tag=a`
+  翻 tag → `/painless/?tag=b`）。
+- **决定**：本地 workaround 整体退役——删 `useSetHomeSearch.ts` 与其
+  回归钉 `useSetHomeSearch.test.tsx`；Tags tag 点选与 Home Chip 取消
+  两处消费回迁 `useSetSearch(homeSearchWriteSchema)`（签名同形：
+  `(input, {replace}) => Promise<void> | void`，调用点零改动）；两处
+  测试的写入口 mock 并入 `'@native-router/react'` 模块 mock 的
+  `useSetSearch` 键。依赖升 `^1.16.1`。
+- **验证**：typecheck（0 error）+ lint:ci（0 error）+ 单测 **393/393**
+  （33 文件，-4 随 workaround 删除——该行为改由上游测试套件钉死，
+  不再属本项目契约）+ 部署形态浏览器实测（/painless/ 构建 + preview：
+  tag 点击 → `/painless/?tag=api` 无双前缀、无 notFound，再点取消回
+  `/painless/`）。
+
 ## 33. 依赖升级：react-f0rm 1.3.0 + tools-config 0.5.0（2026-09-10）
 
 - **背景**：手动升级 react-f0rm 1.2→1.3、tools-config 0.4→0.5、@types/node 补丁。

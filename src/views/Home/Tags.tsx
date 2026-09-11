@@ -1,11 +1,9 @@
 import {css} from '@linaria/core';
-import {useSearch} from '@native-router/react';
+import {useSearch, useSetSearch} from '@native-router/react';
 import {TagGroup, TagGroupItem, Title, AsyncSection} from 'haze-ui';
 
 import {useTagsQuery} from '@/services/dataloaders';
-import {homeSearchSchema} from '@/types/search';
-
-import {useSetHomeSearch} from './useSetHomeSearch';
+import {homeSearchSchema, homeSearchWriteSchema} from '@/types/search';
 
 const tagButton = css`
   padding: 0;
@@ -42,7 +40,7 @@ export default function Tags() {
   const {data: tags, loading, error, stale, refetch} = useTagsQuery([]);
 
   const {tag: activeTag} = useSearch(homeSearchSchema);
-  const setSearch = useSetHomeSearch();
+  const setSearch = useSetSearch(homeSearchWriteSchema);
 
   // 再点同一个则清空；{replace: true}：tag 筛选是过滤面而非导航面——back
   // 不逐条回放筛选态（连点三个 tag 不堆三条 history），与分页 TypedLink

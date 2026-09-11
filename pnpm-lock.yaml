@@ -27,8 +27,8 @@ importers:
         specifier: ^1.17.0
         version: 1.17.0
       '@native-router/react':
-        specifier: ^1.16.0
-        version: 1.16.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+        specifier: ^1.16.1
+        version: 1.16.1(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@tanstack/react-table':
         specifier: ^9.2.4
         version: 9.2.4(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -506,8 +506,8 @@ packages:
     resolution: {integrity: sha512-h03jd6KDaxpCaff+SrMto1xeI0HnACUwCxP52mxn7WbTwCShxkMbjVG8rYZd0rB/TQ7VV/iP7zAiVvZq8SwVxg==}
     engines: {node: '>=18'}
 
-  '@native-router/react@1.16.0':
-    resolution: {integrity: sha512-m9O8QMfvwm/ojLErWgMRh1y26rCDD8ClsS5UZYn3VsGCRU6k4DvzkU4lQT0xxWz3ZU5x3mzgEXQZ5vf+P2XZ/Q==}
+  '@native-router/react@1.16.1':
+    resolution: {integrity: sha512-wUnsf0SCzYHKp5jv8DNaZJ1zym2nh2vZV6NR2rx90/Z06RXOxVTYxmVzWs/owXkYOv/wFKBEo9vNfIHRIiPVaQ==}
     engines: {node: '>=18'}
     peerDependencies:
       react: ^17.0.0 || ^18.0.0 || ^19.0.0
@@ -4257,7 +4257,7 @@ snapshots:
       history: 5.3.0
       path-to-regexp: 8.4.2
 
-  '@native-router/react@1.16.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
+  '@native-router/react@1.16.1(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
     dependencies:
       '@native-router/core': 1.17.0
       history: 5.3.0

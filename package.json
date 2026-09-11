@@ -71,7 +71,7 @@
     "@for-fun/event-emitter": "^1.1.0",
     "@linaria/core": "^8.2.0",
     "@native-router/core": "^1.17.0",
-    "@native-router/react": "^1.16.0",
+    "@native-router/react": "^1.16.1",
     "@tanstack/react-table": "^9.2.4",
     "date-fns": "^4.4.0",
     "fetch-fun": "^0.15.0",

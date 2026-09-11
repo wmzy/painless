@@ -1,11 +1,12 @@
 import type {AppRoutes} from '@/views';
 
 import {css} from '@linaria/core';
-import {TypedLink, useSearch} from '@native-router/react';
+import {TypedLink, useSearch, useSetSearch} from '@native-router/react';
 import {Title, Text, Flex, Chip, ButtonLink} from 'haze-ui';
 
 import {
   homeSearchSchema,
+  homeSearchWriteSchema,
   DEFAULT_LIMIT,
   type HomeSearchInput
 } from '@/types/search';
@@ -15,7 +16,6 @@ import {useTitle} from '@/util/useTitle';
 import {useFavorite} from '@/views/_shared/useFavorite';
 
 import ArticlePreview from './ArticlePreview';
-import {useSetHomeSearch} from './useSetHomeSearch';
 
 import Tags from './Tags';
 
@@ -75,11 +75,11 @@ export default function Home() {
   // coerce 与缺省都在 schema 里完成，tag/offset/limit 直接可用。
   const {tag: activeTag, offset, limit} = useSearch(homeSearchSchema);
 
-  // 写侧经 useSetHomeSearch（decisions.md #32：库版在绝对 base 下双拼
-  // baseUrl），读写共用 homeSearchWriteSchema 契约。本写入口只服务「取消
-  // tag 筛选」——过滤面用 {replace: true}，back 不回放筛选态，与分页的
-  // push 刻意并存。
-  const setSearch = useSetHomeSearch();
+  // 写侧回迁库版 useSetSearch（react 1.16.1 修复绝对 base 双拼 baseUrl，
+  // decisions.md #32 增补），读写共用 homeSearchWriteSchema 契约。本写
+  // 入口只服务「取消 tag 筛选」——过滤面用 {replace: true}，back 不回放
+  // 筛选态，与分页的 push 刻意并存。
+  const setSearch = useSetSearch(homeSearchWriteSchema);
 
   const page = Math.floor(offset / limit) + 1;
   const totalPages = Math.max(1, Math.ceil(articlesCount / limit));
