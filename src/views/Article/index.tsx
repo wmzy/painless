@@ -5,7 +5,6 @@ import {css} from '@linaria/core';
 import {Form, useForm, reset, useIsSubmitting} from 'react-f0rm';
 import {useMutation} from 'react-toolroom/async';
 import {TypedLink, useRouter} from '@native-router/react';
-import {navigate} from '@native-router/core';
 import {
   Alert,
   Button,
@@ -31,6 +30,7 @@ import FavoriteButton from '@/components/FavoriteButton';
 import SubmitButton from '@/components/SubmitButton';
 import {useFavorite, useRequireAuth} from '@/views/_shared/useFavorite';
 import {AuthorLine} from '@/views/_shared/AuthorLine';
+import {navigateTo} from '@/views/navigateTo';
 
 import CommentList from './CommentList';
 
@@ -129,8 +129,9 @@ export default function ArticleView() {
     setConfirmDelete(false);
     try {
       await deleteMutation(article.slug);
-      // 被取代/取消的导航 reject NCE（core 1.15）：吞掉即「停在旧视图」
-      void navigate(router, '/').catch(() => undefined);
+      // NCE 吞除与 fire-and-forget 收敛在 navigateTo（「停在旧视图」
+      // 语义）
+      navigateTo(router, '/');
     } catch (e: unknown) {
       // 失败留在本页：乐观不存在（删除无乐观态），toast 只补「为什么
       // 没发生」

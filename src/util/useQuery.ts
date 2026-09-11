@@ -2,6 +2,8 @@
 import type {Article, ArticlePage, Author, Comment, ProfileFeedQuery} from '@/types';
 import type {HomeSearch} from '@/types/search';
 
+import {useRef} from 'react';
+
 import {
   createMemoryCacheProvider,
   hashArgs,
@@ -172,6 +174,8 @@ type QueryResult<T> = {
   /** 本参数自上次成功以来的失败次数，同参数成功即归零 */
   failureCount: number;
   stale: boolean;
+  /** keepPrevious 场景的保旧值窗口：data 端的是上一 key 的保留值，非当前 args 的结果 */
+  placeholder: boolean;
   /** 本 args 最近一次成功 settle 时间戳（provenance：结果确由当前 args 取得） */
   dataUpdatedAt: number | undefined;
   /** 删除当前 args 缓存条目后重请求（引用稳定，失败 resolve undefined） */
@@ -184,6 +188,13 @@ export type QueryHookConfig<T = unknown> = {
   staleTime?: number;
   /** 声明后 data 类型收窄为非空 */
   initData?: T;
+  /**
+   * args 切到无自身数据的新 key 时保留上一 key 的 data（placeholder=true、
+   * loading=false，in-flight 由 fetching 表达）；新 key 失败则 data 诚实让位
+   * undefined 走 error 分支。TanStack placeholderData: keepPreviousData 的
+   * 对位物，语义见 decisions.md #13 补记。
+   */
+  keepPrevious?: boolean;
   /** 必须注册在 useCache 内层，Refresh/always/empty 才生效（decisions.md #12） */
   mock?: MockConfig;
 };
@@ -203,7 +214,7 @@ export function createQueryHook<T, C extends QueryHookConfig<T>>(
 export function createQueryHook(
   config: QueryHookConfig
 ): (args: unknown[]) => QueryResult<unknown> {
-  const {queryFn, staleTime = DEFAULT_STALE_TIME, initData, mock} = config;
+  const {queryFn, staleTime = DEFAULT_STALE_TIME, initData, keepPrevious, mock} = config;
   const cache = getCache(queryFn);
 
   return (args: unknown[]): QueryResult<unknown> => {
@@ -223,12 +234,12 @@ export function createQueryHook(
     useReconnectRevalidate(injectable, revalidate);
 
     // initData 注入 init 槽但不落 store，初载 loading 仍 true；unknown 收口防 any 扩散。
-    const data: unknown = useResultSelect(injectable, identity, initData);
+    const storeData: unknown = useResultSelect(injectable, identity, initData);
     const fetching = useLoading(injectable);
 
     // loading 重建 SWR 初载语义（decisions.md #9）；错误统一从返回值读，无悬空 rejection。
     const argsStatus = useArgsStatus(injectable, args);
-    const loading = argsStatus.loading && argsStatus.data === undefined;
+    let loading = argsStatus.loading && argsStatus.data === undefined;
     // toolroom 0.19 起 error 按 E 泛型收紧（decisions.md #16）。
     const error = argsStatus.error;
     const failureCount = argsStatus.failureCount;
@@ -239,6 +250,39 @@ export function createQueryHook(
 
     const refetch = useRefresh(injectable, args, cache);
 
-    return {data, loading, fetching, error, failureCount, stale, refetch, dataUpdatedAt};
+    // keepPrevious（decisions.md #13 补记）：本 hook 实例保留「最后一次
+    // 有主 data + 其 key hash」，args 切到无自身数据的新 key 时端保留值
+    // 而非闪回初载占位。保留值取 per-args 槽（argsStatus.data）而非共享
+    // store——保证记录的值必属于记录时的 key；新 key 失败时诚实让位
+    // undefined（消费方走 error 分支，不拿旧 key 的值装无事）。同 key
+    // 重拉（refetch/后台重验证）不进窗口：per-args 数据仍在，本就零闪。
+    let data = storeData;
+    let placeholder = false;
+    const keptRef = useRef<{hash: string; data: unknown} | undefined>(undefined);
+    if (keepPrevious) {
+      if (argsStatus.data !== undefined) {
+        keptRef.current = {hash: hashArgs(args), data: argsStatus.data};
+      } else if (keptRef.current && keptRef.current.hash !== hashArgs(args)) {
+        if (argsStatus.error) {
+          data = undefined;
+        } else if (argsStatus.loading) {
+          data = keptRef.current.data;
+          placeholder = true;
+          loading = false;
+        }
+      }
+    }
+
+    return {
+      data,
+      loading,
+      fetching,
+      error,
+      failureCount,
+      stale,
+      refetch,
+      dataUpdatedAt,
+      placeholder
+    };
   };
 }

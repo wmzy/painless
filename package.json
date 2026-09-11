@@ -17,6 +17,7 @@
     "test:ui": "vitest --ui",
     "test:run": "vitest run",
     "test:e2e": "playwright test",
+    "test:visual": "cross-env VISUAL=1 playwright test --project=visual",
     "serve": "vite preview",
     "typecheck": "tsc --noEmit"
   },

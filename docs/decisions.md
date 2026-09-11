@@ -483,6 +483,29 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
     参数域是 slug 元组与 HomeSearch 纯对象，无 Map/Set，行为等价；
     循环引用两者均不设防（args 元组天然无环，同旧版）。既有 hashArgs
     契约用例零改动全绿（钉的是行为不是实现）。
+- **补记（2026-09-11）：QueryResult 冻结面扩展 `keepPrevious` /
+  `placeholder`**。`QueryHookConfig` 增 `keepPrevious?: boolean`（默认
+  false——默认语义零变化是硬约束，既有全部场景 hook 与用例零改动仍绿），
+  `QueryResult` 增 `placeholder: boolean`。开启时的分页保旧值语义
+  （TanStack `placeholderData: keepPreviousData` 的对位物）：args 切到
+  无自身数据的新 key 且本 hook 实例此前观察过任一 key 的 data →
+  `data` 保留上一 key 的值、`placeholder=true`、`loading=false`
+  （in-flight 由 `fetching` 表达）；新 key settle → `placeholder=false`
+  换新值；新 key 失败 → `placeholder=false`、`data` 诚实让位
+  `undefined`、`error` 置位（消费方 AsyncSection 走 error 分支，不拿
+  旧 key 的值装无事）；切回有数据的 key 直接命中无 placeholder。
+  `dataUpdatedAt`/`error`/`refetch`/`stale` 仍 per-key 不变，initData
+  与 mock 路径不回归（初载窗口无保留值，语义原样）。实现口径：场景
+  hook 闭包保留「最后一次有主 data + 来源 key hash」，渲染时当前
+  key 无 per-args 数据且 hash 不符则合成返回；保留值取 per-args 槽
+  （`useArgsStatus` 的 provenance-gated data）而非共享 store——记录的
+  值必属于记录时的 key，同 key 重拉天然不进窗口。动机：Profile feed
+  分页翻页闪 loading，是「已渲染列表不闪回 spinner」既有哲学
+  （AGENTS.md Async data 段，loading 仅初载的 SWR 口径）在 args 维度
+  上的最后一处冲突——Home 分页走路由 loader 早已吃到「旧视图保持到
+  新链 resolve」的导航语义，组件 query 通道里 Profile feed 是唯一
+  闪烁面，故 `keepPrevious: true` 只声明在 useProfileFeedQuery
+  （`dataloaders.ts`），其余场景维持「诚实重入 loading」默认。
 
 ## 14. View Transition：库管时序、CSS 管范围（2026-08-31 VT 批）
 
@@ -1695,3 +1718,146 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
   用例即失败）；视图测试的 haze-ui mock 摘除 useTitle 真实现转接
   （页标题契约改由真 @/util/useTitle 承担，不在 mock 内）。
 - **验证**：lint:ci + 单测 379/379（32 文件）通过。
+
+## 35. 模板侧改进批：typed navigateTo + keepPrevious + saveData 守卫 + ErrorPage 焦点 + e2e 三件套（2026-09-11）
+
+- **背景**：TanStack 对照系历轮评审（第 21/22/27 条）后仍开放的模板侧
+  差距本批收口五项，另带 e2e 基建三件套；全部为模板侧改动，零库升级。
+  五项分别对应：命令式导航调用点仍是运行时字符串拼接（TypedLink 第 23
+  条只收口了声明式侧）、组件 query 通道的分页翻页闪回 spinner（「已渲染
+  列表不闪回 spinner」哲学在 args 维度的最后一处冲突，语义全文见第 13
+  条补记）、saveData 用户被照常投放投机预取、错误/404 页无焦点管理
+  （SPA 视图切换不动焦点）、e2e 只有 dev-server 单一形态（第 26 条
+  「dev 绿、prod 死」断裂整类风险无守门）。
+- **typed navigateTo（`src/views/navigateTo.ts`）**：命令式导航的类型化
+  收口，TypedLink 的命令式侧对应物。签名
+  `navigateTo<P extends AppPaths>(router, path, ...args: NavigateArgs<P>): void`，
+  类型设计两个非显然点：
+  - **rest 条件元组判别 params 必填**：静态 pattern（`Record<never,
+    never> extends RouteParams<P>` 成立）只收可选 `{search}`，参数化
+    pattern 强制 `{params, search?}`——「opts 整体可省与否取决于 P」
+    编码在元组长度上（可选参数无法表达这一依赖），判别式与库内
+    TypedLinkMember（types.d.ts）同款；`RouteParams` 从
+    @native-router/react 主桶复用。
+  - **`NoInfer<RouteParams<P>>` 防联合污染**：rest 元组里的
+    `RouteParams<P>` 会成为 P 的推断候选源，把 path 侧的字面量收窄
+    污染成整个 AppPaths 联合（判别随之坍缩到静态臂）；NoInfer 阻断
+    该推断源后 P 只从 path 字面量收窄。
+  - **插值与库字节对齐**：库 link-behavior 的 interpolatePath 未作为
+    公共 API 导出（exports map 封锁深路径），本地按库源码逐行为同构
+    实现（`:name` 取 string、`*name` 取 string[] 以 '/' 连接、逐值
+    encodeURIComponent、`\` 转义段原样保留、缺失/空值抛错）；对齐
+    验证法是调用点断言「迁移后 href 与迁移前 encodeURIComponent
+    手拼字节等价」（`navigateTo.test.ts` 的 Settings/Editor 落点
+    两例）。同一路径「点链接」与「命令式跳转」产生同一 href。内部
+    `void navigate(...).catch(() => undefined)` 吞
+    NavigationCancelledError——fire-and-forget 惯用法收敛进封装，
+    调用点不再各自记挂。
+  - **迁移 5 处 / 保留 2 处**：Settings（`/profile/:username`）、
+    Editor 两臂（`/article/:title` 与 `'/'`）、Article 删除后（`'/'`）、
+    Register（`'/'`）、`_shared/useFavorite`——原拼完整 `/login?…`
+    字符串的 loginRedirect 重构为 `loginRedirectSearch(location)`
+    返回 query 段，编码责任显式化。刻意保留 raw navigate 两处：
+    `services/auth.ts`（logoutAndNavigate / bindUnauthorizedRedirect——
+    依赖方向：auth 被 views import，反向 import AppPaths 成环，服务层
+    也不该认识视图层路由表）与 Login 的 sanitizeRedirect 产物（目标
+    是用户控制的任意站内路径，白名单校验过，本就不是 AppPaths 的
+    字面量联合成员）。测试 6 例运行时行为 + 3 枚 @ts-expect-error
+    编译期反向用例（非联合成员路径 / 参数化缺 params / 静态路径塞
+    params——探针函数永不执行，「缺 params」形态运行时必抛）。
+- **keepPrevious / placeholder（`src/util/useQuery.ts`，语义三分支全文
+  见第 13 条 2026-09-11 补记）**：`QueryHookConfig` 增 `keepPrevious?:
+  boolean`（默认 false，既有场景与用例零改动），`QueryResult` 增
+  `placeholder: boolean`。TanStack `placeholderData: keepPreviousData`
+  的对位物。声明点开启——仅 `useProfileFeedQuery`
+  （`src/services/dataloaders.ts`）：Home 分页走路由 loader 的「旧视图
+  保持到新链 resolve」导航语义，组件 query 通道里 Profile feed 是唯一
+  翻页闪烁面，其余场景维持「诚实重入 loading」默认。Profile feed 列
+  容器挂 `aria-busy={fetching}`（`src/views/Profile/index.tsx`）：保旧
+  值窗口里 AsyncSection 内建占位态不再出现，屏幕阅读器的「区域更新
+  中」信号改由此承载（AsyncSection/TabPanel 均不透传 aria 属性，挂列
+  容器是不加节点约束下的落点）。
+- **saveData 预取守卫（`src/components/PreviewLink.tsx`）**：
+  `navigator.connection.saveData === true` 时把 prefetch 置 undefined
+  ——拦的是投机流量全量面：缺省 'viewport' 与调用点显式传入同样拦
+  （显式传入也只是模板作者意图而非用户意图），置 undefined 后
+  TypedLink 走普通链接渲染、不经 PrefetchLink（零 router.preload）。
+  hover 预览不拦——显式用户意图。本地窄化类型 `ConnectionLike =
+  {saveData?: boolean}`（NetworkInformation 不在 TS dom lib 保证范围，
+  不引依赖）；无 connection API 的旧环境 saveData 天然 undefined 不拦
+  （同 About feed 哨兵 IntersectionObserver 的特性检测降级惯例）。
+  PreviewLink.test +4 用例（拦缺省 / 拦显式 / saveData=off 不拦 /
+  无 API 不拦）。
+- **ErrorPage 焦点管理（`src/components/ErrorPage.tsx`）**：主标题
+  `tabIndex={-1}` + 挂载 effect `focus({preventScroll: true})`。SPA
+  路由切换不自动移动焦点（WAI-ARIA APG 对 SPA 视图切换的建议）——
+  键盘/屏幕阅读器用户到达错误/404 页时焦点还停在触发导航的旧元素上
+  （往往已随旧视图卸载），对新内容零感知。preventScroll 的理由：错误
+  页是整屏替换视图且标题必在首屏，让浏览器执行焦点滚动只会与 view
+  transition / 滚动恢复的时序互相打架。标题从 haze-ui Title 换原生
+  h1：Title 的 props 被解构丢弃 ref 与 tabIndex（TitleProps 亦无此
+  二项），传了静默失效；字号字重等仍走 --haze-* token（与 Title
+  level 1 产物一致），主题继续跟随。作用域刻意只 ErrorPage——错误/
+  404 是「内容整体替换、无任何交互入口预告」的最强需求面，正常路由
+  的焦点管理待真实诉求再议。新建 `ErrorPage.test.tsx` 3 例（挂载
+  焦点落 h1 / tabIndex=-1 不进 Tab 序 / 卸载重挂焦点再次落回）。
+- **e2e 基建三件套（`e2e/`）**：
+  - **fixtures 抽取 `e2e/helpers.ts`（15 导出）**：smoke.spec.ts 内嵌
+    的 verbatim fixture 集（用户/文章/评论/mockApi/login 等）抽为共享
+    模块，prod 与 visual 两个新 spec 复用同一份网络层 mock——被测的
+    是页面链路不是后端，fixture 单源避免三份漂移。smoke.spec.ts 35
+    条零改动全绿即证抽取等价。
+  - **prod 项目（`playwright.config.ts` webServers 数组化）**：dev
+    4273 之外增 prod webServer（`pnpm build && vite preview --port
+    4274`），新 `prod` 项目 testMatch 圈定 `e2e/prod.spec.ts` 3 条：
+    产物渲染链路（懒加载 chunk + loader + CommentList）/ UI 登录落地
+    （表单 + token 持久化 + 导航栏订阅）/ **DevTool 角标不存在**——
+    import.meta.env.DEV 折叠从页面外可观察的唯一证据，此前每批手工
+    grep dist 确认 dev-only 零泄漏，此处自动化替代；角标若出现即
+    dev-only 代码漏进产物（体积回归 + 面板暴露给最终用户）。守的是
+    第 26 条同型「dev 绿、prod 死」断裂：DEV 折叠/摇树/产物化转换
+    只在构建产物里显形。chromium 项目 testIgnore 补 prod/visual 两个
+    spec（默认 testMatch 会把它们收进 dev 项目——prod spec 打 4273
+    全错、visual 缺快照必红）。CI 的 e2e job 跑 `test:e2e` 即
+    chromium+prod 两项目（visual 未注册，天然不跑）。
+  - **A11Y_TAGS 增 wcag22a/wcag22aa**：本仓锁定的 axe-core 4.13 上
+    实证（读 axe.js 源 + 实测）——wcag22aa 唯一携带规则 target-size
+    （WCAG 2.5.8 目标尺寸；规则默认 enabled:false，但 runOnly 按 tag
+    选择不受该默认阻拦），9 个扫描态真执行且零违例；wcag22a 暂无
+    任何规则携带（axe 后续补 2.2 A 级自动规则时此 tag 自动生效，
+    前向保留）。升级 axe 后如 2.2 覆盖变宽，新违例按既有分流约定
+    处置。
+  - **视觉回归（`e2e/visual.spec.ts`）**：visual 项目仅 `VISUAL=1`
+    注册（`pnpm test:visual`，cross-env），CI 默认不跑。5 张快照：
+    Home 明/暗、Article 详情、Login、NotFound。稳定性口径：context
+    级 reducedMotion:'reduce' 灭 View Transitions（第 14 条的 CSS
+    兜底面）+ toHaveScreenshot animations:'disabled' + 每张等到真实
+    内容渲染后再拍（骨架态不进快照）+ fixture 固定时间戳；暗色走
+    test.use colorScheme:'dark' 命中 useAppTheme 的 matchMedia 初值
+    （在任何应用 JS 之前 media query 命中，首渲染即暗色根，绕开
+    toggle 的翻转过渡帧）；非 fullPage 客区快照（毒长全页对字体
+    度量差更敏感）。快照平台绑定是刻意取舍：零 webfont 系统衬线栈
+    （第 34 条）的字体度量随 OS/渲染后端漂移，跨机比对必然红——
+    CI 跑视觉要么恒红要么恒过，都无信息量；本地门禁 + 换机
+    `--update-snapshots` 重生基线（`e2e/visual.spec.ts-snapshots/`
+    已入库）。复跑 ×3 稳定。
+- **体积**：实测 **157162 B = 153.48 KB / 43 文件**（raw 461.57 KB；
+  门禁 153.48 / 169.00 KB 通过，余量 15.52 KB），相对基线 156501 B
+  净 **+661 B**——typed navigateTo（五视图共享，rollup 抽出独立 chunk
+  navigateTo-*.js）+ keepPrevious 保留窗口分支 + PreviewLink saveData
+  守卫 + ErrorPage 原生 h1 皮肤的运行时增量；10% 棘轮余量内，基线与
+  阈值不动（脚本头注释随批同步实测）。
+- **文档同步**：AGENTS.md 就地织入（Commands 增 test:e2e/test:visual、
+  CI 行补 typecheck/size/e2e job、Routing 段 navigateTo 与保留 raw 的
+  两处、Async data 段 keepPrevious/placeholder、Testing 段 e2e 双项目/
+  wcag22/visual 本地门禁、ErrorPage 焦点与 PreviewLink saveData 各一
+  句）；README「Coming from TanStack」表增 `placeholderData:
+  keepPreviousData` → `keepPrevious`/`placeholder` 一行；
+  `scripts/size-budget.mjs` 头注释本轮实测行更新（基线来历压缩保留）。
+- **验证**：typecheck + lint:ci（0 error；收口中新代码的 7 处 lint 红
+  就地修复：import-x/order ×4 与 array-type ×1 由 `eslint --fix` 收
+  整，no-meaningless-void-operator / no-generated-empty-object-type
+  ×2 以 disable + 理由注记保留刻意形态——编译期探针的 void 引用侧
+  写、`Record<never, never>` 与库判别式逐字对齐）+ 单测 **397/397
+  （34 文件）** + build + size + e2e **38/38**（chromium 35 + prod 3）
+  + visual 复跑绿（5 快照零 diff）。

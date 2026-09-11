@@ -2,7 +2,7 @@ import {useState} from 'react';
 import {css} from '@linaria/core';
 import {Form, useForm, useIsSubmitting} from 'react-f0rm';
 import {useRouter} from '@native-router/react';
-import {navigate, invalidate} from '@native-router/core';
+import {invalidate} from '@native-router/core';
 import {
   Alert,
   Button,
@@ -17,6 +17,7 @@ import {getCurrentUser, logoutAndNavigate, updateUser} from '@/services/auth';
 import {required, email, compose, applyApiFieldErrors} from '@/util/validators';
 import {useTitle} from '@/util/useTitle';
 import SubmitButton from '@/components/SubmitButton';
+import {navigateTo} from '@/views/navigateTo';
 
 // 同 Login：窄卡居中 + 字段纵向节奏
 const cardCls = css`
@@ -76,14 +77,14 @@ export default function Settings() {
       });
       // 更新成功即账号可见面变化：invalidate 丢 viewStack 旧快照（旧
       // username 的 profile 页/导航条目），随后 navigate 到新档案页。
-      // 路径段必须 encodeURIComponent（同 Editor 保存后的跳转）。与
-      // Login/Register 提交后清场同款链。被取代/取消的导航 reject NCE
-      //（core 1.15）：吞掉即「停在旧视图」语义
+      // 路径段编码（encodeURIComponent）由 navigateTo 承担——与
+      // TypedLink 落点一致，此处只交字面量 pattern + params。与
+      // Login/Register 提交后清场同款链；NCE 吞除也在 navigateTo 内
+      //（「停在旧视图」语义）
       invalidate(router);
-      void navigate(
-        router,
-        `/profile/${encodeURIComponent(updated.username)}`
-      ).catch(() => undefined);
+      navigateTo(router, '/profile/:username', {
+        params: {username: updated.username}
+      });
     } catch (e: unknown) {
       // 422 字段错误回填到对应字段下方，顶部 Alert 只兜非字段错误
       setError(

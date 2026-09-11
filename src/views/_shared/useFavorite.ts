@@ -1,41 +1,43 @@
-import {navigate} from '@native-router/core';
 import {useMatched} from '@native-router/react';
 import {useMutation} from 'react-toolroom/async';
 
 import {getCurrentUser} from '@/services/auth';
 import {useToastError} from '@/util/toastError';
+import {navigateTo} from '@/views/navigateTo';
 
 // 两条收藏管道的公共形状（BoundMutation）：favoriteOnHome（home 投影
 // 组合 article 层，Home 视图用）与 favoriteOnArticle（article 单层，
 // Article 视图用）都是 (slug, on) → Promise
 type FavoriteMutate = (slug: string, on: boolean) => Promise<unknown>;
 
-// 未登录写操作的登录跳转目标：原目的页（pathname + search，深链含 query
-// 时整段回跳）整体 encodeURIComponent 进 redirect——与 requireLogin 守卫
-//（views/index.tsx）同一约定，裸拼 '/' 与 '?' 会把原 query 混进 /login
-// 自己的 search。Login 侧 sanitizeRedirect 白名单（站内绝对路径：以 '/'
-// 开头、非 '//'、不含 '://'）对收藏发起路径（'/' 与 '/article/:title'）
-// 原样放行，登录后回跳发起页。
-export function loginRedirect(location: {
+// 未登录写操作的登录跳转 search：原目的页（pathname + search，深链含
+// query 时整段回跳）整体 encodeURIComponent 进 redirect——与 requireLogin
+// 守卫（views/index.tsx）同一约定，裸拼 '/' 与 '?' 会把原 query 混进
+// /login 自己的 search。Login 侧 sanitizeRedirect 白名单（站内绝对路径：
+// 以 '/' 开头、非 '//'、不含 '://'）对收藏发起路径（'/' 与
+// '/article/:title'）原样放行，登录后回跳发起页。
+// 返回值只含 query 段（redirect=…）：路径段 '/login' 的字面量检查交给
+// navigateTo（此前这里拼完整 `/login?…` 字符串，命令式拼接的最后一处）。
+export function loginRedirectSearch(location: {
   pathname: string;
   search: string;
 }): string {
-  return `/login?redirect=${encodeURIComponent(
+  return `redirect=${encodeURIComponent(
     location.pathname + location.search
   )}`;
 }
 
 // 未登录写操作的统一闸门（原 Article 视图手写的 requireAuth 与
 // useFavorite 内联跳转的同构三步收敛）：已登录 true 放行；未登录
-// navigate 到 loginRedirect（带原目的页）并返回 false。返回的回调按
+// navigate 到 /login（带原目的页）并返回 false。返回的回调按
 // 渲染时的 location 取值——与原视图内写法语义一致。
 export function useRequireAuth(): () => boolean {
   const {router, location} = useMatched();
   return () => {
     if (getCurrentUser()) return true;
-    // 被取代/取消的导航 reject NCE（core 1.15）：吞掉即「停在旧视图」
-    // 语义，与旧版 void（永不 settle）等价
-    void navigate(router, loginRedirect(location)).catch(() => undefined);
+    // NCE 吞除与 fire-and-forget 收敛在 navigateTo（「停在旧视图」
+    // 语义）；redirect 段编码在 loginRedirectSearch
+    navigateTo(router, '/login', {search: loginRedirectSearch(location)});
     return false;
   };
 }

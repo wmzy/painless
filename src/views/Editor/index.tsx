@@ -10,7 +10,6 @@ import {css} from '@linaria/core';
 import {Form, useForm, useIsSubmitting, isDirty, reset, setInitialValues} from 'react-f0rm';
 import {Card, Title, InputCore, TextareaCore, TagInputCore, Alert, ConfirmDialog, FormItem} from 'haze-ui';
 import {useRouter, useBlocker} from '@native-router/react';
-import {navigate} from '@native-router/core';
 import {useMutation} from 'react-toolroom/async';
 
 import * as articleService from '@/services/article';
@@ -19,6 +18,7 @@ import {articleCache, homeCache, profileFeedCache} from '@/util/useQuery';
 import {useTitle} from '@/util/useTitle';
 import {required, applyApiFieldErrors} from '@/util/validators';
 import SubmitButton from '@/components/SubmitButton';
+import {navigateTo} from '@/views/navigateTo';
 
 // 写作页居中：720px 收住表单行宽（比认证页宽——编辑器字段承载长文），
 // 此前通栏 1024px 的标题输入同样没有信息收益
@@ -148,14 +148,15 @@ export default function Editor() {
       setInitialValues(form, values);
       // 编辑态保存后直达该文章页（/article/:title 的 :title 即 slug，
       // 口径见 types/params.ts 与 views/index.tsx 的路由声明）：路径段
-      // 必须 encodeURIComponent，slug 带保留字符（空格、/ 等）时裸拼
-      // 会破坏路由匹配；新建态维持落首页。被取代/取消的导航 reject NCE
-      //（core 1.15）：吞掉即「停在旧视图」语义，与旧版 void（永不
-      // settle）等价
-      void navigate(
-        router,
-        article?.slug ? `/article/${encodeURIComponent(saved.slug)}` : '/'
-      ).catch(() => undefined);
+      // 编码（slug 带空格、/ 等保留字符时裸拼会破坏路由匹配）由
+      // navigateTo 承担——与 TypedLink 落点一致；新建态维持落首页。
+      // NCE 吞除也在 navigateTo 内（「停在旧视图」语义，与旧版 void
+      // 永不 settle 等价）
+      if (article?.slug) {
+        navigateTo(router, '/article/:title', {params: {title: saved.slug}});
+      } else {
+        navigateTo(router, '/');
+      }
     } catch (e: unknown) {
       // 422 字段错误回填到对应字段下方，顶部 Alert 只兜非字段错误
       setError(applyApiFieldErrors(form, e, ['title', 'description', 'body', 'tagList']));

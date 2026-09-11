@@ -979,6 +979,147 @@ describe('createQueryHook（场景 hook）', () => {
   });
 });
 
+// keepPrevious（分页保旧值，decisions.md #13 补记）：args 切到无自身数据
+// 的新 key 时保留上一 key 的 data 不闪回初载占位——TanStack
+// placeholderData: keepPreviousData 的对位物。负对照（不声明的默认）由
+// 上方「args 切换到无缓存参数」组与本组末尾用例共同钉住。
+describe('keepPrevious（分页保旧值）', () => {
+  it('切新 key：data 保留旧值 + placeholder=true + loading=false + fetching=true', async () => {
+    const forA = deferred<string[]>();
+    const forB = deferred<string[]>();
+    const fn = vi
+      .fn()
+      .mockImplementationOnce(() => forA.promise)
+      .mockImplementationOnce(() => forB.promise);
+    const cache = createQueryCache<any, any>('keep-prev-window');
+    const useQ = createQueryHook({
+      queryFn: bindQueryFn(fn, cache),
+      initData: [] as string[],
+      keepPrevious: true
+    });
+
+    const {result, rerender} = renderHook(
+      ({key}: {key: string}) => useQ([key]),
+      {initialProps: {key: 'a'}}
+    );
+
+    // 初载窗口无保留值：initData 兜底、loading 语义不变、无 placeholder
+    expect(result.current.data).toEqual([]);
+    expect(result.current.loading).toBe(true);
+    expect(result.current.placeholder).toBe(false);
+
+    await act(async () => {
+      forA.resolve(['from-a']);
+    });
+    await waitFor(() => expect(result.current.data).toEqual(['from-a']));
+
+    // 切到无缓存的 b：旧值保持渲染（不闪回占位），加载中信号由
+    // placeholder/fetching 表达，loading 不重入
+    rerender({key: 'b'});
+    expect(result.current.data).toEqual(['from-a']);
+    expect(result.current.placeholder).toBe(true);
+    expect(result.current.loading).toBe(false);
+    expect(result.current.fetching).toBe(true);
+
+    // settle：新值上屏，placeholder 复位
+    await act(async () => {
+      forB.resolve(['from-b']);
+    });
+    await waitFor(() => expect(result.current.data).toEqual(['from-b']));
+    expect(result.current.placeholder).toBe(false);
+    expect(result.current.loading).toBe(false);
+    expect(result.current.fetching).toBe(false);
+  });
+
+  it('新 key 失败：placeholder=false、data 让位 undefined、error 置位（error 分支可达）', async () => {
+    const fn = vi
+      .fn()
+      .mockResolvedValueOnce(['from-a'])
+      .mockRejectedValueOnce(new Error('boom-b'));
+    const cache = createQueryCache<any, any>('keep-prev-fail');
+    const useQ = createQueryHook({
+      queryFn: bindQueryFn(fn, cache),
+      initData: [] as string[],
+      keepPrevious: true
+    });
+
+    const {result, rerender} = renderHook(
+      ({key}: {key: string}) => useQ([key]),
+      {initialProps: {key: 'a'}}
+    );
+    await waitFor(() => expect(result.current.data).toEqual(['from-a']));
+
+    rerender({key: 'b'});
+    await waitFor(() => expect(result.current.error?.message).toBe('boom-b'));
+
+    // 失败不端旧 key 的值：data=undefined 让消费方（AsyncSection）走
+    // error 分支，而不是对着上一 key 的陈旧列表装无事
+    expect(result.current.data).toBeUndefined();
+    expect(result.current.placeholder).toBe(false);
+    expect(result.current.loading).toBe(false);
+  });
+
+  it('切回已缓存 key：直接命中，无 placeholder、零新请求', async () => {
+    const fn = vi.fn(async (key: string) => [`from-${key}`]);
+    const cache = createQueryCache<any, any>('keep-prev-back');
+    const useQ = createQueryHook({
+      queryFn: bindQueryFn(fn, cache),
+      initData: [] as string[],
+      keepPrevious: true
+    });
+
+    const {result, rerender} = renderHook(
+      ({key}: {key: string}) => useQ([key]),
+      {initialProps: {key: 'a'}}
+    );
+    await waitFor(() => expect(result.current.data).toEqual(['from-a']));
+
+    rerender({key: 'b'});
+    await waitFor(() => expect(result.current.data).toEqual(['from-b']));
+
+    // 切回 a：该 key 已在缓存，直接命中——无 placeholder 窗口、不发请求
+    rerender({key: 'a'});
+    await waitFor(() => expect(result.current.data).toEqual(['from-a']));
+    expect(result.current.placeholder).toBe(false);
+    expect(fn).toHaveBeenCalledTimes(2);
+  });
+
+  it('负对照：不声明 keepPrevious 的场景维持「诚实重入 loading」', async () => {
+    const forA = deferred<string[]>();
+    const forB = deferred<string[]>();
+    const fn = vi
+      .fn()
+      .mockImplementationOnce(() => forA.promise)
+      .mockImplementationOnce(() => forB.promise);
+    const cache = createQueryCache<any, any>('keep-prev-default');
+    const useQ = createQueryHook({
+      queryFn: bindQueryFn(fn, cache),
+      initData: [] as string[]
+    });
+
+    const {result, rerender} = renderHook(
+      ({key}: {key: string}) => useQ([key]),
+      {initialProps: {key: 'a'}}
+    );
+    await act(async () => {
+      forA.resolve(['from-a']);
+    });
+    await waitFor(() => expect(result.current.data).toEqual(['from-a']));
+
+    // 默认零变化：切新 key 如实重入 loading（占位/spinner 语义），
+    // placeholder 恒 false
+    rerender({key: 'b'});
+    expect(result.current.loading).toBe(true);
+    expect(result.current.fetching).toBe(true);
+    expect(result.current.placeholder).toBe(false);
+
+    await act(async () => {
+      forB.resolve(['from-b']);
+    });
+    await waitFor(() => expect(result.current.data).toEqual(['from-b']));
+  });
+});
+
 describe('resetAllCaches（测试工具：注册表还原基线）', () => {
   it('清临时 cache 的注册与盘键，模块实体仍在册且 clearAllCaches 照常工作', () => {
     const KEY = 'painless.test.reset-all';

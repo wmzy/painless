@@ -1,6 +1,6 @@
 import type {ReactNode} from 'react';
 
-import {describe, it, expect, vi, beforeEach} from 'vitest';
+import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import {render, screen, fireEvent} from '@testing-library/react';
 import {useControl} from 'react-use-control';
 
@@ -43,6 +43,16 @@ const runtimePath = `/article/${slug}`;
 function TitleProbe() {
   useTitle('Probe · Painless');
   return <p>probe-body</p>;
+}
+
+// navigator.connection stub：defineProperty + configurable，嵌套
+// describe 的 afterEach 里 delete 摘除，不污染同文件其他用例
+//（jsdom 的 navigator 本无该属性）
+function stubConnection(saveData: boolean) {
+  Object.defineProperty(navigator, 'connection', {
+    value: {saveData},
+    configurable: true
+  });
 }
 
 describe('PreviewLink', () => {
@@ -109,6 +119,68 @@ describe('PreviewLink', () => {
     // 调用点不再手传 prefetch，未覆盖时注入 'viewport'
     const link = screen.getByText('Default').closest('a');
     expect(link?.getAttribute('prefetch')).toBe('viewport');
+  });
+
+  describe('saveData guard', () => {
+    afterEach(() => {
+      // 摘除 stub（对未 stub 的用例幂等），同文件其他用例不受污染
+      delete (navigator as Navigator & {connection?: unknown}).connection;
+    });
+
+    it('drops the default viewport prefetch when saveData is on', () => {
+      stubConnection(true);
+      render(
+        <PreviewLink to='/article/:title' params={{title: 'how-to'}}>
+          Guarded
+        </PreviewLink>
+      );
+      // 断言面同既有 prefetch 用例：mock TypedLink 把透传 props 铺到
+      // <a>；prefetch 置 undefined（未声明）则无该属性——TypedLink 走
+      // 普通链接路径（不经 PrefetchLink），滚入视口/挂载后零
+      // router.preload
+      const link = screen.getByText('Guarded').closest('a');
+      expect(link?.getAttribute('prefetch')).toBeNull();
+    });
+
+    it('drops an explicitly passed prefetch when saveData is on', () => {
+      // 守卫拦的是投机流量全量面：显式传入也只是模板作者意图而非
+      // 用户意图，与缺省值同样拦
+      stubConnection(true);
+      render(
+        <PreviewLink
+          to='/article/:title'
+          params={{title: 'how-to'}}
+          prefetch='render'
+        >
+          Explicit
+        </PreviewLink>
+      );
+      const link = screen.getByText('Explicit').closest('a');
+      expect(link?.getAttribute('prefetch')).toBeNull();
+    });
+
+    it('keeps default viewport prefetch when saveData is off', () => {
+      stubConnection(false);
+      render(
+        <PreviewLink to='/article/:title' params={{title: 'how-to'}}>
+          Unmetered
+        </PreviewLink>
+      );
+      const link = screen.getByText('Unmetered').closest('a');
+      expect(link?.getAttribute('prefetch')).toBe('viewport');
+    });
+
+    it('keeps default viewport prefetch without a connection API', () => {
+      // 旧环境降级对照：无 connection 属性 → saveData 天然 undefined
+      // → 不拦（同 About feed 哨兵 IntersectionObserver 的降级惯例）
+      render(
+        <PreviewLink to='/article/:title' params={{title: 'how-to'}}>
+          Legacy
+        </PreviewLink>
+      );
+      const link = screen.getByText('Legacy').closest('a');
+      expect(link?.getAttribute('prefetch')).toBe('viewport');
+    });
   });
 
   it('keeps the preview layer decorative: aria-hidden + inert', () => {

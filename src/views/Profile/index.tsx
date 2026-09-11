@@ -83,7 +83,7 @@ export default function Profile() {
     offset,
     limit: DEFAULT_LIMIT
   };
-  const {data: feed, loading, error, refetch} = useProfileFeedQuery([feedQuery]);
+  const {data: feed, loading, error, refetch, fetching} = useProfileFeedQuery([feedQuery]);
 
   const toastError = useToastError();
   const requireAuth = useRequireAuth();
@@ -158,7 +158,11 @@ export default function Profile() {
   );
 
   return (
-    <div className={column}>
+    // aria-busy 挂 column（含 feed 的最近自有元素）：keepPrevious 翻页保
+    // 旧值时 loading=false，AsyncSection 内建的 aria-busy 占位态不再出现，
+    // 屏幕阅读器改由这里感知 fetching；AsyncSection/TabPanel 均不透传
+    // aria 属性，挂列容器是不加节点不换结构约束下的落点
+    <div className={column} aria-busy={fetching}>
       <Card>
         <Flex align='center' justify='space-between' gap={16}>
           {/* 身份簇：头像 + 姓名/简介（左侧分组），右侧行动按钮——

@@ -1,16 +1,19 @@
 #!/usr/bin/env node
 // 口径名：dist JS+CSS gzip 总和（zlib level 9，含懒加载 chunk）。
-// 基线:156501 B = 152.83 KB(42 个文件,2026-09-11,Node 24 内置 zlib)。
-// 本轮实测 156501 B / raw 471.40 KB,相对上批 168926 B 净 -12.13 KB:上批
-// 因 haze-ui 1.27 把 @dnd-kit/{core,sortable,utilities} 静态拉进
-// TagGroup/TagInput 本体(运行时 sortable 开关 + 模块级静态 import,rollup
-// 无法摇除)而抬升的基线,在 haze-ui 1.28 拆分 SortableTagGroup /
-// SortableTagInput(Core) 为独立模块后回落——基础组件零 dnd import,不引
-// Sortable* 导出名即整块摇除,1.27 时代的共享 chunk sortable-*.js(14.14 KB
-// gz)从产物消失,基础组件自身也归还了内联排序逻辑(约 -2 KB 净回吐)。
-// react 19.3.0 的 +8.39 KB 与五个 optional peer 显式安装的决策保持不变
-// (主桶仍静态 re-export Sortable* 与 Chart/DataTable,dev/vitest 解析
-// barrel 仍需全部 peer 可解析)。
+// 基线:156501 B = 152.83 KB(42 个文件,2026-09-11,Node 24 内置 zlib;
+// 来历:上一基线 168926 B 因 haze-ui 1.27 把 @dnd-kit/{core,sortable,
+// utilities} 静态拉进 TagGroup/TagInput 本体(rollup 无法摇除)而抬升,
+// haze-ui 1.28 拆分 SortableTagGroup/SortableTagInput(Core) 为独立模块
+// 后回落——基础组件零 dnd import,不引 Sortable* 导出名即整块摇除,1.27
+// 时代的共享 chunk sortable-*.js(14.14 KB gz)从产物消失;react 19.3.0
+// 的 +8.39 KB 与五个 optional peer 显式安装的决策保持不变,主桶仍静态
+// re-export Sortable* 与 Chart/DataTable,dev/vitest 解析 barrel 仍需
+// 全部 peer 可解析)。
+// 本轮实测 157162 B = 153.48 KB / raw 461.57 KB / 43 文件,相对基线净
+// +661 B——模板侧改进批的运行时增量:typed navigateTo(五视图共享,
+// rollup 抽出独立 chunk navigateTo-*.js)+ keepPrevious 保留窗口分支 +
+// PreviewLink saveData 守卫 + ErrorPage 原生 h1 皮肤。10% 余量内,
+// 基线与阈值不动。
 // 阈值:169 KB = 173056 B(基线 +10% 余量,取整到 KB)。
 //
 // 口径必须可复现（项目教训：bundle 增量报告曾出现无任何口径能复现的数字）：

@@ -311,6 +311,30 @@ describe('Profile tabs（维度切换 × 分页）', () => {
     ).toBe(true);
   });
 
+  // keepPrevious（decisions.md #13 补记）：翻页换 key 期间旧列表保留
+  // （不闪回 AsyncSection spinner），加载中改由 feed 区的 aria-busy 感知
+  it('翻页期间列表保留：旧页保持渲染不闪 spinner，aria-busy 随 fetching 标记', async () => {
+    const view = renderView(<Profile />);
+    expect(await screen.findByText('Article title 0')).toBeDefined();
+
+    // 第二页请求挂起：屏上仍是第一页的旧列表
+    const pending = deferred<{articles: Article[]; articlesCount: number}>();
+    feedMock.mockReturnValueOnce(pending.promise);
+    fireEvent.click(screen.getByRole('button', {name: 'Next →'}));
+
+    expect(screen.getByText('Article title 0')).toBeDefined();
+    // AsyncSection 的 loading 占位（role=status 的 spinner 区）不出现
+    expect(screen.queryByRole('status')).toBeNull();
+    // 屏幕阅读器仍有「区域更新中」信号（挂 feed 所在的列容器）
+    expect(view.container.querySelector('[aria-busy="true"]')).not.toBeNull();
+
+    pending.resolve({articles: ALL.slice(10), articlesCount: ALL.length});
+    expect(await screen.findByText('Article title 10')).toBeDefined();
+    expect(screen.getByText('2 / 2')).toBeDefined();
+    // settle 后忙碌标记复位
+    expect(view.container.querySelector('[aria-busy="true"]')).toBeNull();
+  });
+
   it('换维度回第一页，切回原维度保留原页位（分页状态挂 tab 维度）', async () => {
     renderView(<Profile />);
     expect(await screen.findByText('Article title 0')).toBeDefined();

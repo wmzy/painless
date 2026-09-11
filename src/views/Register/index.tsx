@@ -12,7 +12,7 @@ import {Card, Title, InputCore, Text, Alert, FormItem} from 'haze-ui';
 // 1.12 起额外透传 react-f0rm ≥0.6 的 validateDebounce / delayError /
 // rules 到 useField，字段校验调度（debounce 窗口）无需再手写。
 import {useRouter, TypedLink} from '@native-router/react';
-import {navigate, invalidate} from '@native-router/core';
+import {invalidate} from '@native-router/core';
 
 
 import * as auth from '@/services/auth';
@@ -26,6 +26,7 @@ import {
   applyApiFieldErrors
 } from '@/util/validators';
 import SubmitButton from '@/components/SubmitButton';
+import {navigateTo} from '@/views/navigateTo';
 
 // 同 Login：窄卡居中 + 字段纵向节奏（此前零间距、通栏 1024px 卡）
 const cardCls = css`
@@ -126,9 +127,9 @@ export default function Register() {
       // requireLogin 守卫）。invalidate 同步无返回值，无 NCE 之虞；下方
       // navigate 的吞除惯例跟随现状
       invalidate(router);
-      // 被取代/取消的导航 reject NCE（core 1.15）：吞掉即「停在旧视图」
-      // 语义，与旧版 void（永不 settle）等价
-      void navigate(router, '/').catch(() => undefined);
+      // NCE 吞除与 fire-and-forget 收敛在 navigateTo（「停在旧视图」
+      // 语义，与旧版 void 永不 settle 等价）
+      navigateTo(router, '/');
     } catch (e: unknown) {
       // 422 字段错误经 applyApiFieldErrors（validators.ts 单通道）回填到
       // 对应字段下方，内部走 react-f0rm 0.5.0 的 setServerErrors

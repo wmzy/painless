@@ -82,5 +82,11 @@ export const [, , queryProfileFeed] = createDataLoader({
   mock: {schema: articlePageSchema, key: 'profileFeed'}
 });
 export const useProfileFeedQuery = createQueryHook({
-  queryFn: queryProfileFeed
+  queryFn: queryProfileFeed,
+  // keepPrevious 只有 Profile feed 开：分页翻页（tab/offset 换 key）保留
+  // 旧页渲染不闪回 spinner。Home 分页走路由 loader，导航期间旧视图
+  // 本就保持到新链 resolve（native-router 语义），组件 query 通道里
+  // Profile feed 是唯一翻页闪烁面；其余场景 hook 维持「诚实重入
+  // loading」默认（decisions.md #13 补记）。
+  keepPrevious: true
 });
