@@ -1,15 +1,17 @@
 #!/usr/bin/env node
 // 口径名：dist JS+CSS gzip 总和（zlib level 9，含懒加载 chunk）。
-// 基线：131335 B = 128.26 KB（38 个文件，2026-09-06，Node 24 内置 zlib；
-// 上限阈值锚定的批次基线）。最近实测：142089 B = 138.76 KB（43 个文件，
-// raw 414.79 KB，2026-09-10，视觉重设计批（decisions.md 第 34 条，
-// 含同批 hover 预览锚定化增补）——Editorial Ink 设计语言：theme.css
-// 全局 token 覆写 + 组件皮肤（index css 净增 ≈3 KB gz）、MarkdownRenderer
-// 首次拉入运行时代码、SubmitButton/ErrorPage/Preview 锚定重写。相对
-// 上批 136195 B 净 +5.75 KB：设计系统 css 是增长的正当本体，零新依赖、
-// 零 webfont 字节（系统衬线栈）。增量在棘轮余量内，BASELINE_BYTES 与
-// 阈值不动。
-// 阈值：141 KB = 144384 B（基线 +10% 余量，取整到 KB）。
+// 基线:156501 B = 152.83 KB(42 个文件,2026-09-11,Node 24 内置 zlib)。
+// 本轮实测 156501 B / raw 471.40 KB,相对上批 168926 B 净 -12.13 KB:上批
+// 因 haze-ui 1.27 把 @dnd-kit/{core,sortable,utilities} 静态拉进
+// TagGroup/TagInput 本体(运行时 sortable 开关 + 模块级静态 import,rollup
+// 无法摇除)而抬升的基线,在 haze-ui 1.28 拆分 SortableTagGroup /
+// SortableTagInput(Core) 为独立模块后回落——基础组件零 dnd import,不引
+// Sortable* 导出名即整块摇除,1.27 时代的共享 chunk sortable-*.js(14.14 KB
+// gz)从产物消失,基础组件自身也归还了内联排序逻辑(约 -2 KB 净回吐)。
+// react 19.3.0 的 +8.39 KB 与五个 optional peer 显式安装的决策保持不变
+// (主桶仍静态 re-export Sortable* 与 Chart/DataTable,dev/vitest 解析
+// barrel 仍需全部 peer 可解析)。
+// 阈值:169 KB = 173056 B(基线 +10% 余量,取整到 KB)。
 //
 // 口径必须可复现（项目教训：bundle 增量报告曾出现无任何口径能复现的数字）：
 // 逐文件 gzipSync(buf, {level: 9}) 求和。zlib 的 gzip 头不含时间戳（MTIME
@@ -33,9 +35,9 @@ import {join} from 'node:path';
 import {gzipSync} from 'node:zlib';
 
 const KB = 1024;
-const BASELINE_BYTES = 131335;
-const BASELINE_DATE = '2026-09-06';
-const THRESHOLD_BYTES = 141 * KB;
+const BASELINE_BYTES = 156501;
+const BASELINE_DATE = '2026-09-11';
+const THRESHOLD_BYTES = 169 * KB;
 
 // Dirent.path 在 Node 22 存在、24 起更名为 parentPath（旧名移除）；CI 与
 // 本地版本都走 parentPath，回退链只为语义完整。
