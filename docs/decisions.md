@@ -1880,3 +1880,25 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
   写、`Record<never, never>` 与库判别式逐字对齐）+ 单测 **397/397
   （34 文件）** + build + size + e2e **38/38**（chromium 35 + prod 3）
   + visual 复跑绿（5 快照零 diff）。
+
+## 36. PreviewLink 切表形态：search 载荷编译期受检（2026-09-12）
+
+- **背景**：TypedLink 家族的表形态（`TypedLinkProps<typeof routes>`，
+  search 按目标模式 schema 的 Input 位判别）此前只用于 Home 分页与
+  Article/Profile 的 ButtonLink 组合；PreviewLink 仍收
+  `TypedLinkProps<AppPaths>`——调用点 search 载荷停留在宽松
+  SearchInput。库侧（native-router/react 类型测试）已审计钉死表形态经
+  as/prefetch/ref 组合的判别保持，模板侧跟进收口最后一个链接组件。
+- **改动（`src/components/PreviewLink.tsx`）**：props 从
+  `TypedLinkProps<AppPaths>` 换 `TypedLinkProps<AppRoutes>`，渲染
+  `TypedLink<AppRoutes>`——to/params 判别不变（同源一张表），search
+  升级为按模式 schema Input 位判别：当前唯一调用模式 /article/:title
+  无 schema、保持宽松，任何后续挂 schema 的模式（含 PreviewLink 指向
+  '/' 类目标）自动收紧，无需再动组件。hover/focus 预览、prefetch 缺省
+  'viewport'、saveData 守卫零变化；AppPaths 联合继续服务 navigateTo/
+  TypedNavLink/错误页等纯字符串场景（两者并存配方见库 README）。
+- **测试**：PreviewLink.test.tsx 编译期探针更新——既有反向用例
+  （运行时拼接路径）改述表形态；新增 search 判别对（正向
+  HomeSearchInput 载荷 + @ts-expect-error 拼错字段），钉「判别穿透
+  props 包装层——`& {visible}` 交叉不拆判别联合」。
+- **验证**：typecheck + lint:ci（0 error）+ 单测 393/393（33 文件）。

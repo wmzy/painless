@@ -1,4 +1,4 @@
-import type {AppPaths} from '@/views';
+import type {AppRoutes} from '@/views';
 
 import {useRef} from 'react';
 import {TypedLink, type TypedLinkProps} from '@native-router/react';
@@ -6,8 +6,10 @@ import {useControl, type Control} from 'react-use-control';
 
 import Preview from './Preview';
 
-// 除 children 外全部透传给 TypedLink<AppPaths>：to 按路由表路径联合
-//（AppPaths）编译期判别，动态段（/article/:title）同时要求 params——
+// 除 children 外全部透传给 TypedLink<AppRoutes>（表形态）：to 按路由表
+// 模式编译期判别，动态段（/article/:title）同时要求 params，search 按
+// 目标模式 schema 的 Input 位判别（调用点 search 载荷编译期受检；无
+// schema 的模式保持宽松 SearchInput）——
 // 此前停留无类型 PrefetchLink 的原因（TypedLinkProps 不透传 prefetch）
 // 已随 react 1.15 消失：声明 prefetch 时 TypedLink 内部按 PrefetchLink
 // 渲染，未声明走普通 Link。prefetch 缺省 'viewport'（卡片滚入视口即预取
@@ -19,7 +21,7 @@ type ConnectionLike = {saveData?: boolean};
 // visible 遵循 control 模式（同 haze-ui 组件约定）：传 Control 受控
 //（宿主接管显隐，如触屏设备用长按替代 hover），传 boolean 为非受控
 // 初值，不传则默认隐藏——hover/focus 两种交互仍走组件内 setVisible
-type Props = TypedLinkProps<AppPaths> & {
+type Props = TypedLinkProps<AppRoutes> & {
   visible?: Control<boolean> | boolean;
 };
 
@@ -49,7 +51,7 @@ export default function PreviewLink({
   const prefetchProp =
     connection?.saveData === true ? undefined : prefetch ?? 'viewport';
   return (
-    <TypedLink<AppPaths> {...props} prefetch={prefetchProp}>
+    <TypedLink<AppRoutes> {...props} prefetch={prefetchProp}>
       <span
         ref={triggerRef}
         onMouseEnter={() => setVisible(true)}

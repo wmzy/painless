@@ -28,14 +28,23 @@ vi.mock('@native-router/core', () => ({}));
 const PreviewLink = (await import('./PreviewLink')).default;
 
 // 编译期反向用例（tsc --noEmit 守门，vitest 本身不跑类型检查）：
-// PreviewLink 已收敛 TypedLink<AppPaths>——运行时拼接的目标字符串
-// 不在路径联合里必须编译期报错（to+params 字面量才是合法形态）。
-// 运行时仅 createElement（mock 的 TypedLink 不渲染），零副作用。
+// PreviewLink 已收敛 TypedLink<AppRoutes> 表形态——运行时拼接的目标
+// 字符串不在表内必须编译期报错（to+params 字面量才是合法形态）；search
+// 载荷同受表形态判别（按目标模式 schema 的 Input 位，如 '/' 的
+// HomeSearchInput），拼错字段编译期报。两段探针均只 createElement
+//（mock 的 TypedLink 不渲染），零副作用。
 const slug = 'slug';
 const runtimePath = `/article/${slug}`;
 (
-  // @ts-expect-error to 必须是 AppPaths 字面量，动态段走 params
+  // @ts-expect-error to 必须是表内模式字面量，动态段走 params
   <PreviewLink to={runtimePath}>never</PreviewLink>
+);
+// search 判别穿透 props 包装层（& visible 的交叉不拆判别联合）；
+// offset/limit 的 number/string 均合法（序列化时 String() 化）
+<PreviewLink to='/' search={{tag: 'a', offset: '10', limit: 20}} />;
+(
+  // @ts-expect-error search 字段拼错应在编译期报错（HomeSearchInput 位）
+  <PreviewLink to='/' search={{ofset: '10'}} />
 );
 
 // 预览浮层挂载的是完整目标视图（含其 useTitle 调用）：本探针代表

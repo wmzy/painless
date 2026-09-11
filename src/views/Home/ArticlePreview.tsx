@@ -68,7 +68,7 @@ function ArticlePreview({article, onFavorite}: Props) {
       </AuthorLine>
       <Title level={2}>
         {/* prefetch='viewport' 是 PreviewLink 缺省：滚入视口即预取 data+chunk；
-            to/params 对 AppPaths 编译期判别 */}
+            to/params/search 对路由表（AppRoutes 表形态）编译期判别 */}
         <PreviewLink
           to='/article/:title'
           params={{title: article.slug}}
