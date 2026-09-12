@@ -11,11 +11,14 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
-    // vmThreads：vitest 5 的启动提示指出 jsdom 环境按文件重建 26 次占了
-    // 38% 运行时间——vmThreads 把文件级隔离从「每文件独立 worker」换成
-    // 同线程内的 node:vm 上下文，环境与依赖装取开销显著下降（模块注册
-    // 表隔离语义等价，mock/隔离行为不变）。
-    pool: 'vmThreads',
+    // pool 固定 forks：vmThreads 的同线程 vm CJS 求值器没有 Node 加载器
+    // 的模块语法探测——「ESM 语法却按 CJS 发布的包」在外部化原生加载
+    // 路径直接 SyntaxError（react-use-control 1.6.0 的 dist 即此形态，
+    // vi.mock importActual 链触发，Node 22/24 皆然、与 Node 版本无关）；
+    // forks 进程内走原生 Node require（22.12+ 的 require(esm)），缺陷
+    // 不暴露。vmThreads 的启动开销优势（~38%）换正确性；上游包修好
+    // 打包形态后可评估回迁。
+    pool: 'forks',
     include: ['src/**/*.test.{ts,tsx}'],
     // e2e/ 是 Playwright 用例（自带 dev server），vitest 不得误捞
     exclude: ['node_modules', 'dist', 'mock', 'typings', 'fixtures', 'e2e/**']

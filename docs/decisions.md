@@ -1908,3 +1908,28 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
   HomeSearchInput 载荷 + @ts-expect-error 拼错字段），钉「判别穿透
   props 包装层——`& {visible}` 交叉不拆判别联合」。
 - **验证**：typecheck + lint:ci（0 error）+ 单测 393/393（33 文件）。
+
+## 37. CI 复绿：vitest pool vmThreads→forks（react-use-control ESM-in-CJS）（2026-09-12）
+
+- **背景**：haze-ui 1.26→1.28 批把 react-use-control 带上 ^1.6.0 后
+  CI `test (22.x)` 连续两轮全红（单测 10 文件 0 收集、SyntaxError:
+  Cannot use import statement outside a module），本地 Node 24 却全绿
+  ——根因两层：① react-use-control 1.6.0 的 dist 是 ESM 语法却按 CJS
+  发布（无 "type": "module"、exports 无 require/import 条件）；②
+  vitest `pool: 'vmThreads'` 的同线程 vm CJS 求值器没有 Node 加载器的
+  模块语法探测，外部化原生加载路径（vi.mock importActual 链触发）对
+  此类包直接 SyntaxError——与 Node 版本无关（Node 22/24 均复现，
+  删 node_modules/.vite 优化器缓存后本地即重现 CI 红；此前本地绿是
+  陈旧 optimizer 缓存掩蔽）。排查中否掉的路径：vitest 5 已删
+  `server.deps.inline`（改 `deps.optimizer`，对 importActual 链无效，
+  client/web 两模式皆试过）、顶层 `ssr.noExternal` 无效、pnpm
+  patchedDependencies 加 "type": "module" 本是最对因修法，但 lockfile
+  `patchedDependencies` 段格式 pnpm 9（`{hash, path}`）与 pnpm 11
+  （`name@version: hash`）互不兼容，冻结安装双方必有一方
+  ERR_PNPM_LOCKFILE_CONFIG_MISMATCH——弃。
+- **改动（`vitest.config.mts`）**：`pool: 'vmThreads'` → `'forks'`。
+  forks 进程内外部化 CJS 走原生 Node require（22.12+ 的 require(esm)
+  自带模块语法探测），缺陷不暴露。vmThreads 的启动开销优势（~38%）
+  换正确性；每文件独立 worker 的隔离语义不变（forks 隔离更强）。
+- **验证**：Node 22.23.2 与 Node 24 各全量单测 393/393（33 文件，删
+  缓存后）；typecheck + lint:ci 0 error。
