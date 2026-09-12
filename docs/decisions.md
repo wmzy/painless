@@ -1487,6 +1487,12 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
   （DataTable 顶层 import）缺失——pnpm 默认不装 optional peers，dev
   server 与 13 个视图测试文件解析 barrel 即失败；已显式安装为
   dependency（9.2.4）。
+  - **状态更新（2026-09-12）**：haze-ui 1.29 把全部五个 optional
+    peer（`@dnd-kit/{core,sortable,utilities}`、`@tanstack/react-table`、
+    `recharts`）收进自身 `dependencies`（peer 收敛为 react/react-dom）
+    ——模板侧五个显式 dependency 随之移除，barrel 解析改经 haze-ui 的
+    安装闭包（`pnpm why -r` 各单实例），typecheck + 单测 393/393 +
+    build/size 全绿。
 - **测试**：http.test 迁移到派生链形态（headers 走 `api.pipe(ff.header)`、
   signal 走 withSignal、校验走 withDevValidation）；「schema 不散进
   Options」用例退役（指令活在 middleware 闭包，结构上不可能漏进 fetch）；
