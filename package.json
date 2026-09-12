@@ -76,6 +76,6 @@
     "react-dom": "^19.3.0",
     "react-f0rm": "^1.4.0",
     "react-toolroom": "^1.1.1",
-    "react-use-control": "^1.6.0"
+    "react-use-control": "^1.6.1"
   }
 }

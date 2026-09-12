@@ -1934,3 +1934,20 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
 - **验证**：Node 22.23.2 与 Node 24 各全量单测 393/393（33 文件，删
   缓存后）；typecheck + lint:ci 0 error；CI 三连绿（test 全步骤
   + e2e + deploy）。
+
+## 38. #37 收口：上游 react-use-control 1.6.1 修复打包形态，vmThreads 回迁（2026-09-12）
+
+- **背景**：#37 的 forks 回退是 workaround——根因在 react-use-control
+  1.6.0 的打包缺陷（dist ESM 语法却按 CJS 发布）。上游修复：
+  package.json 加 `"type": "module"`（Node 加载器层面把包归类为 ESM，
+  vmThreads 的外部化加载路径不再走 vm CJS 求值器；babel.config.js 同步
+  改 .cjs——babel 以 CJS 语义加载配置，type:module 下 `module.exports`
+  的 .js 配置会让 rollup 构建炸），已发 1.6.1（上游 CI React 18/19
+  双矩阵绿、semantic-release 发布）。
+- **改动**：模板侧 react-use-control ^1.6.0 → ^1.6.1；vitest pool
+  forks → vmThreads（#37 回退撤销，启动开销优势 ~38% 恢复）；
+  AGENTS.md 测试段同步。
+- **验证**：复现探针（vitest 5 + vmThreads + jsdom + importActual 链
+  经 haze-ui 1.29 barrel）1.6.0 在 Node 22/24 皆 SyntaxError、1.6.1
+  皆过；painless 删 optimizer 缓存后 Node 22.23.2 与 Node 24 全量
+  393/393（33 文件）；typecheck + lint:ci 0 error。

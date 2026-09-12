@@ -11,14 +11,13 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
-    // pool 固定 forks：vmThreads 的同线程 vm CJS 求值器没有 Node 加载器
-    // 的模块语法探测——「ESM 语法却按 CJS 发布的包」在外部化原生加载
-    // 路径直接 SyntaxError（react-use-control 1.6.0 的 dist 即此形态，
-    // vi.mock importActual 链触发，Node 22/24 皆然、与 Node 版本无关）；
-    // forks 进程内走原生 Node require（22.12+ 的 require(esm)），缺陷
-    // 不暴露。vmThreads 的启动开销优势（~38%）换正确性；上游包修好
-    // 打包形态后可评估回迁。
-    pool: 'forks',
+    // vmThreads：jsdom 环境按文件重建的启动开销占全量 ~38%——vmThreads
+    // 把文件级隔离从「每文件独立 worker」换成同线程内的 node:vm 上下文
+    // （模块注册表隔离语义等价，mock/隔离行为不变）。曾因
+    // react-use-control 1.6.0「ESM 语法却按 CJS 发布」被迫回退 forks
+    // （vm CJS 求值器无模块语法探测，见 decisions.md #37）；上游 1.6.1
+    // 加 "type": "module" 后根因消除，已回迁。
+    pool: 'vmThreads',
     include: ['src/**/*.test.{ts,tsx}'],
     // e2e/ 是 Playwright 用例（自带 dev server），vitest 不得误捞
     exclude: ['node_modules', 'dist', 'mock', 'typings', 'fixtures', 'e2e/**']
