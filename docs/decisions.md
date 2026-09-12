@@ -1932,4 +1932,5 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
   自带模块语法探测），缺陷不暴露。vmThreads 的启动开销优势（~38%）
   换正确性；每文件独立 worker 的隔离语义不变（forks 隔离更强）。
 - **验证**：Node 22.23.2 与 Node 24 各全量单测 393/393（33 文件，删
-  缓存后）；typecheck + lint:ci 0 error。
+  缓存后）；typecheck + lint:ci 0 error；CI 三连绿（test 全步骤
+  + e2e + deploy）。
