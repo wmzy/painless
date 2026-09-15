@@ -1951,3 +1951,66 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
   经 haze-ui 1.29 barrel）1.6.0 在 Node 22/24 皆 SyntaxError、1.6.1
   皆过；painless 删 optimizer 缓存后 Node 22.23.2 与 Node 24 全量
   393/393（33 文件）；typecheck + lint:ci 0 error。
+
+## 39. vite-plugin-haze-ui 独立包落地：本地插件删除改依赖 npm 包（含 1.0.0→1.0.1 上游修复）（2026-09-15）
+
+- **背景**：`vite-plugin-haze-css.mts` 文件头声明的「独立包计划」兑现——
+  `vite-plugin-haze-ui` 独立发布（1.0.0，MIT，同作者），painless 改为
+  依赖 npm 包。集成即发现 1.0.0 缺陷：插件 `enforce: 'pre'` 先于 vite
+  内置 TS/JSX 转换看到原始源码，es-module-lexer 无法解析 JSX（点号标签/
+  属性表达式等形态抛 ParseError，且宽容与否依赖语句形态——文本子件的
+  简单 JSX 反而能过），`pnpm build` 在 src/index.tsx 即炸（Parse error
+  58:25，`<DevTool>` 处）。
+- **上游修复（vite-plugin-haze-ui 1.0.1，commit 502eff7）**：① 移除
+  `enforce: 'pre'`——normal 顺序下插件到达时已是纯 ESM JS（vite 5–7 的
+  vite:esbuild 按 tsconfig 的 jsx 选项、vite 8 的 oxc 编译 JSX；读 vite
+  5.4.19 dist 源码确认 esbuild 侧行为）；② lexer 抛 ParseError 时降级为
+  stripComments + 正则扫描（与旧项目内实现同款）并 warn——覆盖 tsconfig
+  `"jsx": "preserve"` 的 vite 5–7 项目与未来 lexer 未及的新语法，降级
+  模式下字符串里形似 import 的文本可能被误识别（文档化边界）；③ 上游
+  测试新增三条：enforce 契约（undefined）、post-transform ESM 走 lexer
+  主路径零警告、原始 JSX 触发降级（注入成功 + 警告）；release smoke 的
+  enforce 断言同步。上游 26/26 测试绿（含 HAZE_UI_PATH 指向本地 haze-ui
+  的真实契约冒烟），semantic-release 发布 1.0.1（push main 触发）。
+- **改动（painless 侧）**：vite.config.mts 改 import
+  `vite-plugin-haze-ui`（^1.0.1，devDependency）；删除
+  `vite-plugin-haze-css.mts`；eslint.config.mjs 忽略清单移除该文件；
+  tsconfig.json 移除 `allowImportingTsExtensions`（唯一使用理由——配置
+  内 .mts 导入——随删除消失）；src/index.tsx 注释与 AGENTS.md（haze-ui
+  表格行 + 新增插件行）同步。
+- **验证**：typecheck + lint:ci 0 error；`pnpm build` 产出与替换前等价
+  （tokens.css 先行、按需组件 css 注入、懒加载视图独立 css chunk——About/
+  Login 等小 chunk 仅含本视图 Linaria 样式，共享组件 css 按模块图去重进
+  入口 chunk）；体积预算通过（158.62/169.00 KB）；e2e 38/38 全绿
+  （chromium 驱动 dev server + prod 驱动真实构建，覆盖两条 transform
+  管线）。
+
+## 40. haze-ui 1.29→1.30 + react-f0rm 1.4→1.5 升级评审：使用面零适配（2026-09-15）
+
+- **背景**：随 #39 批一起安装的 haze-ui ^1.30.0（3 个 feat commit：
+  ConfigProvider/brand themes/SortableTree/Menu 变体、data-slot 全库铺开/
+  forced-colors/Form/Grid 改进、streaming a11y/calendar adapters/motion
+  presets）与 react-f0rm ^1.5.0（ErrorSummary、useForm resetOptions、
+  fieldArray focus ops、rules messages、zod、devtools subs、codemods；
+  内部 AnyPath 联合去重重构 + validating mark dispose 释放修复）。
+- **评审（逐项对 painless 使用面核对 1.29↔1.30 / 1.4↔1.5 的 dist 与
+  上游 diff）**：全部纯增量，无破坏性变更，代码零改动。要点：
+  ① data-slot 只加 DOM 属性；② forced-colors 只加 CSS；③ FormItem 新增
+  layout/labelWidth/labelAlign，默认 'vertical' 渲染「精确的历史 DOM」；
+  ④ Toast 新增 loading 变体与 action/title 选项，既有
+  `toast(msg, {variant})` 形状不变；⑤ Button/ButtonLink 引入
+  ConfigProvider 尺寸三层（prop → provider → 'md'），无 provider 时与旧
+  行为字节一致；⑥ tokens.css 的 --haze-* token 集合 1.29↔1.30 零增删
+  （theme.css 覆写面不受影响）；⑦ css-manifest families 245→256、
+  noCss 37→48（AGENTS.md 的 157/4 为 1.22 旧数，随装更新）；⑧
+  SortableTree 也经 barrel 可达 @dnd-kit 三件套，但 painless 不导入
+  Sortable* 任何名字——dist 无 dnd/sortable chunk，树摇结论保持；
+  ⑨ react-f0rm 公共类型面只增不改（painless 用到的 Form/useForm/
+  useIsSubmitting/isDirty/reset/setInitialValues/setServerErrors/
+  useCanSubmit/FormInstance 全部原样），validating mark dispose 修复是
+  纯收益（cancel 漏 unmark 类缺陷消失）。
+- **改动**：仅文档——AGENTS.md haze-ui 行（manifest 装数、1.30 注记）、
+  react-f0rm 行（1.5 注记）、vite-plugin-haze-ui 行（enforce 表述订正）。
+- **验证**：typecheck + lint:ci 0 error；vitest 393/393（33 文件，表单
+  测试走真实 react-f0rm 链）；e2e 38/38（1.30/1.5 真实运行时）；build +
+  体积预算通过（158.62/169.00 KB），dist 无 dnd 产物。

@@ -62,6 +62,7 @@
     "tools-config": "^0.5.0",
     "typescript": "^6.0.3",
     "vite": "^8.3.0",
+    "vite-plugin-haze-ui": "^1.0.1",
     "vitest": "^5.0.0"
   },
   "dependencies": {
@@ -71,10 +72,10 @@
     "@native-router/react": "^1.16.1",
     "date-fns": "^4.4.0",
     "fetch-fun": "^0.15.0",
-    "haze-ui": "^1.29.0",
+    "haze-ui": "^1.30.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
-    "react-f0rm": "^1.4.0",
+    "react-f0rm": "^1.5.0",
     "react-toolroom": "^1.1.1",
     "react-use-control": "^1.6.1"
   }

@@ -24,7 +24,6 @@ export default [
       'eslint.config.js',
       'vitest.config.mts',
       'vite.config.mts',
-      'vite-plugin-haze-css.mts',
       // 工程脚本（size-budget 等构建/CI 辅助，非产品代码；与上面三个
       // 配置脚本同待遇，且规避 node globals 的 no-undef 配置负担）
       'scripts/**',

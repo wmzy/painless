@@ -20,3 +20,4 @@ minimumReleaseAgeExclude:
   - react-use-control
   - '@native-router/*'
   - '@for-fun/*'
+  - vite-plugin-haze-ui
