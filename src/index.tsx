@@ -1,4 +1,4 @@
-import {lazy, Suspense} from 'react';
+import {StrictMode, lazy, Suspense} from 'react';
 import {createRoot} from 'react-dom/client';
 // tokens.css 副作用导入：主题（--haze-* 变量）、spacing、排版基线，其余
 // 组件 css 由 vite-plugin-haze-ui（vite 插件，devDependency）按模块图自动
@@ -67,4 +67,10 @@ function Root() {
 }
 
 const root = createRoot(document.getElementById('root')!);
-root.render(<Root />);
+// StrictMode：DEV 下双调用渲染与 effect，尽早暴露挂载/清理不配对；
+// 生产构建零开销。
+root.render(
+  <StrictMode>
+    <Root />
+  </StrictMode>
+);
