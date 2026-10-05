@@ -2014,3 +2014,39 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
 - **验证**：typecheck + lint:ci 0 error；vitest 393/393（33 文件，表单
   测试走真实 react-f0rm 链）；e2e 38/38（1.30/1.5 真实运行时）；build +
   体积预算通过（158.62/169.00 KB），dist 无 dnd 产物。
+
+## 41. s200 后端起步层 + 全栈开发脚本（2026-10-05）
+
+- **背景**：模板从纯前端 SPA 扩展为「前端 + s200 后端」全栈起步
+  （方案 B：前端仍纯静态 SPA、后端独立进程，*frontend is not the
+  backend* 原则不变）。s200 从 npm 安装（`^0.1.0`；fresh 发包，
+  列入 `pnpm-workspace.yaml` 的 `minimumReleaseAgeExclude`）——
+  本地 `../s200` 是框架源码仓，与本仓库运行无关，框架改动需上游
+  发版后升级依赖版本。
+- **改动**：新增 `server/`——`index.mts`（`createServerApp()`
+  组合序：请求日志中间件 → API 插件 → `server/public` 静态 →
+  仅当 `dist/index.html` 存在时挂 `dist` 静态带 `spa: true`
+  深链回退；`api.mts` 走动态 import + `typeof import` 钉类型，
+  是 bundler 无扩展名解析与 Node ESM 显式 `.mts` 扩展名两头堵
+  的最小解）、`api.mts`（health/hello/echo 示范路由）、`smoke.mjs`
+  （`PORT=0` 拉起真实服务打真实 HTTP，dist 有无两态断言一致）、
+  `public/ok.txt`；根目录 `scripts/dev-full.mjs`（vite + 后端
+  双拉起、前缀化去色输出、detached 进程组双杀）与三个
+  package.json 脚本（`dev:full`/`server`/`server:smoke`）；
+  `server/README.md` 按 registry 口径书写。
+- **评审修复**（本批 review 发现并随批修入）：① dev-full 的 10s
+  兜底定时器原在顶层武装——`unref()` 只让定时器「不维持」事件
+  循环，而子进程 stdio 管道会维持，等于运行 10s 自杀并孤儿化
+  两个子进程；移入 `firstExit` 武装（仅 shutdown 后生效），并
+  对超时未退子进程 `SIGKILL` 升级。② 子进程被信号杀死时 exit
+  事件 `code` 为 `null`，原 `?? 0` 把崩溃掩盖成成功，改
+  `?? 1`。③ ANSI 去色正则 `/[[0-9;]*[A-Za-z]/` 不含 ESC 字节，
+  剥离后残留孤儿转义字节且误食 `[vite]` 类方括号文本，改
+  `/\x1B\[[0-9;?]*[A-Za-z]/`。
+- **验证**：`pnpm server:smoke` 13/13 绿（dist 有/无两态各跑
+  一次）；SPA 回退按 s200 语义仅对 GET + `Accept: text/html`
+  生效（浏览器深链刷新 OK，`*/*` 得 404 JSON 属设计内）；
+  dev-full 生命周期实测：运行 >10s 监督进程仍存活（修复前
+  10s 自毁）、SIGINT 后两子进程退净且端口释放、退出码沿首退
+  子进程传播；typecheck（`server/*.mts` 被 tsconfig 覆盖）与
+  lint:ci 通过。

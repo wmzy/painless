@@ -120,6 +120,9 @@ importers:
       rollup-plugin-type-as-json-schema:
         specifier: ^0.2.6
         version: 0.2.6
+      s200:
+        specifier: ^0.1.0
+        version: 0.1.0
       tools-config:
         specifier: ^0.5.0
         version: 0.5.0(@typescript-eslint/utils@8.70.0(eslint@10.10.0(jiti@2.6.1)(supports-color@10.2.2))(supports-color@10.2.2)(typescript@6.0.3))(eslint-import-resolver-node@0.3.10(supports-color@10.2.2))(eslint-plugin-import@2.32.0)(eslint@10.10.0(jiti@2.6.1)(supports-color@10.2.2))(prettier@3.9.6)(stylelint@16.26.1(supports-color@10.2.2)(typescript@6.0.3))(supports-color@10.2.2)(typescript@6.0.3)
@@ -3257,6 +3260,10 @@ packages:
 
   rxjs@7.8.2:
     resolution: {integrity: sha512-dhKf903U/PQZY6boNNtAGdWbG85WAbjT/1xYoZIC7FAY0yWapOBQVsVrDl58W86//e1VpMNBtRV4MaXfdMySFA==}
+
+  s200@0.1.0:
+    resolution: {integrity: sha512-4wc1xQUmDcClLI9FRJagdGz2ZVZhDmxrgKrVUMuKBW6sF/xAHi6s1iI4ozkE8Img+gM7ADequON1V9reJf6eLQ==}
+    engines: {node: '>=20.3'}
 
   safe-array-concat@1.1.4:
     resolution: {integrity: sha512-wtZlHyOje6OZTGqAoaDKxFkgRtkF9CnHAVnCHKfuj200wAgL+bSJhdsCD2l0Qx/2ekEXjPWcyKkfGb5CPboslg==}
@@ -7123,6 +7130,10 @@ snapshots:
   rxjs@7.8.2:
     dependencies:
       tslib: 2.8.1
+
+  s200@0.1.0:
+    dependencies:
+      '@for-fun/event-emitter': 1.1.0
 
   safe-array-concat@1.1.4:
     dependencies:

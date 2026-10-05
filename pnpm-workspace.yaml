@@ -21,3 +21,4 @@ minimumReleaseAgeExclude:
   - '@native-router/*'
   - '@for-fun/*'
   - vite-plugin-haze-ui
+  - s200
