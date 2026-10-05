@@ -21,10 +21,9 @@ These are intentional design decisions, not missing features. Do not suggest add
 
 ## Commands
 
-- `pnpm start` — dev server (Vite)
-- `pnpm dev:full` — full-stack dev: vite (:5173) + s200 backend (:4300) via `scripts/dev-full.mjs` (prefixed color-stripped output, process-group dual-kill on Ctrl-C, 10s SIGKILL fallback)
-- `pnpm server` — s200 backend dev server (`server/index.mts`, `PORT` env, default 4300, `--watch`)
-- `pnpm server:smoke` — backend smoke: boots the real server on `PORT=0`, asserts all API routes + static assets (identical assertions with or without a `dist/` build)
+- `pnpm start` — dev server (Vite); the dev server also mounts the s200 API at `/api` (`server/api.mts` via `s200ApiPlugin` in `vite.config.mts`) so dev frontend+backend share one port (decisions.md #42); API route changes need a dev server restart
+- `pnpm server` — s200 backend standalone (prod-like): API + `server/public` static, plus `dist` with SPA fallback when built (`PORT` env, default 4300, `--watch`)
+- `pnpm server:smoke` — backend smoke: boots the standalone server on `PORT=0`, asserts all API routes + static assets (identical assertions with or without a `dist/` build)
 - `pnpm build` — production build
 - `pnpm serve` — preview the production build (`vite preview`)
 - `pnpm lint` — ESLint with auto-fix

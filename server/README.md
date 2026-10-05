@@ -12,9 +12,21 @@ Node ≥ 22.18 直接以内置 type stripping 运行 `.mts`，无需编译步骤
 
 |Script|Command|作用|
 |---|---|---|
-|`pnpm server`|`node --watch server/index.mts`|后端开发服务（`PORT` 环境变量，默认 4300，改动自动重启）|
-|`pnpm server:smoke`|`node server/smoke.mjs`|冒烟：`PORT=0` 拉起真实服务，断言全部 API + 静态资产|
-|`pnpm dev:full`|`node scripts/dev-full.mjs`|同时拉起 vite（:5173）与后端（:4300），前缀化去色输出，Ctrl-C 双杀|
+|`pnpm server`|`node --watch server/index.mts`|独立后端（prod-like）：API + `server/public` 静态，有 `dist` 时再挂 dist 静态带 SPA 回退（`PORT` 环境变量，默认 4300，改动自动重启）|
+|`pnpm server:smoke`|`node server/smoke.mjs`|冒烟：`PORT=0` 拉起独立服务，断言全部 API + 静态资产|
+
+## 开发环境同端口
+
+`pnpm start`（vite）通过 `vite.config.mts` 的 `s200ApiPlugin` 把
+`server/api.mts` 的 API 应用（`createApiApp()`）挂进 dev server 的
+`/api` 前缀——`configureServer` 主体注册的中间件早于 vite 内置管线
+（transform/static/html fallback），`/api` 请求直达 s200 分发，其余
+路径照常走 HMR/静态/SPA。开发时浏览器只面对 vite 一个端口。
+
+API 模块随 vite 配置打包——**改 API 路由后重启 dev server 生效**
+（与独立进程 `--watch` 热重启的取舍见 `docs/decisions.md` #42）。
+生产无此挂载：静态产物由本目录的独立服务（或任意静态托管 + s200
+后端）提供。
 
 ## Routes
 

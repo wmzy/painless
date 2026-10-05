@@ -2042,7 +2042,8 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
   事件 `code` 为 `null`，原 `?? 0` 把崩溃掩盖成成功，改
   `?? 1`。③ ANSI 去色正则 `/[[0-9;]*[A-Za-z]/` 不含 ESC 字节，
   剥离后残留孤儿转义字节且误食 `[vite]` 类方括号文本，改
-  `/\x1B\[[0-9;?]*[A-Za-z]/`。
+  `/\x1B\[[0-9;?]*[A-Za-z]/`。（dev:full 已由 #42 的同端口
+  方案取代、随批删除——本条留作 #41 时点的历史记录。）
 - **验证**：`pnpm server:smoke` 13/13 绿（dist 有/无两态各跑
   一次）；SPA 回退按 s200 语义仅对 GET + `Accept: text/html`
   生效（浏览器深链刷新 OK，`*/*` 得 404 JSON 属设计内）；
@@ -2050,3 +2051,47 @@ painless 模板之间的集成决策，逐条记录背景与决定；状态变�
   10s 自毁）、SIGINT 后两子进程退净且端口释放、退出码沿首退
   子进程传播；typecheck（`server/*.mts` 被 tsconfig 覆盖）与
   lint:ci 通过。
+
+## 42. 开发环境前后端同端口：s200 API 挂进 vite dev server（2026-10-05）
+
+- **背景**：#41 落地的 `dev:full` 是双进程方案（vite :5173
+  + s200 :4300）——开发要同时起两个端口、两个进程。参考
+  anthology 的 `vite.config.ts`（`honoApiPlugin` 模式）改
+  为 dev server 内挂：开发环境前后端同端口。
+- **改动**：
+  ① `server/api.mts` 新增 `createApiApp()`——仅 API 路由的
+  s200 应用；独立服务 `server/index.mts` 在 `apiRoutes`
+  基础上自行组合日志中间件与静态面，路由定义保持单一来源；
+  ② `vite.config.mts` 新增 `s200ApiPlugin`：`configureServer`
+  主体注册 `/api` 中间件（vite 8 `createServer` 先跑
+  `configureServer` 钩子、再装内置管线——transform/static/
+  html fallback 在其后，故 `/api` 请求不进前端管线、直达
+  s200 分发），适配器语义对齐 s200/node 的 `dispatch`：
+  rawHeaders 成对保留重复头、非 GET/HEAD 请求体走
+  `Readable.toWeb` + `duplex: 'half'`、响应体流式回写；
+  ③ 删除 `scripts/dev-full.mjs` 与 `dev:full` 脚本——同端口
+  后双进程监督失去存在理由，独立后端场景由 `pnpm server`
+  覆盖。
+- **取舍**：
+  ① `.mts` 跨文件导入沿用动态 import + `typeof import` 钉
+  类型（server/index.mts 同款约束：bundler 解析不做值侧
+  显式扩展名导入，Node ESM 又只认显式扩展名）；vite 打包
+  配置时把 `import.meta.url` 重写为原配置文件 URL
+  （`bundleConfigFile` 的 define 注入），相对解析不受配置
+  束临时位置影响；
+  ② API 模块随 vite 配置打包——改 API 路由重启 dev server
+  生效；接受此取舍（单进程单端口、启动期即暴露导入错误，
+  `configureServer` 为 async 钩子，vite await 之），放弃
+  独立进程 `--watch` 的 API 热重启；
+  ③ 生产无此挂载：部署形态不变（静态产物 + s200 后端，
+  或任意静态托管 + s200）。
+- **验证**：dev server 实测——`GET /api/health` 200 JSON、
+  `GET /api/hello?name=` 及缺省值、`POST /api/echo` 流式
+  请求体往返、`GET /api/nope` 404 JSON；同服 `GET /` 200
+  text/html、`GET /src/views/index.tsx` 200 text/javascript
+  （前端 transform/SPA 管线未受影响）；`pnpm server:smoke`
+  独立路径仍 13/13 绿（dist 有/无两态）；typecheck +
+  lint:ci 通过。e2e 新增 `e2e/dev-api.spec.ts`（request
+  fixture 直连 dev server，chromium 项目专属收集——prod
+  preview 无此挂载）钉住同端口契约，防 vite 中间件装配序
+  变化类回归。

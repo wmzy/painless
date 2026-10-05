@@ -5,7 +5,6 @@
   "private": true,
   "scripts": {
     "start": "vite",
-    "dev:full": "node scripts/dev-full.mjs",
     "server": "node --watch server/index.mts",
     "server:smoke": "node server/smoke.mjs",
     "build": "vite build && node scripts/make-404.mjs",
